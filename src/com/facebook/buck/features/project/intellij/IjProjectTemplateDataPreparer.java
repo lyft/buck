@@ -493,6 +493,8 @@ public class IjProjectTemplateDataPreparer {
     if (resourcePaths.isEmpty()) {
       androidProperties.put(RESOURCES_RELATIVE_PATH_TEMPLATE_PARAMETER, EMPTY_STRING);
     } else {
+
+
       Set<String> relativeResourcePaths = new HashSet<>(resourcePaths.size());
       for (Path resourcePath : resourcePaths) {
         relativeResourcePaths.add(
