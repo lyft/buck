@@ -31,19 +31,23 @@ import org.immutables.value.Value;
 public abstract class AbstractParserCacheConfig implements ConfigView<BuckConfig> {
   private static final Logger LOG = Logger.get(AbstractParserCacheConfig.class);
 
-  public static final String PARSER_CACHE_SECTION_NAME = "parser";
-  public static final String PARSER_CACHE_LOCAL_LOCATION_NAME = "dir";
-  public static final String PARSER_CACHE_LOCAL_MODE_NAME = "dir_mode";
-  public static final String DEFAULT_PARSER_CACHE_MODE_VALUE = "NONE";
+  static final String PARSER_CACHE_SECTION_NAME = "parser";
+  static final String PARSER_CACHE_LOCAL_LOCATION_NAME = "dir";
+  private static final String PARSER_CACHE_LOCAL_MODE_NAME = "dir_mode";
+  private static final String DEFAULT_PARSER_CACHE_MODE_VALUE = "NONE";
+
+  private static final String MANIFEST_SERVICE_SECTION_NAME = "manifestservice";
+  private static final String MANIFEST_SERVICE_THRIFT_ENDPOINT_NAME = "hybrid_thrift_endpoint";
+  private static final String MANIFEST_SERVICE_MODE_NAME = "remote_parser_caching_access_mode";
 
   @Override
   @Value.Parameter
   public abstract BuckConfig getDelegate();
 
-  private ParserCacheAccessMode getCacheMode() throws ParserCacheException {
+  private ParserCacheAccessMode getCacheMode(String cacheType) throws ParserCacheException {
     String cacheMode =
         getDelegate()
-            .getValue(PARSER_CACHE_SECTION_NAME, PARSER_CACHE_LOCAL_MODE_NAME)
+            .getValue(PARSER_CACHE_SECTION_NAME, cacheType)
             .orElse(DEFAULT_PARSER_CACHE_MODE_VALUE);
     ParserCacheAccessMode result;
     try {
@@ -70,9 +74,9 @@ public abstract class AbstractParserCacheConfig implements ConfigView<BuckConfig
 
     ParserCacheAccessMode parserCacheAccessMode = ParserCacheAccessMode.NONE;
     try {
-      parserCacheAccessMode = getCacheMode();
+      parserCacheAccessMode = getCacheMode(PARSER_CACHE_LOCAL_MODE_NAME);
     } catch (ParserCacheException t) {
-      LOG.error(t, "Could not get ParserCacheAccessMode for AbstractCacheConfig.");
+      LOG.error(t, "Could not get ParserCacheAccessMode for local AbstractCacheConfig.");
     }
 
     if (parserCacheAccessMode == ParserCacheAccessMode.NONE) {
@@ -93,6 +97,33 @@ public abstract class AbstractParserCacheConfig implements ConfigView<BuckConfig
     return ParserDirCacheEntry.of(Optional.of(pathToCacheDir), parserCacheAccessMode);
   }
 
+  /** Obtains a {@link AbstractParserDirCacheEntry} from the {@link BuckConfig}. */
+  @Value.Lazy
+  protected AbstractParserRemoteCacheEntry obtainRemoteEntry() {
+    String thriftEndpoint =
+        getDelegate()
+            .getValue(MANIFEST_SERVICE_SECTION_NAME, MANIFEST_SERVICE_THRIFT_ENDPOINT_NAME)
+            .orElse(null);
+
+    if (thriftEndpoint == null) {
+      // No endpoint specified. Disable remote cache.
+      return ParserRemoteCacheEntry.of(ParserCacheAccessMode.NONE);
+    }
+
+    ParserCacheAccessMode parserCacheAccessMode = ParserCacheAccessMode.NONE;
+    try {
+      parserCacheAccessMode = getCacheMode(MANIFEST_SERVICE_MODE_NAME);
+    } catch (ParserCacheException t) {
+      LOG.error(t, "Could not get ParserCacheAccessMode for remote AbstractCacheConfig.");
+    }
+
+    if (parserCacheAccessMode == ParserCacheAccessMode.NONE) {
+      return ParserRemoteCacheEntry.of(ParserCacheAccessMode.NONE); // Disable local cache.
+    }
+
+    return ParserRemoteCacheEntry.of(parserCacheAccessMode);
+  }
+
   /** @returns the location for the local cache. */
   @Value.Lazy
   public Optional<Path> getDirCacheLocation() {
@@ -104,7 +135,9 @@ public abstract class AbstractParserCacheConfig implements ConfigView<BuckConfig
     return Optional.empty();
   }
 
-  /** @returns whether the local cache is enabled. */
+  /**
+   * @returns {@code true} if the {@link LocalCacheStorage} is enabled, and {@code false} if not.
+   */
   @Value.Lazy
   public boolean isDirParserCacheEnabled() {
     AbstractParserDirCacheEntry parserDirCacheEntry = obtainDirEntry();
@@ -115,5 +148,38 @@ public abstract class AbstractParserCacheConfig implements ConfigView<BuckConfig
     }
 
     return true;
+  }
+
+  /** @returns {@link ParserCacheAccessMode} associated with the {@link LocalCacheStorage} */
+  public ParserCacheAccessMode getDirCacheAccessMode() {
+    AbstractParserDirCacheEntry parserDirCacheEntry = obtainDirEntry();
+    if (parserDirCacheEntry != null) {
+      return parserDirCacheEntry.getDirCacheMode();
+    }
+
+    return ParserCacheAccessMode.NONE;
+  }
+
+  /**
+   * @returns {@code true} if the {@link RemoteManifestServiceCacheStorage} is enabled, otherwise
+   *     {@code false}.
+   */
+  public boolean isRemoteParserCacheEnabled() {
+    AbstractParserRemoteCacheEntry parserRemoteCacheEntry = obtainRemoteEntry();
+    if (parserRemoteCacheEntry.getRemoteCacheMode() == ParserCacheAccessMode.NONE) {
+      return false;
+    }
+
+    return true;
+  }
+
+  /** @returns the access mode for the {@link RemoteManifestServiceCacheStorage}. */
+  public ParserCacheAccessMode getRemoteCacheAccessMode() {
+    AbstractParserRemoteCacheEntry parserRemoteCacheEntry = obtainRemoteEntry();
+    if (parserRemoteCacheEntry != null) {
+      return parserRemoteCacheEntry.getRemoteCacheMode();
+    }
+
+    return ParserCacheAccessMode.NONE;
   }
 }

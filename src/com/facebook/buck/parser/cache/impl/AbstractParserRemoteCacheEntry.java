@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-present Facebook, Inc.
+ * Copyright 2018-present Facebook, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may
  * not use this file except in compliance with the License. You may obtain
@@ -14,18 +14,16 @@
  * under the License.
  */
 
-package com.facebook.buck.cli.parameter_extractors;
+package com.facebook.buck.parser.cache.impl;
 
-import javax.annotation.Nullable;
+import com.facebook.buck.core.util.immutables.BuckStylePackageVisibleImmutable;
+import org.immutables.value.Value;
 
-/**
- * 'Simple fields' from the {@code com.facebook.buck.cli.ProjectCommand} that the {@code
- * com.facebook.buck.ide.intellij.projectview.ProjectView} needs
- */
-public interface ProjectViewParameters extends ProjectGeneratorParameters {
-
-  boolean hasViewPath();
-
-  @Nullable
-  String getViewPath();
+/** An entry representing the configuration of the remote parser cache */
+@Value.Immutable(builder = false, copy = false)
+@BuckStylePackageVisibleImmutable
+abstract class AbstractParserRemoteCacheEntry {
+  /** Gets the mode set for this cache entry. */
+  @Value.Parameter
+  abstract ParserCacheAccessMode getRemoteCacheMode();
 }

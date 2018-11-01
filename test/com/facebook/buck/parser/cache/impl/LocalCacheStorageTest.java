@@ -27,6 +27,7 @@ import static org.junit.Assume.assumeThat;
 
 import com.facebook.buck.core.config.BuckConfig;
 import com.facebook.buck.core.config.FakeBuckConfig;
+import com.facebook.buck.core.exceptions.HumanReadableException;
 import com.facebook.buck.core.util.log.Logger;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
@@ -45,7 +46,6 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -79,7 +79,19 @@ public class LocalCacheStorageTest {
     return builder;
   }
 
-  private AbstractParserCacheConfig getParserCacheConfig(boolean enabled, Path location) {
+  private byte[] serializeBuildFileManifestToBytes(BuildFileManifest buildFileManifest)
+      throws ParserCacheException {
+
+    byte[] serializedBuildFileManifest;
+    try {
+      serializedBuildFileManifest = BuildFileManifestSerializer.serialize(buildFileManifest);
+    } catch (IOException e) {
+      throw new ParserCacheException(e, "Failed to serialize BuildFileManifgest to bytes.");
+    }
+    return serializedBuildFileManifest;
+  }
+
+  private ParserCacheConfig getParserCacheConfig(boolean enabled, Path location) {
     FakeBuckConfig.Builder builder = getBaseBuckConfigBuilder(location, true, enabled);
     return builder.build().getView(ParserCacheConfig.class);
   }
@@ -117,17 +129,16 @@ public class LocalCacheStorageTest {
   }
 
   @Test
-  public void createLocalCacheWithAbsolutePathAndException()
-      throws IOException, ParserCacheException {
-    expectedException.expect(ParserCacheException.class);
+  public void createLocalCacheStorageWithAbsolutePathAndException() throws IOException {
+    expectedException.expect(HumanReadableException.class);
     expectedException.expectMessage("Failed to create local cache directory - /foo/bar");
-    filesystem.createNewFile(Paths.get("/foo"));
-    LocalCacheStorage.newInstance(
-        getParserCacheConfig(true, filesystem.getPath("/foo/bar")), filesystem);
+    filesystem.createNewFile(filesystem.getPath("/foo"));
+    Path path = filesystem.getPath("/foo/bar");
+    LocalCacheStorage.newInstance(getParserCacheConfig(true, path), filesystem);
   }
 
   @Test
-  public void createLocalCacheWithAbsolutePath() throws ParserCacheException {
+  public void createLocalCacheStorageWithAbsolutePath() throws ParserCacheException {
     Path absPath = filesystem.getBuckPaths().getBuckOut().resolve("/foo/bar").toAbsolutePath();
     LocalCacheStorage.newInstance(getParserCacheConfig(true, absPath), filesystem);
     List<LogRecord> events = localHandler.messages;
@@ -138,7 +149,7 @@ public class LocalCacheStorageTest {
   }
 
   @Test
-  public void createLocalCacheWithRelativePath() throws ParserCacheException {
+  public void createLocalCacheStorageWithRelativePath() throws ParserCacheException {
     Path path = filesystem.getPath("foo/bar");
     LocalCacheStorage.newInstance(getParserCacheConfig(true, path), filesystem);
     List<LogRecord> events = localHandler.messages;
@@ -151,7 +162,7 @@ public class LocalCacheStorageTest {
   }
 
   @Test
-  public void createLocalCacheWhenCachingDisabled() throws ParserCacheException {
+  public void createLocalCacheStorageWhenCachingDisabled() throws ParserCacheException {
     expectedException.expect(IllegalStateException.class);
     expectedException.expectMessage(
         "Invalid state: LocalCacheStorage should not be instantiated if the cache is disabled.");
@@ -160,7 +171,7 @@ public class LocalCacheStorageTest {
   }
 
   @Test
-  public void createLocalCacheWhenCacheDefaultDirectory() throws ParserCacheException {
+  public void createLocalCacheStorageWhenCacheDefaultDirectory() throws ParserCacheException {
     Path emptyPathForDefaultCacheLocation = filesystem.getPath("\"\"");
     LocalCacheStorage.newInstance(
         getParserCacheConfig(true, emptyPathForDefaultCacheLocation), filesystem);
@@ -182,7 +193,8 @@ public class LocalCacheStorageTest {
     Path buildPath = filesystem.getPath(FOO_BAR_PATH);
     HashCode weakFingerprint = Fingerprinter.getWeakFingerprint(buildPath, getConfig().getConfig());
     HashCode strongFingerprint = Fingerprinter.getStrongFingerprint(filesystem, ImmutableList.of());
-    localCacheStorage.storeBuildFileManifest(weakFingerprint, strongFingerprint, null);
+    localCacheStorage.storeBuildFileManifest(
+        weakFingerprint, strongFingerprint, new byte[] {0, 1, 2});
     Path localCachePath = tempDir.getRoot().resolve(FOO_BAR_PATH);
     assertNotNull(localCachePath);
     Path weakFingerprintPath =
@@ -192,7 +204,7 @@ public class LocalCacheStorageTest {
   }
 
   @Test
-  public void createLocalCacheWFPDirectoryExistingAndKeepIt()
+  public void createLocalCacheStorageWFPDirectoryExistingAndKeepIt()
       throws IOException, ParserCacheException {
     LocalCacheStorage localCacheStorage =
         LocalCacheStorage.newInstance(
@@ -212,14 +224,15 @@ public class LocalCacheStorageTest {
     assertTrue(filesystem.exists(newFilePath));
     HashCode weakFingerprint = Fingerprinter.getWeakFingerprint(buildPath, getConfig().getConfig());
     HashCode strongFingerprint = Fingerprinter.getStrongFingerprint(filesystem, ImmutableList.of());
-    localCacheStorage.storeBuildFileManifest(weakFingerprint, strongFingerprint, null);
+    localCacheStorage.storeBuildFileManifest(
+        weakFingerprint, strongFingerprint, new byte[] {0, 1, 2});
     assertNotNull(localCachePath);
     assertTrue(filesystem.exists(wfpPath));
     assertTrue(filesystem.exists(newFilePath));
   }
 
   @Test
-  public void stroreInLocalCacheAndGetFromLocalCacheAndVerifyMatch()
+  public void storeInLocalCacheStorageAndGetFromLocalCacheStorageAndVerifyMatch()
       throws IOException, ParserCacheException {
     LocalCacheStorage localCacheStorage =
         LocalCacheStorage.newInstance(
@@ -297,7 +310,9 @@ public class LocalCacheStorageTest {
 
     // Store in local cache
     localCacheStorage.storeBuildFileManifest(
-        weakFingerprinter, strongFingerprinter, buildFileManifest);
+        weakFingerprinter,
+        strongFingerprinter,
+        serializeBuildFileManifestToBytes(buildFileManifest));
 
     Path serializedDataFile =
         localCachePath
@@ -307,7 +322,7 @@ public class LocalCacheStorageTest {
 
     // Get from local cache
     BuildFileManifest buildFileManifestResult =
-        localCacheStorage.getBuildFileManifest(weakFingerprinter, strongFingerprinter);
+        localCacheStorage.getBuildFileManifest(weakFingerprinter, strongFingerprinter).get();
     assertEquals(buildFileManifest, buildFileManifestResult);
   }
 

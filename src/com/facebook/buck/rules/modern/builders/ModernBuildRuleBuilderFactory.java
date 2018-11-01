@@ -16,7 +16,8 @@
 
 package com.facebook.buck.rules.modern.builders;
 
-import com.facebook.buck.core.build.engine.BuildExecutorRunner;
+import com.facebook.buck.core.build.engine.BuildResult;
+import com.facebook.buck.core.build.engine.BuildStrategyContext;
 import com.facebook.buck.core.cell.Cell;
 import com.facebook.buck.core.cell.CellPathResolver;
 import com.facebook.buck.core.rules.BuildRule;
@@ -33,11 +34,12 @@ import com.facebook.buck.util.exceptions.BuckUncheckedExecutionException;
 import com.facebook.buck.util.function.ThrowingFunction;
 import com.facebook.buck.util.hashing.FileHashLoader;
 import com.google.common.hash.HashCode;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListeningExecutorService;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Optional;
-import java.util.concurrent.ExecutorService;
 
 /**
  * Constructs various BuildRuleStrategies for ModernBuildRules based on the
@@ -54,7 +56,7 @@ public class ModernBuildRuleBuilderFactory {
       FileHashLoader hashLoader,
       BuckEventBus eventBus,
       Console console,
-      ExecutorService remoteExecutorService,
+      ListeningExecutorService remoteExecutorService,
       Optional<TraceInfoProvider> traceInfoProvider) {
     try {
       RemoteExecutionClientsFactory remoteExecutionFactory =
@@ -105,9 +107,10 @@ public class ModernBuildRuleBuilderFactory {
   public static BuildRuleStrategy createPassthrough() {
     return new AbstractModernBuildRuleStrategy() {
       @Override
-      public void build(
-          ListeningExecutorService service, BuildRule rule, BuildExecutorRunner executorRunner) {
-        service.execute(executorRunner::runWithDefaultExecutor);
+      public ListenableFuture<Optional<BuildResult>> build(
+          BuildRule rule, BuildStrategyContext strategyContext) {
+        return Futures.submitAsync(
+            strategyContext::runWithDefaultBehavior, strategyContext.getExecutorService());
       }
     };
   }

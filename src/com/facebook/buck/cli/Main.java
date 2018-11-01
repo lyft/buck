@@ -89,7 +89,10 @@ import com.facebook.buck.io.AsynchronousDirectoryContentsCleaner;
 import com.facebook.buck.io.ExecutableFinder;
 import com.facebook.buck.io.file.MostFiles;
 import com.facebook.buck.io.filesystem.BuckPaths;
-import com.facebook.buck.io.filesystem.PathOrGlobMatcher;
+import com.facebook.buck.io.filesystem.ExactPathMatcher;
+import com.facebook.buck.io.filesystem.FileExtensionMatcher;
+import com.facebook.buck.io.filesystem.GlobPatternMatcher;
+import com.facebook.buck.io.filesystem.PathMatcher;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.ProjectFilesystemFactory;
 import com.facebook.buck.io.filesystem.impl.DefaultProjectFilesystemFactory;
@@ -105,6 +108,8 @@ import com.facebook.buck.log.GlobalStateManager;
 import com.facebook.buck.log.InvocationInfo;
 import com.facebook.buck.log.LogConfig;
 import com.facebook.buck.log.TraceInfoProvider;
+import com.facebook.buck.manifestservice.ManifestService;
+import com.facebook.buck.manifestservice.ManifestServiceConfig;
 import com.facebook.buck.parser.BuildTargetParser;
 import com.facebook.buck.parser.BuildTargetPatternParser;
 import com.facebook.buck.parser.DaemonicParserState;
@@ -150,6 +155,7 @@ import com.facebook.buck.util.PrintStreamProcessExecutorFactory;
 import com.facebook.buck.util.ProcessExecutor;
 import com.facebook.buck.util.ProcessManager;
 import com.facebook.buck.util.Scope;
+import com.facebook.buck.util.ThrowingCloseableMemoizedSupplier;
 import com.facebook.buck.util.ThrowingCloseableWrapper;
 import com.facebook.buck.util.Verbosity;
 import com.facebook.buck.util.cache.InstrumentingCacheStatsTracker;
@@ -304,47 +310,47 @@ public final class Main {
 
   // Ignore changes to generated Xcode project files and editors' backup files
   // so we don't dump buckd caches on every command.
-  private static final ImmutableSet<PathOrGlobMatcher> DEFAULT_IGNORE_GLOBS =
+  private static final ImmutableSet<PathMatcher> DEFAULT_IGNORE_GLOBS =
       ImmutableSet.of(
-          new PathOrGlobMatcher("**/*.pbxproj"),
-          new PathOrGlobMatcher("**/*.xcscheme"),
-          new PathOrGlobMatcher("**/*.xcworkspacedata"),
+          FileExtensionMatcher.of("pbxproj"),
+          FileExtensionMatcher.of("xcscheme"),
+          FileExtensionMatcher.of("xcworkspacedata"),
           // Various editors' temporary files
-          new PathOrGlobMatcher("**/*~"),
+          GlobPatternMatcher.of("**/*~"),
           // Emacs
-          new PathOrGlobMatcher("**/#*#"),
-          new PathOrGlobMatcher("**/.#*"),
+          GlobPatternMatcher.of("**/#*#"),
+          GlobPatternMatcher.of("**/.#*"),
           // Vim
-          new PathOrGlobMatcher("**/*.swo"),
-          new PathOrGlobMatcher("**/*.swp"),
-          new PathOrGlobMatcher("**/*.swpx"),
-          new PathOrGlobMatcher("**/*.un~"),
-          new PathOrGlobMatcher("**/.netrhwist"),
+          FileExtensionMatcher.of("swo"),
+          FileExtensionMatcher.of("swp"),
+          FileExtensionMatcher.of("swpx"),
+          FileExtensionMatcher.of("un~"),
+          FileExtensionMatcher.of("netrhwist"),
           // Eclipse
-          new PathOrGlobMatcher(".idea"),
-          new PathOrGlobMatcher(".iml"),
-          new PathOrGlobMatcher("**/*.pydevproject"),
-          new PathOrGlobMatcher(".project"),
-          new PathOrGlobMatcher(".metadata"),
-          new PathOrGlobMatcher("**/*.tmp"),
-          new PathOrGlobMatcher("**/*.bak"),
-          new PathOrGlobMatcher("**/*~.nib"),
-          new PathOrGlobMatcher(".classpath"),
-          new PathOrGlobMatcher(".settings"),
-          new PathOrGlobMatcher(".loadpath"),
-          new PathOrGlobMatcher(".externalToolBuilders"),
-          new PathOrGlobMatcher(".cproject"),
-          new PathOrGlobMatcher(".buildpath"),
+          ExactPathMatcher.of(".idea"),
+          ExactPathMatcher.of(".iml"),
+          FileExtensionMatcher.of("pydevproject"),
+          ExactPathMatcher.of(".project"),
+          ExactPathMatcher.of(".metadata"),
+          FileExtensionMatcher.of("tmp"),
+          FileExtensionMatcher.of("bak"),
+          FileExtensionMatcher.of("nib"),
+          ExactPathMatcher.of(".classpath"),
+          ExactPathMatcher.of(".settings"),
+          ExactPathMatcher.of(".loadpath"),
+          ExactPathMatcher.of(".externalToolBuilders"),
+          ExactPathMatcher.of(".cproject"),
+          ExactPathMatcher.of(".buildpath"),
           // Mac OS temp files
-          new PathOrGlobMatcher(".DS_Store"),
-          new PathOrGlobMatcher(".AppleDouble"),
-          new PathOrGlobMatcher(".LSOverride"),
-          new PathOrGlobMatcher(".Spotlight-V100"),
-          new PathOrGlobMatcher(".Trashes"),
+          ExactPathMatcher.of(".DS_Store"),
+          ExactPathMatcher.of(".AppleDouble"),
+          ExactPathMatcher.of(".LSOverride"),
+          ExactPathMatcher.of(".Spotlight-V100"),
+          ExactPathMatcher.of(".Trashes"),
           // Windows
-          new PathOrGlobMatcher("$RECYCLE.BIN"),
+          ExactPathMatcher.of("$RECYCLE.BIN"),
           // Sublime
-          new PathOrGlobMatcher(".*.sublime-workspace"));
+          FileExtensionMatcher.of("sublime-workspace"));
 
   private static final Logger LOG = Logger.get(Main.class);
 
@@ -817,7 +823,7 @@ public final class Main {
       // TODO(coneko, ruibm, agallagher): Determine whether we can use the existing filesystem
       // object that is in scope instead of creating a new rootCellProjectFilesystem. The primary
       // difference appears to be that filesystem is created with a Config that is used to produce
-      // ImmutableSet<PathOrGlobMatcher> and BuckPaths for the ProjectFilesystem, whereas this one
+      // ImmutableSet<PathMatcher> and BuckPaths for the ProjectFilesystem, whereas this one
       // uses the defaults.
       ProjectFilesystem rootCellProjectFilesystem =
           projectFilesystemFactory.createOrThrow(rootCell.getFilesystem().getRootPath());
@@ -895,6 +901,15 @@ public final class Main {
               GlobalStateManager.singleton()
                   .setupLoggers(invocationInfo, console.getStdErr(), stdErr, verbosity);
           DefaultBuckEventBus buildEventBus = new DefaultBuckEventBus(clock, buildId);
+          ThrowingCloseableMemoizedSupplier<ManifestService, IOException> manifestServiceSupplier =
+              ThrowingCloseableMemoizedSupplier.of(
+                  () -> {
+                    ManifestServiceConfig manifestServiceConfig =
+                        new ManifestServiceConfig(buckConfig);
+                    return manifestServiceConfig.createManifestService(
+                        clock, buildEventBus, newDirectExecutorService());
+                  },
+                  ManifestService::close);
           ) {
 
         CommonThreadFactoryState commonThreadFactoryState =
@@ -1210,7 +1225,8 @@ public final class Main {
                   buildEventBus,
                   forkJoinPoolSupplier,
                   ruleKeyConfiguration,
-                  executableFinder);
+                  executableFinder,
+                  manifestServiceSupplier);
 
           // Because the Parser is potentially constructed before the CounterRegistry,
           // we need to manually register its counters after it's created.
@@ -1285,7 +1301,8 @@ public final class Main {
                         pluginManager,
                         moduleManager,
                         forkJoinPoolSupplier,
-                        traceInfoProvider));
+                        traceInfoProvider,
+                        manifestServiceSupplier));
           } catch (InterruptedException | ClosedByInterruptException e) {
             buildEventBus.post(CommandEvent.interrupted(startedEvent, ExitCode.SIGNAL_INTERRUPT));
             throw e;
@@ -1395,7 +1412,8 @@ public final class Main {
       BuckEventBus buildEventBus,
       CloseableMemoizedSupplier<ForkJoinPool> forkJoinPoolSupplier,
       RuleKeyConfiguration ruleKeyConfiguration,
-      ExecutableFinder executableFinder)
+      ExecutableFinder executableFinder,
+      ThrowingCloseableMemoizedSupplier<ManifestService, IOException> manifestServiceSupplier)
       throws IOException, InterruptedException {
     WatchmanWatcher watchmanWatcher = null;
     if (daemonOptional.isPresent() && watchman.getTransportPath().isPresent()) {
@@ -1405,7 +1423,7 @@ public final class Main {
             new WatchmanWatcher(
                 watchman,
                 daemon.getFileEventBus(),
-                ImmutableSet.<PathOrGlobMatcher>builder()
+                ImmutableSet.<PathMatcher>builder()
                     .addAll(filesystem.getIgnorePaths())
                     .addAll(DEFAULT_IGNORE_GLOBS)
                     .build(),
@@ -1446,7 +1464,8 @@ public final class Main {
               new TargetSpecResolver(),
               watchman,
               buildEventBus,
-              targetPlatforms);
+              targetPlatforms,
+              manifestServiceSupplier);
       daemon.getFileEventBus().register(daemon.getDaemonicParserState());
 
       parserAndCaches =
@@ -1477,7 +1496,8 @@ public final class Main {
                   new TargetSpecResolver(),
                   watchman,
                   buildEventBus,
-                  targetPlatforms),
+                  targetPlatforms,
+                  manifestServiceSupplier),
               typeCoercerFactory,
               new InstrumentedVersionedTargetGraphCache(
                   new VersionedTargetGraphCache(), new InstrumentingCacheStatsTracker()),

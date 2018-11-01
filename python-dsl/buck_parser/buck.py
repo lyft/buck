@@ -34,7 +34,7 @@ from typing import (
 
 import pywatchman
 from pywatchman import WatchmanError
-from six import iteritems, itervalues, string_types
+from six import PY3, iteritems, itervalues, string_types
 
 # Python 2.6, 2.7, use iterator filter from Python 3
 from six.moves import builtins, filter
@@ -487,11 +487,11 @@ def glob(
         )
         if results:
             # glob should consistently return paths of type str, but
-            # watchman client returns unicode instead.
+            # watchman client returns unicode in Python 2 instead.
             # Extra check is added to make this conversion resilient to
-            # wachman API changes.
+            # watchman API changes.
             results = [
-                res.encode("utf-8") if isinstance(res, unicode) else res
+                res.encode("utf-8") if not isinstance(res, str) else res
                 for res in results
             ]
 
@@ -1549,7 +1549,7 @@ class BuildFileProcessor(object):
         )
 
         # Initialize the output object to a map of the parsed rules.
-        values = build_env.rules.values()
+        values = list(itervalues(build_env.rules))
 
         # Add in tracked included files as a special meta rule.
         values.append({"__includes": [path] + sorted(build_env.includes)})
@@ -1641,10 +1641,10 @@ def process_with_diagnostics(build_file_query, build_file_processor, to_parent):
     watch_root = build_file_query.get("watchRoot")
     project_prefix = build_file_query.get("projectPrefix")
 
-    build_file = cygwin_adjusted_path(build_file).rstrip().encode("ascii")
-    watch_root = cygwin_adjusted_path(watch_root).rstrip().encode("ascii")
+    build_file = cygwin_adjusted_path(build_file)
+    watch_root = cygwin_adjusted_path(watch_root)
     if project_prefix is not None:
-        project_prefix = cygwin_adjusted_path(project_prefix).rstrip().encode("ascii")
+        project_prefix = cygwin_adjusted_path(project_prefix)
 
     diagnostics = []
     values = []
@@ -1680,6 +1680,9 @@ def process_with_diagnostics(build_file_query, build_file_processor, to_parent):
 def java_process_send_result(to_parent, values, diagnostics, profile_result):
     """Sends result to the Java process"""
     data = encode_result(values, diagnostics, profile_result)
+    if PY3:
+        # in Python 3 write expects bytes instead of string
+        data = data.encode("utf-8")
     to_parent.write(data)
     to_parent.flush()
 
@@ -2006,8 +2009,7 @@ def report_profile(options, to_parent, processed_build_file, profiler):
             print(str(trace))
             raise
     else:
-        to_parent.write(encode_result([], [], None))
-        to_parent.flush()
+        java_process_send_result(to_parent, [], [], None)
 
 
 def make_glob(pat):

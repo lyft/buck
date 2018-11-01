@@ -22,10 +22,6 @@ import com.facebook.buck.core.model.HasOutputName;
 import com.facebook.buck.core.rulekey.AddToRuleKey;
 import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.features.filebundler.CopyingFileBundler;
-import com.facebook.buck.features.filebundler.FileBundler;
-import com.facebook.buck.features.filebundler.SrcZipAwareFileBundler;
-import com.facebook.buck.features.filebundler.ZipFileExtractor;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.rules.modern.BuildCellRelativePathFactory;
 import com.facebook.buck.rules.modern.Buildable;
@@ -34,8 +30,9 @@ import com.facebook.buck.rules.modern.OutputPath;
 import com.facebook.buck.rules.modern.OutputPathResolver;
 import com.facebook.buck.step.Step;
 import com.facebook.buck.util.PatternsMatcher;
+import com.facebook.buck.util.zip.Zip.OnDuplicateEntryAction;
 import com.facebook.buck.util.zip.ZipCompressionLevel;
-import com.facebook.buck.zip.ZipStep;
+import com.facebook.buck.zip.UnarchiveAndZipStep;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
@@ -51,6 +48,7 @@ public class Zip extends ModernBuildRule<Zip> implements HasOutputName, Buildabl
   @AddToRuleKey private final boolean flatten;
   @AddToRuleKey private final Optional<Boolean> mergeSourceZips;
   @AddToRuleKey private final ImmutableSet<Pattern> entriesToExclude;
+  @AddToRuleKey private final OnDuplicateEntryAction onDuplicateEntryAction;
 
   public Zip(
       SourcePathRuleFinder ruleFinder,
@@ -61,7 +59,8 @@ public class Zip extends ModernBuildRule<Zip> implements HasOutputName, Buildabl
       ImmutableSortedSet<SourcePath> zipSources,
       boolean flatten,
       Optional<Boolean> mergeSourceZips,
-      ImmutableSet<Pattern> entriesToExclude) {
+      ImmutableSet<Pattern> entriesToExclude,
+      OnDuplicateEntryAction onDuplicateEntryAction) {
     super(buildTarget, projectFilesystem, ruleFinder, Zip.class);
 
     this.name = outputName;
@@ -71,6 +70,7 @@ public class Zip extends ModernBuildRule<Zip> implements HasOutputName, Buildabl
     this.flatten = flatten;
     this.mergeSourceZips = mergeSourceZips;
     this.entriesToExclude = entriesToExclude;
+    this.onDuplicateEntryAction = onDuplicateEntryAction;
   }
 
   @Override
@@ -84,42 +84,20 @@ public class Zip extends ModernBuildRule<Zip> implements HasOutputName, Buildabl
     ImmutableList.Builder<Step> steps = ImmutableList.builder();
 
     PatternsMatcher excludedEntriesMatcher = new PatternsMatcher(entriesToExclude);
-    Path scratchDir = outputPathResolver.getTempPath();
-    FileBundler bundler;
-    if (!zipSources.isEmpty()) {
-      steps.addAll(
-          ZipFileExtractor.extractZipFiles(
-              getBuildTarget(),
-              filesystem,
-              scratchDir,
-              zipSources,
-              buildContext.getSourcePathResolver(),
-              excludedEntriesMatcher));
-      bundler = new CopyingFileBundler(getBuildTarget());
-    } else if (!mergeSourceZips.orElse(true)) {
-      bundler = new CopyingFileBundler(getBuildTarget());
-    } else {
-      bundler = new SrcZipAwareFileBundler(getBuildTarget(), excludedEntriesMatcher);
-    }
-
-    bundler.copy(
-        filesystem,
-        buildCellPathFactory,
-        steps,
-        scratchDir,
-        sources,
-        buildContext.getSourcePathResolver(),
-        excludedEntriesMatcher);
 
     steps.add(
-        new ZipStep(
+        new UnarchiveAndZipStep(
             filesystem,
+            getBuildTarget().getBasePath(),
             outputPath,
-            ImmutableSortedSet.of(),
+            sources,
+            zipSources,
             flatten,
+            (!mergeSourceZips.isPresent() || mergeSourceZips.get()),
+            buildContext.getSourcePathResolver(),
+            excludedEntriesMatcher,
             ZipCompressionLevel.DEFAULT,
-            scratchDir));
-
+            onDuplicateEntryAction));
     return steps.build();
   }
 

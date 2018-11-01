@@ -27,9 +27,9 @@ import static org.junit.Assert.assertTrue;
 import com.facebook.buck.io.file.MorePosixFilePermissions;
 import com.facebook.buck.io.file.MostFiles;
 import com.facebook.buck.io.filesystem.CopySourceMode;
-import com.facebook.buck.io.filesystem.PathOrGlobMatcher;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.ProjectFilesystemFactory;
+import com.facebook.buck.io.filesystem.RecursiveFileMatcher;
 import com.facebook.buck.io.filesystem.TestProjectFilesystems;
 import com.facebook.buck.testutil.TemporaryPaths;
 import com.facebook.buck.testutil.integration.ZipInspector;
@@ -599,8 +599,8 @@ public class DefaultProjectFilesystemTest {
     ProjectFilesystem filesystem = TestProjectFilesystems.createProjectFilesystem(rootPath, config);
     ImmutableSet<Path> ignorePaths =
         FluentIterable.from(filesystem.getIgnorePaths())
-            .filter(input -> input.getType() == PathOrGlobMatcher.Type.PATH)
-            .transform(PathOrGlobMatcher::getPath)
+            .filter(RecursiveFileMatcher.class)
+            .transform(RecursiveFileMatcher::getPath)
             .toSet();
     assertThat(
         ImmutableSortedSet.copyOf(Ordering.natural(), ignorePaths),
@@ -627,8 +627,8 @@ public class DefaultProjectFilesystemTest {
     ImmutableSet<Path> ignorePaths =
         FluentIterable.from(
                 TestProjectFilesystems.createProjectFilesystem(rootPath, config).getIgnorePaths())
-            .filter(input -> input.getType() == PathOrGlobMatcher.Type.PATH)
-            .transform(PathOrGlobMatcher::getPath)
+            .filter(RecursiveFileMatcher.class)
+            .transform(RecursiveFileMatcher::getPath)
             .toSet();
     assertThat(
         "Cache directory should be in set of ignored paths",

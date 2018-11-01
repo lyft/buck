@@ -252,7 +252,9 @@ public abstract class IsolatedBuildableBuilder {
 
               fs.mkdirs(configuredPaths.getTmpDir());
               fs.mkdirs(configuredPaths.getBuckOut());
-              fs.createSymLink(configuredPaths.getProjectRootDir(), fs.getRootPath(), true);
+              fs.deleteFileAtPathIfExists(configuredPaths.getProjectRootDir());
+              fs.writeContentsToPath(
+                  fs.getRootPath().toString(), configuredPaths.getProjectRootDir());
 
               if (!configuredPaths.getConfiguredBuckOut().equals(configuredPaths.getBuckOut())
                   && buckConfig.getBuckOutCompatLink()

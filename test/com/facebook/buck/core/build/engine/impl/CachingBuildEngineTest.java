@@ -53,10 +53,10 @@ import com.facebook.buck.core.build.distributed.synchronization.impl.RemoteBuild
 import com.facebook.buck.core.build.distributed.synchronization.impl.RemoteBuildRuleSynchronizerTestUtil;
 import com.facebook.buck.core.build.engine.BuildEngineBuildContext;
 import com.facebook.buck.core.build.engine.BuildEngineResult;
-import com.facebook.buck.core.build.engine.BuildExecutorRunner;
 import com.facebook.buck.core.build.engine.BuildResult;
 import com.facebook.buck.core.build.engine.BuildRuleStatus;
 import com.facebook.buck.core.build.engine.BuildRuleSuccessType;
+import com.facebook.buck.core.build.engine.BuildStrategyContext;
 import com.facebook.buck.core.build.engine.buildinfo.BuildInfo;
 import com.facebook.buck.core.build.engine.buildinfo.BuildInfoRecorder;
 import com.facebook.buck.core.build.engine.buildinfo.BuildInfoStore;
@@ -148,6 +148,7 @@ import com.facebook.buck.testutil.integration.TarInspector;
 import com.facebook.buck.util.ErrorLogger;
 import com.facebook.buck.util.ExitCode;
 import com.facebook.buck.util.RichStream;
+import com.facebook.buck.util.Scope;
 import com.facebook.buck.util.cache.FileHashCache;
 import com.facebook.buck.util.cache.FileHashCacheMode;
 import com.facebook.buck.util.cache.impl.StackedFileHashCache;
@@ -1966,8 +1967,8 @@ public class CachingBuildEngineTest {
       }
 
       interface Builder {
-        void build(
-            ListeningExecutorService service, BuildRule rule, BuildExecutorRunner executorRunner);
+        ListenableFuture<Optional<BuildResult>> build(
+            ListeningExecutorService service, BuildRule rule, BuildStrategyContext executorRunner);
       }
 
       private static class FakeStrategy implements BuildRuleStrategy {
@@ -1976,10 +1977,10 @@ public class CachingBuildEngineTest {
         Optional<Builder> builder = Optional.empty();
 
         @Override
-        public void build(
-            ListeningExecutorService service, BuildRule rule, BuildExecutorRunner executorRunner) {
+        public ListenableFuture<Optional<BuildResult>> build(
+            BuildRule rule, BuildStrategyContext strategyContext) {
           Preconditions.checkState(builder.isPresent());
-          builder.get().build(service, rule, executorRunner);
+          return builder.get().build(strategyContext.getExecutorService(), rule, strategyContext);
         }
 
         @Override
@@ -2048,7 +2049,7 @@ public class CachingBuildEngineTest {
         resultSupplier = Suppliers.ofInstance(StepExecutionResults.SUCCESS);
         strategy.canBuild = true;
         strategy.builder =
-            Optional.of((service, rule, executorRunner) -> executorRunner.runWithDefaultExecutor());
+            Optional.of((service, rule, executorRunner) -> executorRunner.runWithDefaultBehavior());
         runVerifiedBuild(rule);
       }
 
@@ -2062,12 +2063,13 @@ public class CachingBuildEngineTest {
         strategy.canBuild = true;
         strategy.builder =
             Optional.of(
-                (service, rule, executorRunner) ->
-                    executorRunner.runWithExecutor(
-                        (executionContext,
-                            buildRuleBuildContext,
-                            buildableContext,
-                            stepRunner) -> {}));
+                (service, rule, strategyContext) -> {
+                  try (Scope ignored = strategyContext.buildRuleScope()) {
+                    return Futures.immediateFuture(
+                        Optional.of(
+                            strategyContext.createBuildResult(BuildRuleSuccessType.BUILT_LOCALLY)));
+                  }
+                });
         runVerifiedBuild(rule);
       }
     }
