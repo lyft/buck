@@ -24,17 +24,20 @@ import com.facebook.buck.step.ExecutionContext;
 import com.facebook.buck.step.Step;
 import com.facebook.buck.step.StepExecutionResult;
 import com.facebook.buck.step.StepExecutionResults;
+import com.facebook.buck.util.types.Pair;
+import com.facebook.buck.util.zip.CustomZipEntry;
 import com.facebook.buck.util.zip.CustomZipOutputStream;
 import com.facebook.buck.util.zip.Zip;
 import com.facebook.buck.util.zip.ZipCompressionLevel;
-import com.facebook.buck.util.zip.ZipEntryHolder;
 import com.facebook.buck.util.zip.ZipOutputStreams;
-import com.google.common.collect.ImmutableListMultimap;
 import com.google.common.collect.ImmutableSet;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 
 /** A {@link com.facebook.buck.step.Step} that creates a ZIP archive.. */
 @SuppressWarnings("PMD.AvoidUsingOctalValues")
@@ -88,7 +91,7 @@ public class ZipStep implements Step {
       return StepExecutionResults.ERROR;
     }
 
-    ImmutableListMultimap.Builder<String, ZipEntryHolder> entries = ImmutableListMultimap.builder();
+    Map<String, Pair<CustomZipEntry, Optional<Path>>> entries = new TreeMap<>();
 
     try (BufferedOutputStream baseOut =
             new BufferedOutputStream(filesystem.newFileOutputStream(pathToZipFile));
@@ -97,8 +100,8 @@ public class ZipStep implements Step {
        * If walking the file directory throws, then an empty jar file is still created.
        */
       Zip.walkBaseDirectoryToCreateEntries(
-          filesystem, entries, baseDir, paths, junkPaths, compressionLevel, false);
-      Zip.writeEntriesToZip(filesystem, out, entries.build().values());
+          filesystem, entries, baseDir, paths, junkPaths, compressionLevel);
+      Zip.writeEntriesToZip(filesystem, out, entries);
     }
     return StepExecutionResults.SUCCESS;
   }

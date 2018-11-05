@@ -26,10 +26,9 @@ import com.facebook.buck.core.rules.BuildRuleParams;
 import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
-import com.facebook.buck.util.zip.Zip.OnDuplicateEntryAction;
 import com.facebook.buck.versions.VersionPropagator;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.ImmutableSortedSet;
 import java.util.Optional;
 import java.util.regex.Pattern;
 import org.immutables.value.Value;
@@ -50,7 +49,7 @@ public class ZipFileDescription
       BuildRuleParams params,
       ZipFileDescriptionArg args) {
 
-    ImmutableSortedSet<SourcePath> zipSources = args.getZipSrcs();
+    ImmutableList<SourcePath> zipSources = args.getZipSrcs();
     Optional<Boolean> mergeSourceZips = args.getMergeSourceZips();
 
     if (!zipSources.isEmpty() && mergeSourceZips.isPresent())
@@ -66,8 +65,7 @@ public class ZipFileDescription
         zipSources,
         args.getFlatten(),
         mergeSourceZips,
-        args.getEntriesToExclude(),
-        args.getOnDuplicateEntry());
+        args.getEntriesToExclude());
   }
 
   @Override
@@ -92,12 +90,6 @@ public class ZipFileDescription
 
     ImmutableSet<Pattern> getEntriesToExclude();
 
-    @Value.NaturalOrder
-    ImmutableSortedSet<SourcePath> getZipSrcs();
-
-    @Value.Default
-    default OnDuplicateEntryAction getOnDuplicateEntry() {
-      return OnDuplicateEntryAction.OVERWRITE;
-    }
+    ImmutableList<SourcePath> getZipSrcs();
   }
 }

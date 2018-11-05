@@ -18,12 +18,14 @@ package com.facebook.buck.cli;
 
 import static com.facebook.buck.util.AnsiEnvironmentChecking.NAILGUN_STDERR_ISTTY_ENV;
 import static com.facebook.buck.util.AnsiEnvironmentChecking.NAILGUN_STDOUT_ISTTY_ENV;
+import static com.facebook.buck.util.string.MoreStrings.linesToText;
 import static com.google.common.util.concurrent.MoreExecutors.listeningDecorator;
 import static com.google.common.util.concurrent.MoreExecutors.newDirectExecutorService;
 
 import com.facebook.buck.artifact_cache.ArtifactCaches;
 import com.facebook.buck.artifact_cache.ClientCertificateHandler;
 import com.facebook.buck.artifact_cache.config.ArtifactCacheBuckConfig;
+import com.facebook.buck.artifact_cache.config.ArtifactCacheBuckConfig.Executor;
 import com.facebook.buck.cli.exceptions.handlers.ExceptionHandlerRegistryFactory;
 import com.facebook.buck.core.build.engine.cache.manager.BuildInfoStoreManager;
 import com.facebook.buck.core.cell.Cell;
@@ -480,7 +482,7 @@ public final class Main {
 
                 @Override
                 public void logUserVisibleInternalError(String message) {
-                  console.printFailure(message);
+                  console.printFailure(linesToText("Buck encountered an internal error", message));
                 }
 
                 @Override
@@ -596,7 +598,7 @@ public final class Main {
       WatchmanWatcher.FreshInstanceAction watchmanFreshInstanceAction,
       long initTimestamp,
       ImmutableList<String> unexpandedCommandLineArgs)
-      throws IOException, InterruptedException {
+      throws Exception {
 
     // Set initial exitCode value to FATAL. This will eventually get reassigned unless an exception
     // happens
@@ -1035,6 +1037,7 @@ public final class Main {
                     httpWriteExecutorService.get(),
                     httpFetchExecutorService.get(),
                     stampedeSyncBuildHttpFetchExecutorService.get(),
+                    getDirCacheStoreExecutor(cacheBuckConfig, diskIoExecutorService),
                     managerScope,
                     getArtifactProducerId(executionEnvironment),
                     executionEnvironment.getHostname(),
@@ -1306,12 +1309,13 @@ public final class Main {
           } catch (InterruptedException | ClosedByInterruptException e) {
             buildEventBus.post(CommandEvent.interrupted(startedEvent, ExitCode.SIGNAL_INTERRUPT));
             throw e;
+          } finally {
+            buildEventBus.post(CommandEvent.finished(startedEvent, exitCode));
+            buildEventBus.post(
+                new CacheStatsEvent(
+                    "versioned_target_graph_cache",
+                    parserAndCaches.getVersionedTargetGraphCache().getCacheStats()));
           }
-          buildEventBus.post(
-              new CacheStatsEvent(
-                  "versioned_target_graph_cache",
-                  parserAndCaches.getVersionedTargetGraphCache().getCacheStats()));
-          buildEventBus.post(CommandEvent.finished(startedEvent, exitCode));
         } finally {
           // signal nailgun that we are not interested in client disconnect events anymore
           context.ifPresent(c -> c.removeAllClientListeners());
@@ -1345,6 +1349,21 @@ public final class Main {
       }
     }
     return exitCode;
+  }
+
+  private ListeningExecutorService getDirCacheStoreExecutor(
+      ArtifactCacheBuckConfig cacheBuckConfig,
+      ThrowingCloseableWrapper<ExecutorService, InterruptedException> diskIoExecutorService) {
+    Executor dirCacheStoreExecutor = cacheBuckConfig.getDirCacheStoreExecutor();
+    switch (dirCacheStoreExecutor) {
+      case DISK_IO:
+        return listeningDecorator(diskIoExecutorService.get());
+      case DIRECT:
+        return newDirectExecutorService();
+      default:
+        throw new IllegalStateException(
+            "Executor service for " + dirCacheStoreExecutor + " is not configured.");
+    }
   }
 
   private boolean isRemoteExecutionBuild(BuckCommand command, BuckConfig config) {

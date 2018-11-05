@@ -14,8 +14,11 @@
  * under the License.
  */
 
-package com.facebook.buck.core.util.graph;
+package com.facebook.buck.cli;
 
+import com.facebook.buck.core.util.graph.AbstractBottomUpTraversal;
+import com.facebook.buck.core.util.graph.AbstractBreadthFirstTraversal;
+import com.facebook.buck.core.util.graph.DirectedAcyclicGraph;
 import com.facebook.buck.util.Escaper;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -31,7 +34,7 @@ import java.util.stream.Collectors;
 
 public class Dot<T> {
 
-  private static Pattern VALID_ID_PATTERN = Pattern.compile("[a-zA-Z\200-\377_0-9]+");
+  private static final Pattern VALID_ID_PATTERN = Pattern.compile("[a-zA-Z\200-\377_0-9]+");
 
   private final DirectedAcyclicGraph<T> graph;
   private final String graphName;
