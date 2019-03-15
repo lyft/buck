@@ -240,6 +240,7 @@ public class QueryCommand extends AbstractCommand {
                     ParsingContext.builder(params.getCell(), pool.getListeningExecutorService())
                         .setProfilingEnabled(getEnableParserProfiling())
                         .setSpeculativeParsing(SpeculativeParsing.ENABLED)
+                        .setExcludeUnsupportedTargets(getExcludeIncompatibleTargets())
                         .build(),
                     params.getParser().getPermState(),
                     getTargetPlatforms())) {
@@ -248,9 +249,10 @@ public class QueryCommand extends AbstractCommand {
           BuckQueryEnvironment.from(
               params,
               parserState,
-              executor,
-              getEnableParserProfiling(),
-              getExcludeIncompatibleTargets());
+              ParsingContext.builder(params.getCell(), executor)
+                  .setProfilingEnabled(getEnableParserProfiling())
+                  .setExcludeUnsupportedTargets(getExcludeIncompatibleTargets())
+                  .build());
       formatAndRunQuery(params, env);
     } catch (QueryException e) {
       throw new HumanReadableException(e);

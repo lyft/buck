@@ -80,7 +80,7 @@ public class RawTargetNodePipeline extends ConvertingPipeline<Map<String, Object
     return rawTargetNodeFactory.create(
         cell,
         cell.getAbsolutePathToBuildFile(buildTarget),
-        buildTarget,
+        buildTarget.getUnconfiguredBuildTarget(),
         rawNode,
         perfEventScopeFunction);
   }
@@ -97,6 +97,7 @@ public class RawTargetNodePipeline extends ConvertingPipeline<Map<String, Object
   @Override
   protected ListenableFuture<Map<String, Object>> getItemToConvert(
       Cell cell, BuildTarget buildTarget) throws BuildTargetException {
-    return buildTargetRawNodeParsePipeline.getNodeJob(cell, buildTarget);
+    return buildTargetRawNodeParsePipeline.getNodeJob(
+        cell, buildTarget.getUnconfiguredBuildTarget());
   }
 }

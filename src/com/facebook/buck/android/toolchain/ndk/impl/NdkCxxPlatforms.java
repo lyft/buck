@@ -27,6 +27,7 @@ import com.facebook.buck.android.toolchain.ndk.NdkCxxRuntime;
 import com.facebook.buck.android.toolchain.ndk.NdkCxxRuntimeType;
 import com.facebook.buck.android.toolchain.ndk.NdkTargetArchAbi;
 import com.facebook.buck.android.toolchain.ndk.TargetCpuType;
+import com.facebook.buck.android.toolchain.ndk.UnresolvedNdkCxxPlatform;
 import com.facebook.buck.core.exceptions.HumanReadableException;
 import com.facebook.buck.core.model.Flavor;
 import com.facebook.buck.core.model.InternalFlavor;
@@ -43,9 +44,11 @@ import com.facebook.buck.cxx.toolchain.CompilerProvider;
 import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.CxxToolProvider;
+import com.facebook.buck.cxx.toolchain.DebugPathSanitizer;
 import com.facebook.buck.cxx.toolchain.ElfSharedLibraryInterfaceParams;
 import com.facebook.buck.cxx.toolchain.GnuArchiver;
 import com.facebook.buck.cxx.toolchain.HeaderVerification;
+import com.facebook.buck.cxx.toolchain.MungingDebugPathSanitizer;
 import com.facebook.buck.cxx.toolchain.PosixNmSymbolNameTool;
 import com.facebook.buck.cxx.toolchain.PrefixMapDebugPathSanitizer;
 import com.facebook.buck.cxx.toolchain.PreprocessorProvider;
@@ -89,9 +92,7 @@ public class NdkCxxPlatforms {
    */
   public static final String BUILD_HOST_SUBST = "@BUILD_HOST@";
 
-  public static final NdkCompilerType DEFAULT_COMPILER_TYPE = NdkCompilerType.GCC;
   public static final String DEFAULT_TARGET_APP_PLATFORM = "android-16";
-  public static final NdkCxxRuntime DEFAULT_CXX_RUNTIME = NdkCxxRuntime.GNUSTL;
 
   private static final ImmutableMap<Platform, Host> BUILD_PLATFORMS =
       ImmutableMap.of(
@@ -171,6 +172,14 @@ public class NdkCxxPlatforms {
                                         : ndkVersion.startsWith("18.") ? 18 : -1;
   }
 
+  public static NdkCompilerType getDefaultCompilerTypeForNdk(String ndkVersion) {
+    return getNdkMajorVersion(ndkVersion) < 18 ? NdkCompilerType.GCC : NdkCompilerType.CLANG;
+  }
+
+  public static NdkCxxRuntime getDefaultCxxRuntimeForNdk(String ndkVersion) {
+    return getNdkMajorVersion(ndkVersion) < 18 ? NdkCxxRuntime.GNUSTL : NdkCxxRuntime.LIBCXX;
+  }
+
   public static String getDefaultGccVersionForNdk(String ndkVersion) {
     return getNdkMajorVersion(ndkVersion) < 11 ? "4.8" : "4.9";
   }
@@ -183,8 +192,10 @@ public class NdkCxxPlatforms {
       return "3.8";
     } else if (ndkMajorVersion < 17) {
       return "5.0";
-    } else {
+    } else if (ndkMajorVersion < 18) {
       return "6.0.2";
+    } else {
+      return "7.0.2";
     }
   }
 
@@ -195,7 +206,8 @@ public class NdkCxxPlatforms {
     return !(cxxRuntime == NdkCxxRuntime.LIBCXX && getNdkMajorVersion(ndkVersion) >= 12);
   }
 
-  public static ImmutableMap<TargetCpuType, NdkCxxPlatform> getPlatforms(
+  /** Gets all the unresolved {@link NdkCxxPlatform} based on the buckconfig. */
+  public static ImmutableMap<TargetCpuType, UnresolvedNdkCxxPlatform> getPlatforms(
       CxxBuckConfig config,
       AndroidBuckConfig androidConfig,
       ProjectFilesystem filesystem,
@@ -206,7 +218,9 @@ public class NdkCxxPlatforms {
     Path ndkRoot = androidNdk.getNdkRootPath();
 
     NdkCompilerType compilerType =
-        androidConfig.getNdkCompiler().orElse(NdkCxxPlatforms.DEFAULT_COMPILER_TYPE);
+        androidConfig
+            .getNdkCompiler()
+            .orElse(NdkCxxPlatforms.getDefaultCompilerTypeForNdk(ndkVersion));
     String gccVersion =
         androidConfig
             .getNdkGccVersion()
@@ -228,7 +242,7 @@ public class NdkCxxPlatforms {
         filesystem,
         ndkRoot,
         compiler,
-        androidConfig.getNdkCxxRuntime().orElse(NdkCxxPlatforms.DEFAULT_CXX_RUNTIME),
+        androidConfig.getNdkCxxRuntime().orElseGet(() -> getDefaultCxxRuntimeForNdk(ndkVersion)),
         androidConfig.getNdkCxxRuntimeType().orElse(NdkCxxRuntimeType.DYNAMIC),
         androidConfig.getNdkCpuAbis().orElseGet(() -> getDefaultCpuAbis(ndkVersion)),
         platform);
@@ -245,7 +259,7 @@ public class NdkCxxPlatforms {
   }
 
   @VisibleForTesting
-  public static ImmutableMap<TargetCpuType, NdkCxxPlatform> getPlatforms(
+  public static ImmutableMap<TargetCpuType, UnresolvedNdkCxxPlatform> getPlatforms(
       CxxBuckConfig config,
       AndroidBuckConfig androidConfig,
       ProjectFilesystem filesystem,
@@ -270,7 +284,7 @@ public class NdkCxxPlatforms {
   }
 
   /** @return the map holding the available {@link NdkCxxPlatform}s. */
-  public static ImmutableMap<TargetCpuType, NdkCxxPlatform> getPlatforms(
+  public static ImmutableMap<TargetCpuType, UnresolvedNdkCxxPlatform> getPlatforms(
       CxxBuckConfig config,
       AndroidBuckConfig androidConfig,
       ProjectFilesystem filesystem,
@@ -282,7 +296,7 @@ public class NdkCxxPlatforms {
       Platform platform,
       ExecutableFinder executableFinder,
       boolean strictToolchainPaths) {
-    ImmutableMap.Builder<TargetCpuType, NdkCxxPlatform> ndkCxxPlatformBuilder =
+    ImmutableMap.Builder<TargetCpuType, UnresolvedNdkCxxPlatform> ndkCxxPlatformBuilder =
         ImmutableMap.builder();
 
     // ARM Platform
@@ -388,7 +402,7 @@ public class NdkCxxPlatforms {
     return ndkCxxPlatformBuilder.build();
   }
 
-  private static NdkCxxPlatform getNdkCxxPlatform(
+  private static UnresolvedNdkCxxPlatform getNdkCxxPlatform(
       CxxBuckConfig config,
       AndroidBuckConfig androidConfig,
       ProjectFilesystem filesystem,
@@ -403,6 +417,11 @@ public class NdkCxxPlatforms {
       TargetCpuType cpuType,
       String flavorValue) {
     Flavor flavor = InternalFlavor.of(flavorValue);
+    Optional<UnresolvedNdkCxxPlatform> dynamicPlatform =
+        getDynamicNdkCxxPlatform(androidConfig, cpuAbi, flavor);
+    if (dynamicPlatform.isPresent()) {
+      return dynamicPlatform.get();
+    }
     String androidPlatform =
         androidConfig
             .getNdkAppPlatformForCpuAbi(cpuAbi)
@@ -423,6 +442,13 @@ public class NdkCxxPlatforms {
         strictToolchainPaths);
   }
 
+  private static Optional<UnresolvedNdkCxxPlatform> getDynamicNdkCxxPlatform(
+      AndroidBuckConfig androidConfig, String abi, Flavor flavor) {
+    return androidConfig
+        .getNdkCxxToolchainTargetForAbi(abi)
+        .map(target -> new ProviderBackedUnresolvedNdkCxxPlatform(target, flavor));
+  }
+
   @VisibleForTesting
   static NdkCxxPlatformTargetConfiguration getTargetConfiguration(
       TargetCpuType targetCpuType, NdkCxxPlatformCompiler compiler, String androidPlatform) {
@@ -437,7 +463,12 @@ public class NdkCxxPlatforms {
   }
 
   @VisibleForTesting
-  static NdkCxxPlatform build(
+  static Host getHost(Platform platform) {
+    return Objects.requireNonNull(BUILD_PLATFORMS.get(platform));
+  }
+
+  @VisibleForTesting
+  static UnresolvedNdkCxxPlatform build(
       CxxBuckConfig config,
       AndroidBuckConfig androidConfig,
       ProjectFilesystem filesystem,
@@ -449,6 +480,16 @@ public class NdkCxxPlatforms {
       NdkCxxRuntimeType runtimeType,
       ExecutableFinder executableFinder,
       boolean strictToolchainPaths) {
+    String ndkVersion = readVersion(ndkRoot);
+    if (getNdkMajorVersion(ndkVersion) > 17
+        && cxxRuntime != NdkCxxRuntime.LIBCXX
+        && cxxRuntime != NdkCxxRuntime.SYSTEM) {
+      throw new HumanReadableException(
+          "C++ runtime %s was removed in Android NDK 18.\n"
+              + "Detected Android NDK version is %s.\n"
+              + "Configuration needs to be changed in order to build with the current Android NDK",
+          cxxRuntime.toString(), ndkVersion);
+    }
     // Create a version string to use when generating rule keys via the NDK tools we'll generate
     // below.  This will be used in lieu of hashing the contents of the tools, so that builds from
     // different host platforms (which produce identical output) will share the cache with one
@@ -466,8 +507,7 @@ public class NdkCxxPlatforms {
                     targetConfiguration.getCompiler().getGccVersion(),
                     cxxRuntime));
 
-    Host host = Objects.requireNonNull(BUILD_PLATFORMS.get(platform));
-    String ndkVersion = readVersion(ndkRoot);
+    Host host = getHost(platform);
 
     NdkCxxToolchainPaths toolchainPaths =
         new NdkCxxToolchainPaths(
@@ -514,6 +554,9 @@ public class NdkCxxPlatforms {
     ImmutableBiMap<Path, String> sanitizePaths = sanitizePathsBuilder.build();
     PrefixMapDebugPathSanitizer compilerDebugPathSanitizer =
         new PrefixMapDebugPathSanitizer(".", sanitizePaths);
+    DebugPathSanitizer assemblerDebugPathSanitizer =
+        new MungingDebugPathSanitizer(
+            config.getDebugPathSanitizerLimit(), File.separatorChar, Paths.get("."), sanitizePaths);
     cxxPlatformBuilder
         .setFlavor(flavor)
         .setAs(cc)
@@ -553,7 +596,7 @@ public class NdkCxxPlatforms {
                 getGccTool(toolchainPaths, "ranlib", version, executableFinder)))
         // NDK builds are cross compiled, so the header is the same regardless of the host platform.
         .setCompilerDebugPathSanitizer(compilerDebugPathSanitizer)
-        .setAssemblerDebugPathSanitizer(compilerDebugPathSanitizer)
+        .setAssemblerDebugPathSanitizer(assemblerDebugPathSanitizer)
         .setSharedLibraryExtension("so")
         .setSharedLibraryVersionedExtensionFormat("so.%s")
         .setStaticLibraryExtension("a")
@@ -569,7 +612,8 @@ public class NdkCxxPlatforms {
                             == SharedLibraryInterfaceParams.Type.DEFINED_ONLY))
                 : Optional.empty())
         .setPublicHeadersSymlinksEnabled(config.getPublicHeadersSymlinksEnabled())
-        .setPrivateHeadersSymlinksEnabled(config.getPrivateHeadersSymlinksEnabled());
+        .setPrivateHeadersSymlinksEnabled(config.getPrivateHeadersSymlinksEnabled())
+        .setFilepathLengthLimited(config.getFilepathLengthLimited());
 
     // Add the NDK root path to the white-list so that headers from the NDK won't trigger the
     // verification warnings.  Ideally, long-term, we'd model NDK libs/headers via automatically
@@ -622,7 +666,7 @@ public class NdkCxxPlatforms {
               filesystem,
               toolchainPaths.getCxxRuntimeLibsDirectory().resolve(cxxRuntime.getSoname())));
     }
-    return builder.build();
+    return StaticUnresolvedNdkCxxPlatform.of(builder.build());
   }
 
   @VisibleForTesting
@@ -636,7 +680,7 @@ public class NdkCxxPlatforms {
       if (useUnifiedHeaders && comparator.compare(ndkVersion, "14") < 0) {
         throw new HumanReadableException(
             "Unified Headers can be only used with Android NDK 14 and newer.\n"
-                + "Current configuration has Unified Headers enabled, but detected Android NDK has version is %s.\n"
+                + "Current configuration has Unified Headers enabled, but detected Android NDK version is %s.\n"
                 + "Either change the configuration or upgrade to a newer Android NDK",
             ndkVersion);
       } else if (!useUnifiedHeaders && comparator.compare(ndkVersion, "16") >= 0) {
@@ -1153,9 +1197,12 @@ public class NdkCxxPlatforms {
       if (ndkMajorVersion < 12) {
         return processDirectoryPathPattern(
             getNdkToolRoot(), "libexec/gcc/{toolchain_target}/{compiler_version}");
-      } else {
+      } else if (ndkMajorVersion < 18) {
         return processDirectoryPathPattern(
             getNdkToolRoot(), "libexec/gcc/{toolchain_target}/{compiler_version}.x");
+      } else {
+        return processDirectoryPathPattern(
+            getNdkToolRoot(), "lib/gcc/{toolchain_target}/{compiler_version}.x");
       }
     }
 

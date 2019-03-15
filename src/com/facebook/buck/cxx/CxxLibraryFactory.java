@@ -130,7 +130,7 @@ public class CxxLibraryFactory {
               cellRoots,
               cxxBuckConfig,
               cxxPlatformOrDefault,
-              PicType.PIC,
+              cxxPlatformOrDefault.getPicTypeForSharedLinking(),
               args,
               cxxDeps.get(graphBuilder, cxxPlatformOrDefault),
               transitiveCxxPreprocessorInputFunction,
@@ -644,7 +644,8 @@ public class CxxLibraryFactory {
 
     CxxLinkOptions linkOptions =
         CxxLinkOptions.of(
-            args.getThinLto()
+            args.getThinLto(),
+            args.getFatLto()
             );
     return CxxLinkableEnhancer.createCxxLinkableBuildRule(
         cxxBuckConfig,

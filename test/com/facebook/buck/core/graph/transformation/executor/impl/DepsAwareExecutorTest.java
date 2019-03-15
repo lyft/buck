@@ -27,15 +27,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.LongAdder;
-import java.util.function.Function;
+import java.util.function.Supplier;
 import org.junit.After;
-import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
@@ -45,42 +43,34 @@ import org.junit.runners.Parameterized;
 @RunWith(Parameterized.class)
 public class DepsAwareExecutorTest {
 
+  private static final int NUMBER_OF_THREADS = 2;
+
   @Parameterized.Parameters
   public static Iterable<Object[]> params() {
+
     return Arrays.asList(
         new Object[][] {
           {
-            (Function<ForkJoinPool, DepsAwareExecutor<Object, DefaultDepsAwareTask<Object>>>)
-                fjp -> DefaultDepsAwareExecutor.from(fjp)
+            (Supplier<DepsAwareExecutor<?, ?>>) () -> DefaultDepsAwareExecutor.of(NUMBER_OF_THREADS)
           },
           {
-            (Function<ForkJoinPool, DepsAwareExecutor<Object, DefaultDepsAwareTask<Object>>>)
-                fjp -> DefaultDepsAwareExecutorWithLocalStack.from(fjp)
+            (Supplier<DepsAwareExecutor<?, ?>>)
+                () -> DefaultDepsAwareExecutorWithLocalStack.of(NUMBER_OF_THREADS)
           },
           {
-            (Function<ForkJoinPool, DepsAwareExecutor<Object, DefaultDepsAwareTask<Object>>>)
-                fjp -> JavaExecutorBackedDefaultDepsAwareExecutor.from(fjp)
+            (Supplier<DepsAwareExecutor<?, ?>>)
+                () -> JavaExecutorBackedDefaultDepsAwareExecutor.of(NUMBER_OF_THREADS)
           },
         });
   }
 
-  private final Function<ForkJoinPool, DepsAwareExecutor<Object, DefaultDepsAwareTask<Object>>>
-      executorConstructor;
-
   public DepsAwareExecutorTest(
-      Function<ForkJoinPool, DepsAwareExecutor<Object, DefaultDepsAwareTask<Object>>>
-          executorConstructor) {
-    this.executorConstructor = executorConstructor;
+      Supplier<DepsAwareExecutor<Object, DefaultDepsAwareTask<Object>>> executorSupplier) {
+    this.executor = executorSupplier.get();
   }
 
-  private ForkJoinPool pool = new ForkJoinPool(2);
   private DepsAwareExecutor<Object, DefaultDepsAwareTask<Object>> executor;
   public @Rule ExpectedException expectedException = ExpectedException.none();
-
-  @Before
-  public void setUp() {
-    executor = executorConstructor.apply(pool);
-  }
 
   @After
   public void cleanUp() {
@@ -116,9 +106,7 @@ public class DepsAwareExecutorTest {
                 return null;
               }));
     }
-    List<Future<Object>> futures = executor.submitAll(tasks);
-
-    for (Future<Object> future : futures) {
+    for (Future<?> future : executor.submitAll(tasks)) {
       future.get();
     }
 
@@ -134,7 +122,8 @@ public class DepsAwareExecutorTest {
     executor.submit(DefaultDepsAwareTask.of(() -> null));
   }
 
-  @Test
+  // timeout is set to prevent waiting for a blocking call: Ex. future.get().
+  @Test(timeout = 1000)
   public void shutdownNowStopsWorkExecutionImmediately()
       throws InterruptedException, ExecutionException {
     Semaphore task1Sem = new Semaphore(0);
@@ -172,9 +161,21 @@ public class DepsAwareExecutorTest {
 
     f1.get();
     assertTrue(f1.isDone());
-    assertFalse(f2.isDone());
-    assertFalse(f3.isDone());
+    assertTrue(!f2.isDone() || wasInterrupted(f2));
+    assertTrue(!f3.isDone() || wasInterrupted(f3));
     assertFalse(f4.isDone());
+  }
+
+  private boolean wasInterrupted(Future<?> future) {
+    try {
+      future.get();
+    } catch (ExecutionException e) {
+      Throwable cause = e.getCause();
+      return cause != null && cause instanceof InterruptedException;
+    } catch (InterruptedException e) {
+      return false;
+    }
+    return false;
   }
 
   @Test

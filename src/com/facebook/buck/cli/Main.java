@@ -26,6 +26,7 @@ import com.facebook.buck.artifact_cache.ArtifactCaches;
 import com.facebook.buck.artifact_cache.ClientCertificateHandler;
 import com.facebook.buck.artifact_cache.config.ArtifactCacheBuckConfig;
 import com.facebook.buck.artifact_cache.config.ArtifactCacheBuckConfig.Executor;
+import com.facebook.buck.cli.DaemonLifecycleManager.DaemonStatus;
 import com.facebook.buck.cli.exceptions.handlers.ExceptionHandlerRegistryFactory;
 import com.facebook.buck.command.config.BuildBuckConfig;
 import com.facebook.buck.core.build.engine.cache.manager.BuildInfoStoreManager;
@@ -142,6 +143,7 @@ import com.facebook.buck.sandbox.SandboxExecutionStrategyFactory;
 import com.facebook.buck.sandbox.impl.PlatformSandboxExecutionStrategyFactory;
 import com.facebook.buck.support.bgtasks.TaskManagerScope;
 import com.facebook.buck.support.cli.args.BuckArgsMethods;
+import com.facebook.buck.support.cli.args.GlobalCliOptions;
 import com.facebook.buck.support.log.LogBuckConfig;
 import com.facebook.buck.test.config.TestBuckConfig;
 import com.facebook.buck.test.config.TestResultSummaryVerbosity;
@@ -193,6 +195,7 @@ import com.facebook.buck.util.shutdown.NonReentrantSystemExit;
 import com.facebook.buck.util.timing.Clock;
 import com.facebook.buck.util.timing.DefaultClock;
 import com.facebook.buck.util.timing.NanosAdjustedClock;
+import com.facebook.buck.util.types.Pair;
 import com.facebook.buck.util.versioncontrol.DelegatingVersionControlCmdLineInterface;
 import com.facebook.buck.util.versioncontrol.VersionControlBuckConfig;
 import com.facebook.buck.util.versioncontrol.VersionControlStatsGenerator;
@@ -653,28 +656,51 @@ public final class Main {
       // files
       setupLogging(commandMode, command, args);
 
-      Config config = setupDefaultConfig(rootCellMapping, command);
-
       ProjectFilesystemFactory projectFilesystemFactory = new DefaultProjectFilesystemFactory();
-      ProjectFilesystem filesystem =
-          projectFilesystemFactory.createProjectFilesystem(canonicalRootPath, config);
-
-      DefaultCellPathResolver cellPathResolver =
-          DefaultCellPathResolver.of(filesystem.getRootPath(), config);
       UnconfiguredBuildTargetFactory buildTargetFactory =
           new ParsingUnconfiguredBuildTargetFactory();
-      BuckConfig buckConfig =
-          new BuckConfig(
-              config,
-              filesystem,
-              architecture,
-              platform,
-              clientEnvironment,
-              buildTargetName -> buildTargetFactory.create(cellPathResolver, buildTargetName));
+
+      Config config;
+      ProjectFilesystem filesystem;
+      DefaultCellPathResolver cellPathResolver;
+      BuckConfig buckConfig;
+
+      boolean reusePreviousConfig =
+          isReuseCurrentConfigPropertySet(command) && daemonLifecycleManager.hasDaemon();
+      if (reusePreviousConfig) {
+        printWarnMessage(
+            String.format(
+                "`%s` parameter provided. Reusing previously defined config.",
+                GlobalCliOptions.REUSE_CURRENT_CONFIG_ARG));
+        buckConfig =
+            daemonLifecycleManager
+                .getBuckConfig()
+                .orElseThrow(
+                    () -> new IllegalStateException("Deamon is present but config is missing."));
+        config = buckConfig.getConfig();
+        filesystem = buckConfig.getFilesystem();
+        cellPathResolver = DefaultCellPathResolver.of(filesystem.getRootPath(), config);
+      } else {
+        config = setupDefaultConfig(rootCellMapping, command);
+        filesystem = projectFilesystemFactory.createProjectFilesystem(canonicalRootPath, config);
+        cellPathResolver = DefaultCellPathResolver.of(filesystem.getRootPath(), config);
+        buckConfig =
+            new BuckConfig(
+                config,
+                filesystem,
+                architecture,
+                platform,
+                clientEnvironment,
+                buildTargetName -> buildTargetFactory.create(cellPathResolver, buildTargetName));
+      }
+
       // Set so that we can use some settings when we print out messages to users
       parsedRootConfig = Optional.of(buckConfig);
       CliConfig cliConfig = buckConfig.getView(CliConfig.class);
-      warnAboutConfigFileOverrides(filesystem.getRootPath(), cliConfig, console);
+      // if we are reusing previous configuration then no need to warn about config override
+      if (!reusePreviousConfig) {
+        warnAboutConfigFileOverrides(filesystem.getRootPath(), cliConfig);
+      }
 
       ImmutableSet<Path> projectWatchList =
           getProjectWatchList(canonicalRootPath, buckConfig, cellPathResolver);
@@ -805,7 +831,7 @@ public final class Main {
         telemetryPlugins = Lists.newArrayList();
       }
 
-      Daemon daemon =
+      Pair<Daemon, DaemonStatus> daemonRequest =
           daemonLifecycleManager.getDaemon(
               rootCell,
               knownRuleTypesProvider,
@@ -821,6 +847,9 @@ public final class Main {
                           .newBuildListenerFactoryForDaemon(
                               rootCell.getFilesystem(), System.getProperties()),
               context);
+
+      Daemon daemon = daemonRequest.getFirst();
+      DaemonStatus daemonStatus = daemonRequest.getSecond();
 
       if (!context.isPresent()) {
         // Clean up the trash on a background thread if this was a
@@ -1182,10 +1211,11 @@ public final class Main {
           }
 
           // This needs to be after the registration of the event listener so they can pick it up.
-          if (watchmanFreshInstanceAction == WatchmanWatcher.FreshInstanceAction.NONE) {
-            LOG.debug("new Buck daemon");
-            buildEventBus.post(DaemonEvent.newDaemonInstance());
-          }
+          Optional<String> newDaemonEvent = daemonStatus.newDaemonEvent();
+          newDaemonEvent.ifPresent(
+              event -> {
+                buildEventBus.post(DaemonEvent.newDaemonInstance(event));
+              });
 
 
           VersionControlBuckConfig vcBuckConfig = new VersionControlBuckConfig(buckConfig);
@@ -1362,8 +1392,15 @@ public final class Main {
     return exitCode;
   }
 
-  private void warnAboutConfigFileOverrides(Path root, CliConfig cliConfig, Console console)
-      throws IOException {
+  private boolean isReuseCurrentConfigPropertySet(BuckCommand command) {
+    if (command.subcommand instanceof AbstractCommand) {
+      AbstractCommand subcommand = (AbstractCommand) command.subcommand;
+      return subcommand.isReuseCurrentConfig();
+    }
+    return false;
+  }
+
+  private void warnAboutConfigFileOverrides(Path root, CliConfig cliConfig) throws IOException {
     if (!cliConfig.getWarnOnConfigFileOverrides()) {
       return;
     }
@@ -1392,16 +1429,14 @@ public final class Main {
     }
 
     // Use the raw stream because otherwise this will stop superconsole from ever printing again
-    console
-        .getStdErr()
-        .getRawStream()
-        .println(
-            console
-                .getAnsi()
-                .asWarningText(
-                    String.format(
-                        "Using additional configuration options from %s",
-                        Joiner.on(", ").join(userSpecifiedOverrides))));
+    printWarnMessage(
+        String.format(
+            "Using additional configuration options from %s",
+            Joiner.on(", ").join(userSpecifiedOverrides)));
+  }
+
+  private void printWarnMessage(String message) {
+    console.getStdErr().getRawStream().println(console.getAnsi().asWarningText(message));
   }
 
   private ListeningExecutorService getDirCacheStoreExecutor(

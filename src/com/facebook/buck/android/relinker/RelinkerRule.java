@@ -192,7 +192,8 @@ class RelinkerRule extends AbstractBuildRuleWithDeclaredAndExtraDeps
                   Optional.empty(),
                   cxxBuckConfig.getLinkScheduleInfo(),
                   cxxBuckConfig.shouldCacheLinks(),
-                  /* thinLto */ false)
+                  /* thinLto */ false,
+                  /* fatLto */ false)
               .getBuildSteps(context, buildableContext));
       buildableContext.recordArtifact(getRelativeVersionFilePath());
     }
@@ -315,9 +316,7 @@ class RelinkerRule extends AbstractBuildRuleWithDeclaredAndExtraDeps
 
   @Override
   public void updateBuildRuleResolver(
-      BuildRuleResolver ruleResolver,
-      SourcePathRuleFinder ruleFinder,
-      SourcePathResolver pathResolver) {
+      BuildRuleResolver ruleResolver, SourcePathRuleFinder ruleFinder) {
     this.ruleFinder = ruleFinder;
   }
 }
