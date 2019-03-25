@@ -50,7 +50,6 @@ import com.facebook.buck.io.file.MostFiles;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.log.thrift.ThriftRuleKeyLogger;
 import com.facebook.buck.parser.ParserConfig;
-import com.facebook.buck.parser.ParsingContext;
 import com.facebook.buck.parser.SpeculativeParsing;
 import com.facebook.buck.parser.TargetNodeSpec;
 import com.facebook.buck.parser.exceptions.BuildTargetException;
@@ -421,7 +420,7 @@ public class BuildCommand extends AbstractCommand {
             params,
             actionGraph,
             targetGraphForLocalBuild,
-            getTargetConfiguration(),
+            params.getTargetConfiguration(),
             justBuildTarget);
 
     ActionAndTargetGraphs actionAndTargetGraphs =
@@ -681,17 +680,15 @@ public class BuildCommand extends AbstractCommand {
       return params
           .getParser()
           .buildTargetGraphWithoutConfigurationTargets(
-              ParsingContext.builder(params.getCell(), executor)
-                  .setProfilingEnabled(getEnableParserProfiling())
-                  .setExcludeUnsupportedTargets(getExcludeIncompatibleTargets())
-                  .setApplyDefaultFlavorsMode(parserConfig.getDefaultFlavorsMode())
-                  .setSpeculativeParsing(SpeculativeParsing.ENABLED)
-                  .build(),
+              createParsingContext(params.getCell(), executor)
+                  .withSpeculativeParsing(SpeculativeParsing.ENABLED)
+                  .withApplyDefaultFlavorsMode(parserConfig.getDefaultFlavorsMode()),
               targetNodeSpecEnhancer.apply(
                   parseArgumentsAsTargetNodeSpecs(
                       params.getCell().getCellPathResolver(),
                       params.getBuckConfig(),
-                      getArguments())));
+                      getArguments())),
+              params.getTargetConfiguration());
     } catch (BuildTargetException e) {
       throw new ActionGraphCreationException(MoreExceptions.getHumanReadableOrLocalizedMessage(e));
     }
@@ -768,7 +765,8 @@ public class BuildCommand extends AbstractCommand {
             remoteBuildRuleCompletionWaiter,
             params.getMetadataProvider(),
             params.getUnconfiguredBuildTargetFactory(),
-            getTargetConfiguration());
+            params.getTargetConfiguration(),
+            params.getTargetConfigurationSerializer());
 
     // TODO(buck_team): use try-with-resources instead
     try {

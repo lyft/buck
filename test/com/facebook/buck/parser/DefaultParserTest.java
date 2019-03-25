@@ -48,6 +48,7 @@ import com.facebook.buck.core.config.FakeBuckConfig;
 import com.facebook.buck.core.exceptions.HumanReadableException;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
+import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.model.InternalFlavor;
 import com.facebook.buck.core.model.UnconfiguredBuildTargetFactoryForTests;
 import com.facebook.buck.core.model.actiongraph.computation.ActionGraphProviderBuilder;
@@ -323,7 +324,7 @@ public class DefaultParserTest {
     knownRuleTypesProvider = TestKnownRuleTypesProvider.create(pluginManager);
 
     typeCoercerFactory = new DefaultTypeCoercerFactory();
-    parser = TestParserFactory.create(cell.getBuckConfig(), knownRuleTypesProvider, eventBus);
+    parser = TestParserFactory.create(cell, knownRuleTypesProvider, eventBus);
 
     counter = new ParseEventStartedCounter();
     eventBus.register(counter);
@@ -1533,10 +1534,11 @@ public class DefaultParserTest {
 
     assertEquals("Should have parsed once.", 1, counter.calls);
 
-    Path newTempDir = Files.createTempDirectory("junit-temp-path").toRealPath();
+    // create subcell
+    Path newTempDir = tempDir.newFolder("subcell");
     Files.createFile(newTempDir.resolve("bar.py"));
     ProjectFilesystem newFilesystem = TestProjectFilesystems.createProjectFilesystem(newTempDir);
-    BuckConfig config =
+    BuckConfig newConfig =
         FakeBuckConfig.builder()
             .setFilesystem(newFilesystem)
             .setSections(
@@ -1544,9 +1546,12 @@ public class DefaultParserTest {
                     ParserConfig.BUILDFILE_SECTION_NAME,
                     ImmutableMap.of(ParserConfig.INCLUDES_PROPERTY_NAME, "//bar.py")))
             .build();
-    Cell cell = new TestCellBuilder().setFilesystem(newFilesystem).setBuckConfig(config).build();
+    Cell newCell =
+        new TestCellBuilder().setFilesystem(newFilesystem).setBuckConfig(newConfig).build();
 
-    filterAllTargetsInProject(parser, parsingContext.withCell(cell));
+    Parser newParser = TestParserFactory.create(newCell, knownRuleTypesProvider, eventBus);
+
+    filterAllTargetsInProject(newParser, parsingContext.withCell(newCell));
 
     assertEquals("Should not have invalidated cache.", 1, counter.calls);
   }
@@ -1647,7 +1652,7 @@ public class DefaultParserTest {
     BuildTarget fooLibTarget = BuildTargetFactory.newInstance(cellRoot, "//foo", "lib");
     HashCode original = buildTargetGraphAndGetHashCodes(parser, fooLibTarget).get(fooLibTarget);
 
-    parser = TestParserFactory.create(cell.getBuckConfig(), knownRuleTypesProvider);
+    parser = TestParserFactory.create(cell, knownRuleTypesProvider);
     Path testFooJavaFile = tempDir.newFile("foo/Foo.java");
     Files.write(testFooJavaFile, "// Ceci n'est pas une Javafile\n".getBytes(UTF_8));
     HashCode updated = buildTargetGraphAndGetHashCodes(parser, fooLibTarget).get(fooLibTarget);
@@ -1758,7 +1763,7 @@ public class DefaultParserTest {
     HashCode libKey = hashes.get(fooLibTarget);
     HashCode lib2Key = hashes.get(fooLib2Target);
 
-    parser = TestParserFactory.create(cell.getBuckConfig(), knownRuleTypesProvider);
+    parser = TestParserFactory.create(cell, knownRuleTypesProvider);
     Files.write(
         testFooBuckFile,
         ("java_library(name = 'lib', deps = [], visibility=['PUBLIC'])\njava_library("
@@ -2061,9 +2066,10 @@ public class DefaultParserTest {
                     .setApplyDefaultFlavorsMode(ApplyDefaultFlavorsMode.SINGLE)
                     .build(),
                 ImmutableList.of(
-                    AbstractBuildTargetSpec.from(
+                    ImmutableBuildTargetSpec.from(
                         UnconfiguredBuildTargetFactoryForTests.newInstance(
-                            cellRoot, "//lib", "lib"))))
+                            cellRoot, "//lib", "lib"))),
+                EmptyTargetConfiguration.INSTANCE)
             .getBuildTargets();
 
     assertThat(
@@ -2107,9 +2113,10 @@ public class DefaultParserTest {
                     .setApplyDefaultFlavorsMode(ApplyDefaultFlavorsMode.SINGLE)
                     .build(),
                 ImmutableList.of(
-                    AbstractBuildTargetSpec.from(
+                    BuildTargetSpec.from(
                         UnconfiguredBuildTargetFactoryForTests.newInstance(
-                            cellRoot, "//lib", "lib"))))
+                            cellRoot, "//lib", "lib"))),
+                EmptyTargetConfiguration.INSTANCE)
             .getBuildTargets();
 
     assertThat(
@@ -2157,9 +2164,10 @@ public class DefaultParserTest {
                     .setApplyDefaultFlavorsMode(ApplyDefaultFlavorsMode.SINGLE)
                     .build(),
                 ImmutableList.of(
-                    AbstractBuildTargetSpec.from(
+                    BuildTargetSpec.from(
                         UnconfiguredBuildTargetFactoryForTests.newInstance(
-                            cellRoot, "//lib", "lib"))))
+                            cellRoot, "//lib", "lib"))),
+                EmptyTargetConfiguration.INSTANCE)
             .getBuildTargets();
 
     assertThat(
@@ -2198,8 +2206,9 @@ public class DefaultParserTest {
     parser.buildTargetGraphWithConfigurationTargets(
         parsingContext,
         ImmutableList.of(
-            AbstractBuildTargetSpec.from(
-                UnconfiguredBuildTargetFactoryForTests.newInstance(cellRoot, "//lib", "gen"))));
+            BuildTargetSpec.from(
+                UnconfiguredBuildTargetFactoryForTests.newInstance(cellRoot, "//lib", "gen"))),
+        EmptyTargetConfiguration.INSTANCE);
 
     // The read bytes are dependent on the serialization format of the parser, and the absolute path
     // of the temporary BUCK file we wrote, so let's just assert that there are a reasonable
@@ -2213,8 +2222,9 @@ public class DefaultParserTest {
     parser.buildTargetGraphWithConfigurationTargets(
         parsingContext,
         ImmutableList.of(
-            AbstractBuildTargetSpec.from(
-                UnconfiguredBuildTargetFactoryForTests.newInstance(cellRoot, "//lib", "gen"))));
+            BuildTargetSpec.from(
+                UnconfiguredBuildTargetFactoryForTests.newInstance(cellRoot, "//lib", "gen"))),
+        EmptyTargetConfiguration.INSTANCE);
     assertEquals(0L, Iterables.getOnlyElement(events).getProcessedBytes());
   }
 
@@ -2501,9 +2511,10 @@ public class DefaultParserTest {
                 .buildTargetGraphWithConfigurationTargets(
                     parsingContext,
                     ImmutableList.of(
-                        TargetNodePredicateSpec.of(
+                        ImmutableTargetNodePredicateSpec.of(
                             BuildFileSpec.fromRecursivePath(
-                                Paths.get(""), parsingContext.getCell().getRoot()))))
+                                Paths.get(""), parsingContext.getCell().getRoot()))),
+                    EmptyTargetConfiguration.INSTANCE)
                 .getTargetGraph()
                 .getNodes())
         .transform(TargetNode::getBuildTarget)

@@ -17,14 +17,13 @@
 package com.facebook.buck.cli;
 
 import com.facebook.buck.core.build.execution.context.ExecutionContext;
+import com.facebook.buck.core.cell.Cell;
 import com.facebook.buck.core.cell.CellConfig;
 import com.facebook.buck.core.cell.CellName;
 import com.facebook.buck.core.cell.CellPathResolver;
 import com.facebook.buck.core.config.BuckConfig;
 import com.facebook.buck.core.exceptions.HumanReadableException;
 import com.facebook.buck.core.model.BuildTarget;
-import com.facebook.buck.core.model.EmptyTargetConfiguration;
-import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.model.targetgraph.TargetGraphAndBuildTargets;
 import com.facebook.buck.core.parser.buildtargetparser.UnconfiguredBuildTargetFactory;
 import com.facebook.buck.core.resources.ResourcesConfig;
@@ -35,6 +34,7 @@ import com.facebook.buck.event.BuckEventListener;
 import com.facebook.buck.event.ConsoleEvent;
 import com.facebook.buck.log.LogConfigSetup;
 import com.facebook.buck.parser.BuildTargetPatternTargetNodeParser;
+import com.facebook.buck.parser.ParsingContext;
 import com.facebook.buck.parser.TargetNodeSpec;
 import com.facebook.buck.rules.keys.DefaultRuleKeyCache;
 import com.facebook.buck.rules.keys.EventPostingRuleKeyCacheScope;
@@ -61,7 +61,7 @@ import com.google.devtools.build.lib.clock.Clock;
 import com.google.devtools.build.lib.clock.JavaClock;
 import com.google.devtools.build.lib.profiler.Profiler;
 import com.google.devtools.build.lib.profiler.Profiler.Format;
-import com.google.devtools.build.lib.profiler.Profiler.ProfiledTaskKinds;
+import com.google.devtools.build.lib.profiler.ProfilerTask;
 import java.io.BufferedOutputStream;
 import java.io.Closeable;
 import java.io.IOException;
@@ -265,7 +265,7 @@ public abstract class AbstractCommand extends CommandWithPluginManager {
             new BufferedOutputStream(Files.newOutputStream(Paths.get(skylarkProfile)));
         Profiler.instance()
             .start(
-                ProfiledTaskKinds.ALL,
+                ImmutableSet.copyOf(ProfilerTask.values()),
                 outputStream,
                 Format.JSON_TRACE_FILE_FORMAT,
                 "Buck profile for " + skylarkProfile + " at " + LocalDate.now(),
@@ -397,11 +397,6 @@ public abstract class AbstractCommand extends CommandWithPluginManager {
     return ImmutableList.copyOf(targetPlatforms);
   }
 
-  @Override
-  public TargetConfiguration getTargetConfiguration() {
-    return EmptyTargetConfiguration.INSTANCE;
-  }
-
   public boolean getExcludeIncompatibleTargets() {
     return excludeIncompatibleTargets;
   }
@@ -421,7 +416,9 @@ public abstract class AbstractCommand extends CommandWithPluginManager {
             input ->
                 unconfiguredBuildTargetFactory.create(
                     params.getCell().getCellPathResolver(), input))
-        .map(unconfiguredBuildTarget -> unconfiguredBuildTarget.configure(getTargetConfiguration()))
+        .map(
+            unconfiguredBuildTarget ->
+                unconfiguredBuildTarget.configure(params.getTargetConfiguration()))
         .collect(ImmutableSet.toImmutableSet());
   }
 
@@ -559,5 +556,13 @@ public abstract class AbstractCommand extends CommandWithPluginManager {
     }
 
     return builder.build();
+  }
+
+  @Override
+  public ParsingContext createParsingContext(Cell cell, ListeningExecutorService executor) {
+    return ParsingContext.builder(cell, executor)
+        .setProfilingEnabled(getEnableParserProfiling())
+        .setExcludeUnsupportedTargets(getExcludeIncompatibleTargets())
+        .build();
   }
 }

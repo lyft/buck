@@ -50,10 +50,10 @@ import com.facebook.buck.core.util.log.Logger;
 import com.facebook.buck.event.ConsoleEvent;
 import com.facebook.buck.jvm.java.JavaBuckConfig;
 import com.facebook.buck.parser.BuildFileSpec;
+import com.facebook.buck.parser.ImmutableTargetNodePredicateSpec;
 import com.facebook.buck.parser.ParserConfig;
 import com.facebook.buck.parser.ParsingContext;
 import com.facebook.buck.parser.SpeculativeParsing;
-import com.facebook.buck.parser.TargetNodePredicateSpec;
 import com.facebook.buck.parser.exceptions.BuildFileParseException;
 import com.facebook.buck.remoteexecution.config.RemoteExecutionConfig;
 import com.facebook.buck.rules.keys.RuleKeyCacheRecycler;
@@ -476,12 +476,9 @@ public class TestCommand extends BuildCommand {
       TargetGraphAndBuildTargets targetGraphAndBuildTargets;
       ParserConfig parserConfig = params.getBuckConfig().getView(ParserConfig.class);
       ParsingContext parsingContext =
-          ParsingContext.builder(params.getCell(), pool.getListeningExecutorService())
-              .setProfilingEnabled(getEnableParserProfiling())
-              .setSpeculativeParsing(SpeculativeParsing.ENABLED)
-              .setExcludeUnsupportedTargets(getExcludeIncompatibleTargets())
-              .setApplyDefaultFlavorsMode(parserConfig.getDefaultFlavorsMode())
-              .build();
+          createParsingContext(params.getCell(), pool.getListeningExecutorService())
+              .withApplyDefaultFlavorsMode(parserConfig.getDefaultFlavorsMode())
+              .withSpeculativeParsing(SpeculativeParsing.ENABLED);
 
       try {
 
@@ -494,10 +491,11 @@ public class TestCommand extends BuildCommand {
                   .buildTargetGraphWithoutConfigurationTargets(
                       parsingContext,
                       ImmutableList.of(
-                          TargetNodePredicateSpec.of(
+                          ImmutableTargetNodePredicateSpec.of(
                                   BuildFileSpec.fromRecursivePath(
                                       Paths.get(""), params.getCell().getRoot()))
-                              .withOnlyTests(true)));
+                              .withOnlyTests(true)),
+                      params.getTargetConfiguration());
           targetGraphAndBuildTargets =
               targetGraphAndBuildTargets.withBuildTargets(ImmutableSet.of());
 
@@ -513,7 +511,8 @@ public class TestCommand extends BuildCommand {
                       parseArgumentsAsTargetNodeSpecs(
                           params.getCell().getCellPathResolver(),
                           params.getBuckConfig(),
-                          getArguments()));
+                          getArguments()),
+                      params.getTargetConfiguration());
 
           LOG.debug("Got explicit build targets %s", targetGraphAndBuildTargets.getBuildTargets());
           ImmutableSet.Builder<BuildTarget> testTargetsBuilder = ImmutableSet.builder();
@@ -601,6 +600,7 @@ public class TestCommand extends BuildCommand {
                     actionGraphAndBuilder.getActionGraphBuilder(),
                     sourcePathRuleFinder,
                     DefaultSourcePathResolver.from(sourcePathRuleFinder),
+                    params.getTargetConfigurationSerializer(),
                     params.getBuildInfoStoreManager(),
                     cachingBuildEngineBuckConfig.getResourceAwareSchedulingInfo(),
                     cachingBuildEngineBuckConfig.getConsoleLogBuildRuleFailuresInline(),

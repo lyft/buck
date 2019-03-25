@@ -17,22 +17,38 @@
 package com.facebook.buck.parser;
 
 import com.facebook.buck.core.cell.Cell;
+import com.facebook.buck.core.cell.CellProvider;
+import com.facebook.buck.core.files.DirectoryListCache;
+import com.facebook.buck.core.files.DirectoryListTransformer;
+import com.facebook.buck.core.files.FileTree;
+import com.facebook.buck.core.files.FileTreeCache;
+import com.facebook.buck.core.files.FileTreeFileNameIterator;
+import com.facebook.buck.core.files.FileTreeTransformer;
+import com.facebook.buck.core.files.ImmutableFileTreeKey;
+import com.facebook.buck.core.graph.transformation.ComputeResult;
+import com.facebook.buck.core.graph.transformation.DefaultGraphTransformationEngine;
+import com.facebook.buck.core.graph.transformation.GraphTransformationEngine;
+import com.facebook.buck.core.graph.transformation.GraphTransformationStage;
+import com.facebook.buck.core.graph.transformation.executor.DepsAwareExecutor;
+import com.facebook.buck.core.graph.transformation.executor.impl.DefaultDepsAwareExecutor;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.model.HasBuildTarget;
+import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.event.BuckEventBus;
 import com.facebook.buck.event.PerfEventId;
 import com.facebook.buck.event.SimplePerfEvent;
-import com.facebook.buck.io.filesystem.PathMatcher;
-import com.facebook.buck.io.filesystem.ProjectFilesystem;
-import com.facebook.buck.io.filesystem.RecursiveFileMatcher;
-import com.facebook.buck.io.watchman.Watchman;
+import com.facebook.buck.io.filesystem.ProjectFilesystemView;
 import com.facebook.buck.parser.exceptions.BuildFileParseException;
 import com.facebook.buck.parser.exceptions.BuildTargetException;
 import com.facebook.buck.parser.exceptions.MissingBuildFileException;
 import com.facebook.buck.util.MoreThrowables;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
+import com.google.common.base.Verify;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -42,9 +58,7 @@ import com.google.common.collect.Multimap;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.MoreExecutors;
-import java.io.IOException;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -54,14 +68,79 @@ import java.util.Map.Entry;
 import java.util.concurrent.ExecutionException;
 
 /** Responsible for discovering all the build targets that match a set of {@link TargetNodeSpec}. */
-public class TargetSpecResolver {
+public class TargetSpecResolver implements AutoCloseable {
 
   private final BuckEventBus eventBus;
-  private final Watchman watchman;
 
-  public TargetSpecResolver(BuckEventBus eventBus, Watchman watchman) {
+  // transformation engine to be used when full file tree of given path is required
+  // because different cells might have different filesystems, we have to store each engine
+  // instance per each cell object
+  // A better design would be to make TargetSpecResolver cell-centric, i.e. have resolver work
+  // in a scope of a Cell only
+  private final LoadingCache<Path, GraphTransformationEngine> graphEngineForRecursiveSpecPerRoot;
+
+  /**
+   * Create {@link TargetSpecResolver instance}
+   *
+   * @param eventBus Event bus to send performance events to
+   * @param numThreads Number of threads to be used by Graph Engine executor
+   * @param cellProvider Provider to get a cell by path; this is a workaround for the state that
+   *     cell itself is not really hashable so we use cell path instead as a key for appropriate
+   *     caches
+   * @param dirListCachePerRoot Global cache that stores a mapping of cell root path to a cache of
+   *     all directory structures under that cell
+   * @param fileTreeCachePerRoot Global cache that stores a mapping of cell root path to a cache of
+   *     all file tree structures under that cell
+   */
+  public TargetSpecResolver(
+      BuckEventBus eventBus,
+      int numThreads,
+      CellProvider cellProvider,
+      LoadingCache<Path, DirectoryListCache> dirListCachePerRoot,
+      LoadingCache<Path, FileTreeCache> fileTreeCachePerRoot) {
     this.eventBus = eventBus;
-    this.watchman = watchman;
+
+    // TODO(buck_team): pass executor from upstream
+    DepsAwareExecutor<ComputeResult, ?> executor = DefaultDepsAwareExecutor.of(numThreads);
+
+    // For each cell we create a separate graph engine. The purpose of graph engine is to
+    // recursively build a file tree with all files in appropriate cell for appropriate path.
+    // This file tree will later be used to resolve target pattern to a list of build files
+    // where those targets are defined.
+    // For example, for target pattern like //project/folder/... it will return all files and
+    // folders
+    // under [cellroot]/project/folder recursively as FileTree object. We then traverse FileTree
+    // object looking for a build file name in all subfolders recursively.
+    // Graph Engines automatically ensures right amount of parallelism and does caching of the data.
+    graphEngineForRecursiveSpecPerRoot =
+        CacheBuilder.newBuilder()
+            .build(
+                CacheLoader.from(
+                    path -> {
+                      ProjectFilesystemView fileSystemView =
+                          cellProvider.getCellByPath(path).getFilesystemViewForSourceFiles();
+
+                      DirectoryListCache dirListCache = dirListCachePerRoot.getUnchecked(path);
+                      Verify.verifyNotNull(
+                          dirListCache,
+                          "Injected directory list cache map does not have cell %s",
+                          fileSystemView.getRootPath());
+
+                      FileTreeCache fileTreeCache = fileTreeCachePerRoot.getUnchecked(path);
+                      Verify.verifyNotNull(
+                          fileTreeCache,
+                          "Injected file tree cache map does not have cell %s",
+                          fileSystemView.getRootPath());
+
+                      return new DefaultGraphTransformationEngine(
+                          ImmutableList.of(
+                              new GraphTransformationStage<>(
+                                  DirectoryListTransformer.of(fileSystemView), dirListCache),
+                              new GraphTransformationStage<>(
+                                  FileTreeTransformer.of(), fileTreeCache)),
+                          16,
+                          executor);
+                    }));
   }
 
   /**
@@ -71,10 +150,11 @@ public class TargetSpecResolver {
   public <T extends HasBuildTarget> ImmutableList<ImmutableSet<BuildTarget>> resolveTargetSpecs(
       Cell rootCell,
       Iterable<? extends TargetNodeSpec> specs,
+      TargetConfiguration targetConfiguration,
       FlavorEnhancer<T> flavorEnhancer,
       TargetNodeProviderForSpecResolver<T> targetNodeProvider,
       TargetNodeFilterForSpecResolver<T> targetNodeFilter)
-      throws BuildFileParseException, InterruptedException, IOException {
+      throws BuildFileParseException, InterruptedException {
 
     // Convert the input spec iterable into a list so we have a fixed ordering, which we'll rely on
     // when returning results.
@@ -105,6 +185,7 @@ public class TargetSpecResolver {
             targetFutures,
             cell,
             buildFile,
+            targetConfiguration,
             index,
             spec);
       }
@@ -116,43 +197,45 @@ public class TargetSpecResolver {
   // Resolve all the build files from all the target specs.  We store these into a multi-map which
   // maps the path to the build file to the index of it's spec file in the ordered spec list.
   private Multimap<Path, Integer> groupSpecsByBuildFile(
-      Cell rootCell, ImmutableList<TargetNodeSpec> orderedSpecs)
-      throws IOException, InterruptedException {
-    ParserConfig parserConfig = rootCell.getBuckConfig().getView(ParserConfig.class);
-    ParserConfig.BuildFileSearchMethod buildFileSearchMethod =
-        parserConfig.getBuildFileSearchMethod();
+      Cell rootCell, ImmutableList<TargetNodeSpec> orderedSpecs) {
 
     Multimap<Path, Integer> perBuildFileSpecs = LinkedHashMultimap.create();
     for (int index = 0; index < orderedSpecs.size(); index++) {
       TargetNodeSpec spec = orderedSpecs.get(index);
-      Cell cell = rootCell.getCell(spec.getBuildFileSpec().getCellPath());
-      ImmutableSet<Path> buildFiles;
+      Path cellPath = spec.getBuildFileSpec().getCellPath();
+      Cell cell = rootCell.getCell(cellPath);
       try (SimplePerfEvent.Scope perfEventScope =
           SimplePerfEvent.scope(
               eventBus, PerfEventId.of("FindBuildFiles"), "targetNodeSpec", spec)) {
-        // Iterate over the build files the given target node spec returns.
-        ProjectFilesystem filesystem = cell.getFilesystem();
-        ImmutableSet.Builder<PathMatcher> parsingIgnores =
-            ImmutableSet.builderWithExpectedSize(filesystem.getBlacklistedPaths().size() + 1);
-        parsingIgnores.addAll(filesystem.getBlacklistedPaths());
-        parsingIgnores.add(RecursiveFileMatcher.of(filesystem.getBuckPaths().getBuckOut()));
-        for (Path subCellRoots : cell.getKnownRoots()) {
-          if (!subCellRoots.equals(cell.getRoot())) {
-            parsingIgnores.add(RecursiveFileMatcher.of(filesystem.relativize(subCellRoots)));
+
+        BuildFileSpec buildFileSpec = spec.getBuildFileSpec();
+        ProjectFilesystemView projectFilesystemView = cell.getFilesystemViewForSourceFiles();
+        if (!buildFileSpec.isRecursive()) {
+          // If spec is not recursive, i.e. //path/to:something, then we only need to look for
+          // build file under base path
+          Path buildFile =
+              projectFilesystemView.resolve(
+                  buildFileSpec.getBasePath().resolve(cell.getBuildFileName()));
+          perBuildFileSpecs.put(buildFile, index);
+        } else {
+          // For recursive spec, i.e. //path/to/... we use cached file tree
+          Path basePath = spec.getBuildFileSpec().getBasePath();
+
+          // sometimes spec comes with absolute path as base path, sometimes it is relative to
+          // cell path
+          // TODO(sergeyb): find out why
+          if (basePath.isAbsolute()) {
+            basePath = cellPath.relativize(basePath);
+          }
+          FileTree fileTree =
+              graphEngineForRecursiveSpecPerRoot
+                  .getUnchecked(cellPath)
+                  .computeUnchecked(ImmutableFileTreeKey.of(basePath));
+
+          for (Path path : FileTreeFileNameIterator.ofIterable(fileTree, cell.getBuildFileName())) {
+            perBuildFileSpecs.put(projectFilesystemView.resolve(path), index);
           }
         }
-
-        buildFiles =
-            spec.getBuildFileSpec()
-                .findBuildFiles(
-                    cell.getBuildFileName(),
-                    filesystem.asView().withView(Paths.get(""), ImmutableSet.of()),
-                    watchman,
-                    buildFileSearchMethod,
-                    parsingIgnores.build());
-      }
-      for (Path buildFile : buildFiles) {
-        perBuildFileSpecs.put(buildFile, index);
       }
     }
     return perBuildFileSpecs;
@@ -165,6 +248,7 @@ public class TargetSpecResolver {
       List<ListenableFuture<Map.Entry<Integer, ImmutableSet<BuildTarget>>>> targetFutures,
       Cell cell,
       Path buildFile,
+      TargetConfiguration targetConfiguration,
       int index,
       TargetNodeSpec spec) {
     if (spec instanceof BuildTargetSpec) {
@@ -190,7 +274,7 @@ public class TargetSpecResolver {
       // Build up a list of all target nodes from the build file.
       targetFutures.add(
           Futures.transform(
-              targetNodeProvider.getAllTargetNodesJob(cell, buildFile),
+              targetNodeProvider.getAllTargetNodesJob(cell, buildFile, targetConfiguration),
               nodes ->
                   new AbstractMap.SimpleEntry<>(
                       index, applySpecFilter(spec, nodes, flavorEnhancer, targetNodeFilter)),
@@ -241,6 +325,11 @@ public class TargetSpecResolver {
     return targets.build();
   }
 
+  @Override
+  public void close() {
+    graphEngineForRecursiveSpecPerRoot.asMap().values().forEach(engine -> engine.close());
+  }
+
   /** Allows to change flavors of some targets while performing the resolution. */
   public interface FlavorEnhancer<T extends HasBuildTarget> {
     BuildTarget enhanceFlavors(
@@ -251,7 +340,8 @@ public class TargetSpecResolver {
   public interface TargetNodeProviderForSpecResolver<T extends HasBuildTarget> {
     ListenableFuture<T> getTargetNodeJob(BuildTarget target) throws BuildTargetException;
 
-    ListenableFuture<ImmutableList<T>> getAllTargetNodesJob(Cell cell, Path buildFile)
+    ListenableFuture<ImmutableList<T>> getAllTargetNodesJob(
+        Cell cell, Path buildFile, TargetConfiguration targetConfiguration)
         throws BuildTargetException;
   }
 

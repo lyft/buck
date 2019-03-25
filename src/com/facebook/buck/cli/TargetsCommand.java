@@ -53,13 +53,13 @@ import com.facebook.buck.io.filesystem.BuckPaths;
 import com.facebook.buck.jvm.core.JavaLibrary;
 import com.facebook.buck.log.thrift.ThriftRuleKeyLogger;
 import com.facebook.buck.parser.BuildFileSpec;
+import com.facebook.buck.parser.ImmutableTargetNodePredicateSpec;
 import com.facebook.buck.parser.ParserConfig;
 import com.facebook.buck.parser.ParserPythonInterpreterProvider;
 import com.facebook.buck.parser.ParsingContext;
 import com.facebook.buck.parser.PerBuildState;
 import com.facebook.buck.parser.PerBuildStateFactory;
 import com.facebook.buck.parser.SpeculativeParsing;
-import com.facebook.buck.parser.TargetNodePredicateSpec;
 import com.facebook.buck.parser.exceptions.BuildFileParseException;
 import com.facebook.buck.rules.coercer.DefaultConstructorArgMarshaller;
 import com.facebook.buck.rules.keys.DefaultRuleKeyFactory;
@@ -326,10 +326,9 @@ public class TargetsCommand extends AbstractCommand {
                 .getParser()
                 .getPerBuildStateFactory()
                 .create(
-                    ParsingContext.builder(params.getCell(), pool.getListeningExecutorService())
-                        .setProfilingEnabled(getEnableParserProfiling())
-                        .setSpeculativeParsing(SpeculativeParsing.ENABLED)
-                        .build(),
+                    createParsingContext(params.getCell(), pool.getListeningExecutorService())
+                        .withExcludeUnsupportedTargets(false)
+                        .withSpeculativeParsing(SpeculativeParsing.ENABLED),
                     params.getParser().getPermState(),
                     getTargetPlatforms())) {
           ResolveAliasHelper.resolveAlias(params, parserState, getArguments());
@@ -522,12 +521,9 @@ public class TargetsCommand extends AbstractCommand {
       throws InterruptedException, BuildFileParseException, IOException {
     ParserConfig parserConfig = params.getBuckConfig().getView(ParserConfig.class);
     ParsingContext parsingContext =
-        ParsingContext.builder(params.getCell(), executor)
-            .setProfilingEnabled(getEnableParserProfiling())
-            .setExcludeUnsupportedTargets(getExcludeIncompatibleTargets())
-            .setApplyDefaultFlavorsMode(parserConfig.getDefaultFlavorsMode())
-            .setSpeculativeParsing(SpeculativeParsing.ENABLED)
-            .build();
+        createParsingContext(params.getCell(), executor)
+            .withApplyDefaultFlavorsMode(parserConfig.getDefaultFlavorsMode())
+            .withSpeculativeParsing(SpeculativeParsing.ENABLED);
     if (getArguments().isEmpty()) {
       TargetGraphAndBuildTargets completeTargetGraphAndBuildTargets =
           params
@@ -535,9 +531,10 @@ public class TargetsCommand extends AbstractCommand {
               .buildTargetGraphWithConfigurationTargets(
                   parsingContext,
                   ImmutableList.of(
-                      TargetNodePredicateSpec.of(
+                      ImmutableTargetNodePredicateSpec.of(
                           BuildFileSpec.fromRecursivePath(
-                              Paths.get(""), params.getCell().getRoot()))));
+                              Paths.get(""), params.getCell().getRoot()))),
+                  params.getTargetConfiguration());
       SortedMap<String, TargetNode<?>> matchingNodes =
           getMatchingNodes(params, completeTargetGraphAndBuildTargets, descriptionClasses);
 
@@ -556,7 +553,8 @@ public class TargetsCommand extends AbstractCommand {
                   parseArgumentsAsTargetNodeSpecs(
                       params.getCell().getCellPathResolver(),
                       params.getBuckConfig(),
-                      getArguments())),
+                      getArguments()),
+                  params.getTargetConfiguration()),
           descriptionClasses);
     }
   }
@@ -644,12 +642,9 @@ public class TargetsCommand extends AbstractCommand {
       throws IOException, InterruptedException, BuildFileParseException, VersionException {
     ParserConfig parserConfig = params.getBuckConfig().getView(ParserConfig.class);
     ParsingContext parsingContext =
-        ParsingContext.builder(params.getCell(), executor)
-            .setProfilingEnabled(getEnableParserProfiling())
-            .setExcludeUnsupportedTargets(getExcludeIncompatibleTargets())
-            .setApplyDefaultFlavorsMode(parserConfig.getDefaultFlavorsMode())
-            .setSpeculativeParsing(SpeculativeParsing.ENABLED)
-            .build();
+        createParsingContext(params.getCell(), executor)
+            .withApplyDefaultFlavorsMode(parserConfig.getDefaultFlavorsMode())
+            .withSpeculativeParsing(SpeculativeParsing.ENABLED);
     // Parse the entire action graph, or (if targets are specified), only the specified targets and
     // their dependencies. If we're detecting test changes we need the whole graph as tests are not
     // dependencies.
@@ -662,9 +657,10 @@ public class TargetsCommand extends AbstractCommand {
                   .buildTargetGraphWithConfigurationTargets(
                       parsingContext,
                       ImmutableList.of(
-                          TargetNodePredicateSpec.of(
+                          ImmutableTargetNodePredicateSpec.of(
                               BuildFileSpec.fromRecursivePath(
-                                  Paths.get(""), params.getCell().getRoot()))))
+                                  Paths.get(""), params.getCell().getRoot()))),
+                      params.getTargetConfiguration())
                   .getTargetGraph(),
               ImmutableSet.of());
     } else {
@@ -676,7 +672,8 @@ public class TargetsCommand extends AbstractCommand {
                   parseArgumentsAsTargetNodeSpecs(
                       params.getCell().getCellPathResolver(),
                       params.getBuckConfig(),
-                      getArguments()));
+                      getArguments()),
+                  params.getTargetConfiguration());
     }
     return params.getBuckConfig().getView(BuildBuckConfig.class).getTargetsVersions()
         ? toVersionedTargetGraph(params, targetGraphAndBuildTargets)
@@ -861,9 +858,8 @@ public class TargetsCommand extends AbstractCommand {
                 params.getFileHashCache(),
                 params.getUnconfiguredBuildTargetFactory())
             .create(
-                ParsingContext.builder(params.getCell(), executor)
-                    .setProfilingEnabled(getEnableParserProfiling())
-                    .build(),
+                createParsingContext(params.getCell(), executor)
+                    .withExcludeUnsupportedTargets(false),
                 params.getParser().getPermState(),
                 getTargetPlatforms())) {
 
@@ -1168,10 +1164,9 @@ public class TargetsCommand extends AbstractCommand {
           params
               .getParser()
               .buildTargetGraph(
-                  ParsingContext.builder(params.getCell(), executor)
-                      .setProfilingEnabled(getEnableParserProfiling())
-                      .setSpeculativeParsing(SpeculativeParsing.ENABLED)
-                      .build(),
+                  createParsingContext(params.getCell(), executor)
+                      .withSpeculativeParsing(SpeculativeParsing.ENABLED)
+                      .withExcludeUnsupportedTargets(false),
                   matchingBuildTargetsWithTests);
 
       return new Pair<>(
@@ -1257,9 +1252,8 @@ public class TargetsCommand extends AbstractCommand {
                 params.getFileHashCache(),
                 params.getUnconfiguredBuildTargetFactory())
             .create(
-                ParsingContext.builder(params.getCell(), executor)
-                    .setProfilingEnabled(getEnableParserProfiling())
-                    .build(),
+                createParsingContext(params.getCell(), executor)
+                    .withExcludeUnsupportedTargets(false),
                 params.getParser().getPermState(),
                 getTargetPlatforms())) {
       buildTargetHashes =

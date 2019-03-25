@@ -57,6 +57,7 @@ import com.facebook.buck.core.build.stats.BuildRuleDurationTracker;
 import com.facebook.buck.core.exceptions.HumanReadableException;
 import com.facebook.buck.core.model.BuildId;
 import com.facebook.buck.core.model.BuildTarget;
+import com.facebook.buck.core.model.TargetConfigurationSerializer;
 import com.facebook.buck.core.rulekey.RuleKey;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.attr.BuildOutputInitializer;
@@ -133,6 +134,7 @@ class CachingBuildRuleBuilder {
   private final boolean consoleLogBuildFailuresInline;
   private final FileHashCache fileHashCache;
   private final SourcePathResolver pathResolver;
+  private final TargetConfigurationSerializer targetConfigurationSerializer;
   private final ResourceAwareSchedulingInfo resourceAwareSchedulingInfo;
   private final RuleKeyFactories ruleKeyFactories;
   private final WeightedListeningExecutorService service;
@@ -204,6 +206,7 @@ class CachingBuildRuleBuilder {
       long maxDepFileCacheEntries,
       MetadataStorage metadataStorage,
       SourcePathResolver pathResolver,
+      TargetConfigurationSerializer targetConfigurationSerializer,
       ResourceAwareSchedulingInfo resourceAwareSchedulingInfo,
       RuleKeyFactories ruleKeyFactories,
       WeightedListeningExecutorService service,
@@ -224,6 +227,7 @@ class CachingBuildRuleBuilder {
     this.consoleLogBuildFailuresInline = consoleLogBuildFailuresInline;
     this.fileHashCache = fileHashCache;
     this.pathResolver = pathResolver;
+    this.targetConfigurationSerializer = targetConfigurationSerializer;
     this.resourceAwareSchedulingInfo = resourceAwareSchedulingInfo;
     this.ruleKeyFactories = ruleKeyFactories;
     this.service = service;
@@ -704,26 +708,29 @@ class CachingBuildRuleBuilder {
         // Push an updated manifest to the cache.
         if (manifestRuleKeyManager.useManifestCaching()) {
           // TODO(cjhopman): This should be able to use manifestKeySupplier.
-          Optional<RuleKeyAndInputs> manifestKey = calculateManifestKey(eventBus);
-          if (manifestKey.isPresent()) {
-            getBuildInfoRecorder()
-                .addBuildMetadata(
-                    BuildInfo.MetadataKey.MANIFEST_KEY, manifestKey.get().getRuleKey().toString());
+          try (Scope ignored = LeafEvents.scope(eventBus, "updating_and_storing_manifest")) {
+            Optional<RuleKeyAndInputs> manifestKey = calculateManifestKey(eventBus);
+            if (manifestKey.isPresent()) {
+              getBuildInfoRecorder()
+                  .addBuildMetadata(
+                      BuildInfo.MetadataKey.MANIFEST_KEY,
+                      manifestKey.get().getRuleKey().toString());
 
-            long buildTimeMs =
-                buildTimestampsMillis == null
-                    ? -1
-                    : buildTimestampsMillis.getSecond() - buildTimestampsMillis.getFirst();
+              long buildTimeMs =
+                  buildTimestampsMillis == null
+                      ? -1
+                      : buildTimestampsMillis.getSecond() - buildTimestampsMillis.getFirst();
 
-            ManifestStoreResult manifestStoreResult =
-                manifestRuleKeyManager.updateAndStoreManifest(
-                    depFileRuleKeyAndInputs.get().getRuleKey(),
-                    depFileRuleKeyAndInputs.get().getInputs(),
-                    manifestKey.get(),
-                    buildTimeMs);
-            this.buildRuleScopeManager.setManifestStoreResult(manifestStoreResult);
-            if (manifestStoreResult.getStoreFuture().isPresent()) {
-              uploadCompleteFuture = manifestStoreResult.getStoreFuture().get();
+              ManifestStoreResult manifestStoreResult =
+                  manifestRuleKeyManager.updateAndStoreManifest(
+                      depFileRuleKeyAndInputs.get().getRuleKey(),
+                      depFileRuleKeyAndInputs.get().getInputs(),
+                      manifestKey.get(),
+                      buildTimeMs);
+              this.buildRuleScopeManager.setManifestStoreResult(manifestStoreResult);
+              if (manifestStoreResult.getStoreFuture().isPresent()) {
+                uploadCompleteFuture = manifestStoreResult.getStoreFuture().get();
+              }
             }
           }
         }
@@ -737,6 +744,11 @@ class CachingBuildRuleBuilder {
     // rule had been built locally.
     getBuildInfoRecorder()
         .addBuildMetadata(BuildInfo.MetadataKey.TARGET, rule.getBuildTarget().toString());
+    getBuildInfoRecorder()
+        .addBuildMetadata(
+            BuildInfo.MetadataKey.CONFIGURATION,
+            targetConfigurationSerializer.serialize(
+                rule.getBuildTarget().getTargetConfiguration()));
     getBuildInfoRecorder()
         .addMetadata(
             BuildInfo.MetadataKey.RECORDED_PATHS,
@@ -755,7 +767,9 @@ class CachingBuildRuleBuilder {
     }
 
     if (shouldWriteOutputHashes(outputSize.get())) {
-      onDiskBuildInfo.writeOutputHashes(fileHashCache);
+      try (Scope ignored = LeafEvents.scope(eventBus, "computing_output_hashes")) {
+        onDiskBuildInfo.writeOutputHashes(fileHashCache);
+      }
     }
   }
 

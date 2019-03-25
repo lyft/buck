@@ -25,6 +25,7 @@ import com.facebook.buck.core.cell.Cell;
 import com.facebook.buck.core.cell.TestCellBuilder;
 import com.facebook.buck.core.config.FakeBuckConfig;
 import com.facebook.buck.core.model.BuildTargetFactory;
+import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.parser.buildtargetparser.ParsingUnconfiguredBuildTargetFactory;
 import com.facebook.buck.core.plugin.impl.BuckPluginManagerFactory;
 import com.facebook.buck.core.rules.knowntypes.KnownRuleTypesProvider;
@@ -127,7 +128,7 @@ public class BuckQueryEnvironmentTest {
             getManifestSupplier(),
             new FakeFileHashCache(ImmutableMap.of()),
             new ParsingUnconfiguredBuildTargetFactory());
-    Parser parser = TestParserFactory.create(cell.getBuckConfig(), perBuildStateFactory, eventBus);
+    Parser parser = TestParserFactory.create(cell, perBuildStateFactory, eventBus);
     parserState =
         perBuildStateFactory.create(
             ParsingContext.builder(cell, executor)
@@ -141,8 +142,10 @@ public class BuckQueryEnvironmentTest {
             cell,
             FakeBuckConfig.builder().build(),
             parser,
-            ParsingContext.builder(cell, executor).build());
-    OwnersReport.Builder ownersReportBuilder = OwnersReport.builder(cell, parser, parserState);
+            ParsingContext.builder(cell, executor).build(),
+            EmptyTargetConfiguration.INSTANCE);
+    OwnersReport.Builder ownersReportBuilder =
+        OwnersReport.builder(cell, parser, parserState, EmptyTargetConfiguration.INSTANCE);
     buckQueryEnvironment =
         BuckQueryEnvironment.from(
             cell,

@@ -25,6 +25,8 @@ import com.facebook.buck.core.cell.Cell;
 import com.facebook.buck.core.cell.TestCellBuilder;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
+import com.facebook.buck.core.model.EmptyTargetConfiguration;
+import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.model.targetgraph.TargetNode;
 import com.facebook.buck.core.parser.buildtargetparser.ParsingUnconfiguredBuildTargetFactory;
 import com.facebook.buck.core.plugin.impl.BuckPluginManagerFactory;
@@ -123,8 +125,9 @@ public class TargetSpecResolverTest {
             new FakeFileHashCache(ImmutableMap.of()),
             new ParsingUnconfiguredBuildTargetFactory());
 
-    targetNodeTargetSpecResolver = new TargetSpecResolver(eventBus, WatchmanFactory.NULL_WATCHMAN);
-    parser = TestParserFactory.create(cell.getBuckConfig(), perBuildStateFactory);
+    targetNodeTargetSpecResolver =
+        TestTargetSpecResolverFactory.create(cell.getCellProvider(), eventBus);
+    parser = TestParserFactory.create(cell, perBuildStateFactory);
     flavorEnhancer = (target, targetNode, targetType) -> target;
     executorService = MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(1));
   }
@@ -141,7 +144,7 @@ public class TargetSpecResolverTest {
     ImmutableList<ImmutableSet<BuildTarget>> targets =
         resolve(
             ImmutableList.of(
-                TargetNodePredicateSpec.of(
+                ImmutableTargetNodePredicateSpec.of(
                     BuildFileSpec.fromRecursivePath(Paths.get(""), cell.getRoot()))));
 
     ImmutableSet<BuildTarget> expectedTargets =
@@ -168,9 +171,9 @@ public class TargetSpecResolverTest {
 
     resolve(
         ImmutableList.of(
-            TargetNodePredicateSpec.of(
+            ImmutableTargetNodePredicateSpec.of(
                 BuildFileSpec.fromRecursivePath(Paths.get("bar"), cell.getRoot())),
-            TargetNodePredicateSpec.of(
+            ImmutableTargetNodePredicateSpec.of(
                 BuildFileSpec.fromRecursivePath(Paths.get("foo"), cell.getRoot()))));
   }
 
@@ -189,18 +192,18 @@ public class TargetSpecResolverTest {
     ImmutableList<ImmutableSet<BuildTarget>> targets =
         resolve(
             ImmutableList.of(
-                TargetNodePredicateSpec.of(
+                ImmutableTargetNodePredicateSpec.of(
                     BuildFileSpec.fromRecursivePath(Paths.get("bar"), cell.getRoot())),
-                TargetNodePredicateSpec.of(
+                ImmutableTargetNodePredicateSpec.of(
                     BuildFileSpec.fromRecursivePath(Paths.get("foo"), cell.getRoot()))));
     assertThat(targets, equalTo(ImmutableList.of(ImmutableSet.of(bar), ImmutableSet.of(foo))));
 
     targets =
         resolve(
             ImmutableList.of(
-                TargetNodePredicateSpec.of(
+                ImmutableTargetNodePredicateSpec.of(
                     BuildFileSpec.fromRecursivePath(Paths.get("foo"), cell.getRoot())),
-                TargetNodePredicateSpec.of(
+                ImmutableTargetNodePredicateSpec.of(
                     BuildFileSpec.fromRecursivePath(Paths.get("bar"), cell.getRoot()))));
     assertThat(targets, equalTo(ImmutableList.of(ImmutableSet.of(foo), ImmutableSet.of(bar))));
   }
@@ -215,7 +218,7 @@ public class TargetSpecResolverTest {
     ImmutableList<ImmutableSet<BuildTarget>> targets =
         resolve(
             ImmutableList.of(
-                TargetNodePredicateSpec.of(
+                ImmutableTargetNodePredicateSpec.of(
                     BuildFileSpec.fromRecursivePath(buckout, cell.getRoot()))));
     assertThat(targets, equalTo(ImmutableList.of(ImmutableSet.of())));
   }
@@ -230,6 +233,7 @@ public class TargetSpecResolverTest {
     return targetNodeTargetSpecResolver.resolveTargetSpecs(
         cell,
         specs,
+        EmptyTargetConfiguration.INSTANCE,
         flavorEnhancer,
         new TargetNodeProviderForSpecResolver<TargetNode<?>>() {
           @Override
@@ -240,8 +244,9 @@ public class TargetSpecResolverTest {
 
           @Override
           public ListenableFuture<ImmutableList<TargetNode<?>>> getAllTargetNodesJob(
-              Cell cell, Path buildFile) throws BuildTargetException {
-            return state.getAllTargetNodesJob(cell, buildFile);
+              Cell cell, Path buildFile, TargetConfiguration targetConfiguration)
+              throws BuildTargetException {
+            return state.getAllTargetNodesJob(cell, buildFile, targetConfiguration);
           }
         },
         (spec, nodes) -> spec.filter(nodes));

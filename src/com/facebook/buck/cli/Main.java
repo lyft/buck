@@ -40,9 +40,12 @@ import com.facebook.buck.core.exceptions.HumanReadableException;
 import com.facebook.buck.core.exceptions.config.ErrorHandlingBuckConfig;
 import com.facebook.buck.core.exceptions.handler.HumanReadableExceptionAugmentor;
 import com.facebook.buck.core.model.BuildId;
+import com.facebook.buck.core.model.EmptyTargetConfiguration;
+import com.facebook.buck.core.model.TargetConfigurationSerializer;
 import com.facebook.buck.core.model.actiongraph.computation.ActionGraphCache;
 import com.facebook.buck.core.model.actiongraph.computation.ActionGraphFactory;
 import com.facebook.buck.core.model.actiongraph.computation.ActionGraphProvider;
+import com.facebook.buck.core.model.impl.JsonTargetConfigurationSerializer;
 import com.facebook.buck.core.module.BuckModuleManager;
 import com.facebook.buck.core.module.impl.BuckModuleJarHashProvider;
 import com.facebook.buck.core.module.impl.DefaultBuckModuleManager;
@@ -228,9 +231,6 @@ import java.io.PrintStream;
 import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.ManagementFactory;
 import java.nio.channels.ClosedByInterruptException;
-import java.nio.channels.FileChannel;
-import java.nio.channels.FileLock;
-import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -238,7 +238,6 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.StandardOpenOption;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.util.Comparator;
@@ -369,8 +368,6 @@ public final class Main {
   private static PluginManager pluginManager;
   private static BuckModuleManager moduleManager;
 
-  @Nullable private static FileLock resourcesFileLock = null;
-
   private static final HangMonitor.AutoStartInstance HANG_MONITOR =
       new HangMonitor.AutoStartInstance(
           (input) -> {
@@ -438,7 +435,7 @@ public final class Main {
   }
 
   /* Define all error handling surrounding main command */
-  private void runMainThenExit(String[] args, long initTimestamp) {
+  void runMainThenExit(String[] args, long initTimestamp) {
 
     ExitCode exitCode = ExitCode.SUCCESS;
 
@@ -824,6 +821,9 @@ public final class Main {
                   buildTargetFactory)
               .getCellByPath(filesystem.getRootPath());
 
+      TargetConfigurationSerializer targetConfigurationSerializer =
+          new JsonTargetConfigurationSerializer();
+
       List<DevspeedTelemetryPlugin> telemetryPlugins;
       if (context.isPresent() && (watchman != WatchmanFactory.NULL_WATCHMAN)) {
         telemetryPlugins = pluginManager.getExtensions(DevspeedTelemetryPlugin.class);
@@ -831,7 +831,7 @@ public final class Main {
         telemetryPlugins = Lists.newArrayList();
       }
 
-      Pair<Daemon, DaemonStatus> daemonRequest =
+      Pair<BuckGlobalState, DaemonStatus> daemonRequest =
           daemonLifecycleManager.getDaemon(
               rootCell,
               knownRuleTypesProvider,
@@ -839,6 +839,7 @@ public final class Main {
               console,
               clock,
               buildTargetFactory,
+              targetConfigurationSerializer,
               telemetryPlugins.isEmpty()
                   ? Optional::empty
                   : () ->
@@ -848,7 +849,7 @@ public final class Main {
                               rootCell.getFilesystem(), System.getProperties()),
               context);
 
-      Daemon daemon = daemonRequest.getFirst();
+      BuckGlobalState buckGlobalState = daemonRequest.getFirst();
       DaemonStatus daemonStatus = daemonRequest.getSecond();
 
       if (!context.isPresent()) {
@@ -874,7 +875,7 @@ public final class Main {
       ProjectFilesystem rootCellProjectFilesystem =
           projectFilesystemFactory.createOrThrow(rootCell.getFilesystem().getRootPath());
       BuildBuckConfig buildBuckConfig = rootCell.getBuckConfig().getView(BuildBuckConfig.class);
-      allCaches.addAll(daemon.getFileHashCaches());
+      allCaches.addAll(buckGlobalState.getFileHashCaches());
 
       rootCell
           .getAllCells()
@@ -899,9 +900,9 @@ public final class Main {
 
       StackedFileHashCache fileHashCache = new StackedFileHashCache(allCaches.build());
 
-      Optional<WebServer> webServer = daemon.getWebServer();
+      Optional<WebServer> webServer = buckGlobalState.getWebServer();
       ConcurrentMap<String, WorkerProcessPool> persistentWorkerPools =
-          daemon.getPersistentWorkerPools();
+          buckGlobalState.getPersistentWorkerPools();
       TestBuckConfig testConfig = buckConfig.getView(TestBuckConfig.class);
       ArtifactCacheBuckConfig cacheBuckConfig = new ArtifactCacheBuckConfig(buckConfig);
 
@@ -937,7 +938,7 @@ public final class Main {
 
       LogBuckConfig logBuckConfig = buckConfig.getView(LogBuckConfig.class);
 
-      try (TaskManagerScope managerScope = daemon.getBgTaskManager().getNewScope(buildId);
+      try (TaskManagerScope managerScope = buckGlobalState.getBgTaskManager().getNewScope(buildId);
           GlobalStateManager.LoggerIsMappedToThreadScope loggerThreadMappingScope =
               GlobalStateManager.singleton()
                   .setupLoggers(invocationInfo, console.getStdErr(), stdErr, verbosity);
@@ -1074,6 +1075,7 @@ public final class Main {
                     cacheBuckConfig,
                     buildEventBus,
                     target -> buildTargetFactory.create(cellPathResolver, target),
+                    targetConfigurationSerializer,
                     filesystem,
                     executionEnvironment.getWifiSsid(),
                     httpWriteExecutorService.get(),
@@ -1163,9 +1165,9 @@ public final class Main {
 
           eventListeners =
               addEventListeners(
-                  daemon.getDevspeedDaemonListener(),
+                  buckGlobalState.getDevspeedDaemonListener(),
                   buildEventBus,
-                  daemon.getFileEventBus(),
+                  buckGlobalState.getFileEventBus(),
                   rootCell.getFilesystem(),
                   invocationInfo,
                   rootCell.getBuckConfig(),
@@ -1247,12 +1249,24 @@ public final class Main {
               CommandEvent.started(
                   command.getDeclaredSubCommandName(),
                   remainingArgs,
-                  context.isPresent() ? OptionalLong.of(daemon.getUptime()) : OptionalLong.empty(),
+                  context.isPresent()
+                      ? OptionalLong.of(buckGlobalState.getUptime())
+                      : OptionalLong.empty(),
                   getBuckPID());
           buildEventBus.post(startedEvent);
 
+          ResourcesConfig resourceConfig = buckConfig.getView(ResourcesConfig.class);
+
           CloseableMemoizedSupplier<ForkJoinPool> forkJoinPoolSupplier =
-              getForkJoinPoolSupplier(buckConfig);
+              getForkJoinPoolSupplier(resourceConfig);
+
+          TargetSpecResolver targetSpecResolver =
+              new TargetSpecResolver(
+                  buildEventBus,
+                  resourceConfig.getMaximumResourceAmounts().getCpu(),
+                  rootCell.getCellProvider(),
+                  buckGlobalState.getDirectoryListCaches(),
+                  buckGlobalState.getFileTreeCaches());
 
           ParserAndCaches parserAndCaches =
               getParserAndCaches(
@@ -1264,14 +1278,15 @@ public final class Main {
                   knownRuleTypesProvider,
                   rootCell,
                   command::getTargetPlatforms,
-                  daemon,
+                  buckGlobalState,
                   buildEventBus,
                   forkJoinPoolSupplier,
                   ruleKeyConfiguration,
                   executableFinder,
                   manifestServiceSupplier,
                   fileHashCache,
-                  buildTargetFactory);
+                  buildTargetFactory,
+                  targetSpecResolver);
 
           // Because the Parser is potentially constructed before the CounterRegistry,
           // we need to manually register its counters after it's created.
@@ -1317,6 +1332,8 @@ public final class Main {
                         artifactCacheFactory,
                         parserAndCaches.getTypeCoercerFactory(),
                         buildTargetFactory,
+                        () -> EmptyTargetConfiguration.INSTANCE,
+                        targetConfigurationSerializer,
                         parserAndCaches.getParser(),
                         buildEventBus,
                         platform,
@@ -1507,14 +1524,15 @@ public final class Main {
       KnownRuleTypesProvider knownRuleTypesProvider,
       Cell rootCell,
       Supplier<ImmutableList<String>> targetPlatforms,
-      Daemon daemon,
+      BuckGlobalState buckGlobalState,
       BuckEventBus buildEventBus,
       CloseableMemoizedSupplier<ForkJoinPool> forkJoinPoolSupplier,
       RuleKeyConfiguration ruleKeyConfiguration,
       ExecutableFinder executableFinder,
       ThrowingCloseableMemoizedSupplier<ManifestService, IOException> manifestServiceSupplier,
       FileHashCache fileHashCache,
-      UnconfiguredBuildTargetFactory unconfiguredBuildTargetFactory)
+      UnconfiguredBuildTargetFactory unconfiguredBuildTargetFactory,
+      TargetSpecResolver targetSpecResolver)
       throws IOException, InterruptedException {
     Optional<WatchmanWatcher> watchmanWatcher = Optional.empty();
     if (watchman.getTransportPath().isPresent()) {
@@ -1523,12 +1541,12 @@ public final class Main {
             Optional.of(
                 new WatchmanWatcher(
                     watchman,
-                    daemon.getFileEventBus(),
+                    buckGlobalState.getFileEventBus(),
                     ImmutableSet.<PathMatcher>builder()
                         .addAll(filesystem.getIgnorePaths())
                         .addAll(DEFAULT_IGNORE_GLOBS)
                         .build(),
-                    daemon.getWatchmanCursor(),
+                    buckGlobalState.getWatchmanCursor(),
                     buckConfig.getView(BuildBuckConfig.class).getNumThreads()));
       } catch (WatchmanWatcherException e) {
         buildEventBus.post(
@@ -1542,19 +1560,20 @@ public final class Main {
     ParserAndCaches parserAndCaches;
     if (context.isPresent()) {
       // Note that watchmanWatcher is non-null only when daemon.isPresent().
-      registerClientDisconnectedListener(context.get(), daemon);
+      registerClientDisconnectedListener(context.get(), buckGlobalState);
       if (watchmanWatcher.isPresent()) {
-        daemon.watchFileSystem(buildEventBus, watchmanWatcher.get(), watchmanFreshInstanceAction);
+        buckGlobalState.watchFileSystem(
+            buildEventBus, watchmanWatcher.get(), watchmanFreshInstanceAction);
       }
       Optional<RuleKeyCacheRecycler<RuleKey>> defaultRuleKeyFactoryCacheRecycler;
       if (buckConfig.getView(BuildBuckConfig.class).getRuleKeyCaching()) {
         LOG.debug("Using rule key calculation caching");
         defaultRuleKeyFactoryCacheRecycler =
-            Optional.of(daemon.getDefaultRuleKeyFactoryCacheRecycler());
+            Optional.of(buckGlobalState.getDefaultRuleKeyFactoryCacheRecycler());
       } else {
         defaultRuleKeyFactoryCacheRecycler = Optional.empty();
       }
-      TypeCoercerFactory typeCoercerFactory = daemon.getTypeCoercerFactory();
+      TypeCoercerFactory typeCoercerFactory = buckGlobalState.getTypeCoercerFactory();
       Parser parser =
           ParserFactory.create(
               typeCoercerFactory,
@@ -1562,27 +1581,28 @@ public final class Main {
               knownRuleTypesProvider,
               new ParserPythonInterpreterProvider(parserConfig, executableFinder),
               rootCell.getBuckConfig(),
-              daemon.getDaemonicParserState(),
-              new TargetSpecResolver(buildEventBus, watchman),
+              buckGlobalState.getDaemonicParserState(),
+              targetSpecResolver,
               watchman,
               buildEventBus,
               targetPlatforms,
               manifestServiceSupplier,
               fileHashCache,
               unconfiguredBuildTargetFactory);
-      daemon.getFileEventBus().register(daemon.getDaemonicParserState());
+      buckGlobalState.getFileEventBus().register(buckGlobalState.getDaemonicParserState());
 
       parserAndCaches =
           ParserAndCaches.of(
               parser,
-              daemon.getTypeCoercerFactory(),
+              buckGlobalState.getTypeCoercerFactory(),
               new InstrumentedVersionedTargetGraphCache(
-                  daemon.getVersionedTargetGraphCache(), new InstrumentingCacheStatsTracker()),
+                  buckGlobalState.getVersionedTargetGraphCache(),
+                  new InstrumentingCacheStatsTracker()),
               new ActionGraphProvider(
                   buildEventBus,
                   ActionGraphFactory.create(
                       buildEventBus, rootCell.getCellProvider(), forkJoinPoolSupplier, buckConfig),
-                  daemon.getActionGraphCache(),
+                  buckGlobalState.getActionGraphCache(),
                   ruleKeyConfiguration,
                   buckConfig),
               defaultRuleKeyFactoryCacheRecycler);
@@ -1597,7 +1617,7 @@ public final class Main {
                   new ParserPythonInterpreterProvider(parserConfig, executableFinder),
                   rootCell.getBuckConfig(),
                   new DaemonicParserState(parserConfig.getNumParsingThreads()),
-                  new TargetSpecResolver(buildEventBus, watchman),
+                  targetSpecResolver,
                   watchman,
                   buildEventBus,
                   targetPlatforms,
@@ -1620,12 +1640,13 @@ public final class Main {
     return parserAndCaches;
   }
 
-  private static void registerClientDisconnectedListener(NGContext context, Daemon daemon) {
+  private static void registerClientDisconnectedListener(
+      NGContext context, BuckGlobalState buckGlobalState) {
     Thread mainThread = Thread.currentThread();
     context.addClientListener(
         reason -> {
           LOG.info("Nailgun client disconnected with " + reason);
-          if (Main.isSessionLeader && Main.commandSemaphoreNgClient.orElse(null) == context) {
+          if (Main.commandSemaphoreNgClient.orElse(null) == context) {
             // Process no longer wants work done on its behalf.
             LOG.debug("Killing background processes on client disconnect");
             BgProcessKiller.interruptBgProcesses();
@@ -1635,7 +1656,7 @@ public final class Main {
             LOG.debug("Killing all Buck jobs on client disconnect by interrupting the main thread");
             // signal daemon to complete required tasks and interrupt main thread
             // this will hopefully trigger InterruptedException and program shutdown
-            daemon.interruptOnClientExit(mainThread);
+            buckGlobalState.interruptOnClientExit(mainThread);
           }
         });
   }
@@ -2086,16 +2107,20 @@ public final class Main {
   }
 
   /**
-   * @param buckConfig the configuration for resources
+   * @param config the configuration for resources
    * @return a memoized supplier for a ForkJoinPool that will be closed properly if initialized
    */
   @VisibleForTesting
-  static CloseableMemoizedSupplier<ForkJoinPool> getForkJoinPoolSupplier(BuckConfig buckConfig) {
-    ResourcesConfig resource = buckConfig.getView(ResourcesConfig.class);
+  static CloseableMemoizedSupplier<ForkJoinPool> getForkJoinPoolSupplier(BuckConfig config) {
+    return getForkJoinPoolSupplier(config.getView(ResourcesConfig.class));
+  }
+
+  private static CloseableMemoizedSupplier<ForkJoinPool> getForkJoinPoolSupplier(
+      ResourcesConfig config) {
     return CloseableMemoizedSupplier.of(
         () ->
             MostExecutors.forkJoinPoolWithThreadLimit(
-                resource.getMaximumResourceAmounts().getCpu(), 16),
+                config.getMaximumResourceAmounts().getCpu(), 16),
         ForkJoinPool::shutdownNow);
   }
 
@@ -2305,7 +2330,7 @@ public final class Main {
     }
   }
 
-  private static class DaemonKillers {
+  static class DaemonKillers {
 
     private final NGServer server;
     private final IdleKiller idleKiller;
@@ -2330,54 +2355,6 @@ public final class Main {
 
     private void killServer() {
       server.shutdown();
-    }
-  }
-
-  /**
-   * To prevent 'buck kill' from deleting resources from underneath a 'live' buckd we hold on to the
-   * FileLock for the entire lifetime of the process. We depend on the fact that on Linux and MacOS
-   * Java FileLock is implemented using the same mechanism as the Python fcntl.lockf method. Should
-   * this not be the case we'll simply have a small race between buckd start and `buck kill`.
-   */
-  private static void obtainResourceFileLock() {
-    if (resourcesFileLock != null) {
-      return;
-    }
-    String resourceLockFilePath = System.getProperties().getProperty("buck.resource_lock_path");
-    if (resourceLockFilePath == null) {
-      // Running from ant, no resource lock needed.
-      return;
-    }
-    try {
-      // R+W+A is equivalent to 'a+' in Python (which is how the lock file is opened in Python)
-      // because WRITE in Java does not imply truncating the file.
-      FileChannel fileChannel =
-          FileChannel.open(
-              Paths.get(resourceLockFilePath),
-              StandardOpenOption.READ,
-              StandardOpenOption.WRITE,
-              StandardOpenOption.CREATE);
-      resourcesFileLock = fileChannel.tryLock(0L, Long.MAX_VALUE, true);
-    } catch (IOException | OverlappingFileLockException e) {
-      LOG.debug(e, "Error when attempting to acquire resources file lock.");
-    }
-  }
-
-  /**
-   * When running as a daemon in the NailGun server, {@link #nailMain(NGContext)} is called instead
-   * of {@link #main(String[])} so that the given context can be used to listen for client
-   * disconnections and interrupt command processing when they occur.
-   */
-  public static void nailMain(NGContext context) {
-    obtainResourceFileLock();
-    try (IdleKiller.CommandExecutionScope ignored =
-        DaemonBootstrap.getDaemonKillers().newCommandExecutionScope()) {
-      DaemonBootstrap.commandStarted();
-      new Main(context.out, context.err, context.in, Optional.of(context))
-          .runMainThenExit(context.getArgs(), System.nanoTime());
-    } finally {
-      // Reclaim memory after a command finishes.
-      DaemonBootstrap.commandFinished();
     }
   }
 

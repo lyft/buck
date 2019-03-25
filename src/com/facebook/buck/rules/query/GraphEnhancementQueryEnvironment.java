@@ -19,11 +19,12 @@ package com.facebook.buck.rules.query;
 import com.facebook.buck.core.cell.CellPathResolver;
 import com.facebook.buck.core.exceptions.BuildTargetParseException;
 import com.facebook.buck.core.model.BuildTarget;
-import com.facebook.buck.core.model.EmptyTargetConfiguration;
+import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.model.targetgraph.TargetGraph;
 import com.facebook.buck.core.model.targetgraph.TargetNode;
 import com.facebook.buck.core.parser.buildtargetparser.UnconfiguredBuildTargetFactory;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
+import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.sourcepath.PathSourcePath;
 import com.facebook.buck.jvm.core.HasClasspathDeps;
 import com.facebook.buck.query.AttrFilterFunction;
@@ -90,13 +91,18 @@ public class GraphEnhancementQueryEnvironment implements QueryEnvironment {
       CellPathResolver cellNames,
       UnconfiguredBuildTargetFactory unconfiguredBuildTargetFactory,
       String targetBaseName,
-      Set<BuildTarget> declaredDeps) {
+      Set<BuildTarget> declaredDeps,
+      TargetConfiguration targetConfiguration) {
     this.graphBuilder = graphBuilder;
     this.targetGraph = targetGraph;
     this.typeCoercerFactory = typeCoercerFactory;
     this.targetEvaluator =
         new TargetEvaluator(
-            cellNames, unconfiguredBuildTargetFactory, targetBaseName, declaredDeps);
+            cellNames,
+            unconfiguredBuildTargetFactory,
+            targetBaseName,
+            declaredDeps,
+            targetConfiguration);
   }
 
   @Override
@@ -198,6 +204,26 @@ public class GraphEnhancementQueryEnvironment implements QueryEnvironment {
     return targetGraph.get().get(buildTarget);
   }
 
+  /**
+   * @return a filtered stream of targets where the rules they refer to are instances of the given
+   *     clazz
+   */
+  protected Stream<QueryTarget> restrictToInstancesOf(Set<QueryTarget> targets, Class<?> clazz) {
+    Preconditions.checkArgument(graphBuilder.isPresent());
+    return targets
+        .stream()
+        .map(
+            queryTarget -> {
+              Preconditions.checkArgument(queryTarget instanceof QueryBuildTarget);
+              return graphBuilder
+                  .get()
+                  .requireRule(((QueryBuildTarget) queryTarget).getBuildTarget());
+            })
+        .filter(rule -> clazz.isAssignableFrom(rule.getClass()))
+        .map(BuildRule::getBuildTarget)
+        .map(QueryBuildTarget::of);
+  }
+
   public Stream<QueryTarget> getFirstOrderClasspath(Set<QueryTarget> targets) {
     Preconditions.checkArgument(graphBuilder.isPresent());
     return targets
@@ -237,16 +263,19 @@ public class GraphEnhancementQueryEnvironment implements QueryEnvironment {
     private final String targetBaseName;
     private final ImmutableSet<BuildTarget> declaredDeps;
     private final UnconfiguredBuildTargetFactory unconfiguredBuildTargetFactory;
+    private final TargetConfiguration targetConfiguration;
 
     private TargetEvaluator(
         CellPathResolver cellNames,
         UnconfiguredBuildTargetFactory unconfiguredBuildTargetFactory,
         String targetBaseName,
-        Set<BuildTarget> declaredDeps) {
+        Set<BuildTarget> declaredDeps,
+        TargetConfiguration targetConfiguration) {
       this.cellNames = cellNames;
       this.unconfiguredBuildTargetFactory = unconfiguredBuildTargetFactory;
       this.targetBaseName = targetBaseName;
       this.declaredDeps = ImmutableSet.copyOf(declaredDeps);
+      this.targetConfiguration = targetConfiguration;
     }
 
     @Override
@@ -261,7 +290,7 @@ public class GraphEnhancementQueryEnvironment implements QueryEnvironment {
         BuildTarget buildTarget =
             unconfiguredBuildTargetFactory
                 .createForBaseName(cellNames, targetBaseName, target)
-                .configure(EmptyTargetConfiguration.INSTANCE);
+                .configure(targetConfiguration);
         return ImmutableSet.of(QueryBuildTarget.of(buildTarget));
       } catch (BuildTargetParseException e) {
         throw new QueryException(e, "Unable to parse pattern %s", target);

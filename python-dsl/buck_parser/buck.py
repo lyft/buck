@@ -58,7 +58,7 @@ from .glob_internal import glob_internal
 from .glob_watchman import SyncCookieState, glob_watchman
 from .json_encoder import BuckJSONEncoder
 from .module_whitelist import ImportWhitelistManager
-from .profiler import Profiler
+from .profiler import Profiler, Tracer, emit_trace, scoped_trace, traced
 from .select_support import SelectorList, SelectorValue
 from .struct import create_struct_class, struct
 from .util import (
@@ -455,6 +455,7 @@ def add_rule(rule, build_env):
     build_env.rules[rule_name] = rule
 
 
+@traced(stats_key="Glob")
 def glob(
     includes, excludes=None, include_dotfiles=False, build_env=None, search_base=None
 ):
@@ -871,8 +872,12 @@ class BuildFileProcessor(object):
 
         self._global_functions = lazy_global_functions
         self._native_functions = lazy_native_functions
-        self._native_module_class = self._create_native_module_class(
+        self._native_module_class_for_extension = self._create_native_module_class(
             self._global_functions, self._native_functions
+        )
+        self._native_module_class_for_build_file = self._create_native_module_class(
+            self._global_functions,
+            [] if self._disable_implicit_native_rules else self._native_functions,
         )
         self._import_whitelist_manager = ImportWhitelistManager(
             import_whitelist=self._create_import_whitelist(project_import_whitelist),
@@ -880,10 +885,13 @@ class BuildFileProcessor(object):
             path_predicate=lambda path: is_in_dir(path, self._project_root),
         )
         # Set of helpers callable from the child environment.
-        self._default_globals = self._create_default_globals(False)
-        self._default_globals_for_implicit_include = self._create_default_globals(True)
+        self._default_globals_for_extension = self._create_default_globals(False, False)
+        self._default_globals_for_implicit_include = self._create_default_globals(
+            False, True
+        )
+        self._default_globals_for_build_file = self._create_default_globals(True, False)
 
-    def _create_default_globals(self, is_implicit_include=False):
+    def _create_default_globals(self, is_build_file, is_implicit_include):
         # type: (bool) -> Dict[str, Callable]
         return {
             "include_defs": functools.partial(self._include_defs, is_implicit_include),
@@ -897,10 +905,10 @@ class BuildFileProcessor(object):
             "struct": struct,
             "provider": self._provider,
             "host_info": self._host_info,
-            "native": self._create_native_module(),
+            "native": self._create_native_module(is_build_file=is_build_file),
         }
 
-    def _create_native_module(self):
+    def _create_native_module(self, is_build_file):
         """
         Creates a native module exposing built-in Buck rules.
 
@@ -911,7 +919,7 @@ class BuildFileProcessor(object):
         :return: 'native' module struct.
         """
         native_globals = {}
-        self._install_builtins(native_globals, force_native_rules=True)
+        self._install_builtins(native_globals, force_native_rules=not is_build_file)
         assert "glob" not in native_globals
         assert "host_info" not in native_globals
         assert "implicit_package_symbol" not in native_globals
@@ -920,7 +928,11 @@ class BuildFileProcessor(object):
         native_globals["host_info"] = self._host_info
         native_globals["implicit_package_symbol"] = self._implicit_package_symbol
         native_globals["read_config"] = self._read_config
-        return self._native_module_class(**native_globals)
+        return (
+            self._native_module_class_for_build_file(**native_globals)
+            if is_build_file
+            else self._native_module_class_for_extension(**native_globals)
+        )
 
     @staticmethod
     def _create_native_module_class(global_functions, native_functions):
@@ -1511,6 +1523,7 @@ class BuildFileProcessor(object):
             with self._import_whitelist_manager.allow_unsafe_import(False):
                 yield
 
+    @traced(stats_key="Process")
     def _process(self, build_env, path, is_implicit_include, package_implicit_load):
         # type: (_GCT, str, bool, Optional[LoadStatement]) -> Tuple[_GCT, types.ModuleType]
         """Process a build file or include at the given path.
@@ -1524,12 +1537,16 @@ class BuildFileProcessor(object):
                                 from that .bzl file.
         :returns: build context (potentially different if retrieved from cache) and loaded module.
         """
+        if isinstance(build_env, IncludeContext):
+            default_globals = (
+                self._default_globals_for_implicit_include
+                if is_implicit_include
+                else self._default_globals_for_extension
+            )
+        else:
+            default_globals = self._default_globals_for_build_file
 
-        default_globals = (
-            self._default_globals_for_implicit_include
-            if is_implicit_include
-            else self._default_globals
-        )
+        emit_trace(path)
 
         # Install the build context for this input as the current context.
         with self._set_build_env(build_env):
@@ -1539,7 +1556,7 @@ class BuildFileProcessor(object):
                 for include in self._implicit_includes:
                     build_include = self._resolve_include(include)
                     inner_env, mod = self._process_include(build_include, True)
-                    self._merge_globals(mod, self._default_globals)
+                    self._merge_globals(mod, default_globals)
                     build_env.includes.add(build_include.path)
                     build_env.merge(inner_env)
 
@@ -1554,19 +1571,21 @@ class BuildFileProcessor(object):
 
             # We don't open this file as binary, as we assume it's a textual source
             # file.
-            with self._wrap_file_access(wrap=False):
-                with open(path, "r") as f:
-                    contents = f.read()
+            with scoped_trace("IO", stats_key="IO"):
+                with self._wrap_file_access(wrap=False):
+                    with open(path, "r") as f:
+                        contents = f.read()
 
-            # Enable absolute imports.  This prevents the compiler from trying to
-            # do a relative import first, and warning that this module doesn't
-            # exist in sys.modules.
-            future_features = absolute_import.compiler_flag
-            code = compile(contents, path, "exec", future_features, 1)
+            with scoped_trace("Compile", stats_key="Compile"):
+                # Enable absolute imports.  This prevents the compiler from
+                # trying to do a relative import first, and warning that
+                # this module doesn't exist in sys.modules.
+                future_features = absolute_import.compiler_flag
+                code = compile(contents, path, "exec", future_features, 1)
 
-            # Execute code with build file sandboxing
-            with self._build_file_sandboxing():
-                exec(code, module.__dict__)
+                # Execute code with build file sandboxing
+                with self._build_file_sandboxing():
+                    exec(code, module.__dict__)
 
         return build_env, module
 
@@ -2011,6 +2030,7 @@ def main():
             if options.profile:
                 profiler = Profiler(True)
                 profiler.start()
+                Tracer.enable()
 
             for build_file in args:
                 query = {
@@ -2106,6 +2126,7 @@ def report_profile(options, to_parent, processed_build_file, profiler):
                 )
             extra_result += "\n\n"
             profile_result = extra_result + profile_result
+            profile_result += Tracer.get_all_traces_and_reset()
             java_process_send_result(to_parent, [], [], profile_result)
         except Exception:
             trace = traceback.format_exc()

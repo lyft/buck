@@ -205,8 +205,8 @@
     <include name="opencensus/opencensus-contrib-grpc-metrics-0.18.0.jar" />
     <include name="oshi/oshi-core-3.3-SNAPSHOT.jar" />
     <include name="pf4j/pf4j-2.0.0-SNAPSHOT.jar" />
-    <include name="protobuf/protobuf-java-3.5.1.jar" />
-    <include name="protobuf/protobuf-java-util-3.5.1.jar" />
+    <include name="protobuf/protobuf-java-3.7.0.jar" />
+    <include name="protobuf/protobuf-java-util-3.7.0.jar" />
     <include name="protobuf/protobuf-lite-3.0.1.jar" />
     <include name="slf4j/slf4j-jdk14-1.7.5.jar" /><!-- redirect slf4j to java.util.logging -->
     <include name="stringtemplate/ST-4.0.8.jar" />
@@ -848,6 +848,7 @@
         <include name="com/facebook/buck/maven/build-file.st"/>
         <include name="com/facebook/buck/python/*.py"/>
         <include name="com/facebook/buck/python/run_inplace.py.in"/>
+        <include name="com/facebook/buck/python/run_inplace_lite.py.in"/>
         <include name="com/facebook/buck/parser/function/BuckPyFunction.stg"/>
         <include name="com/facebook/buck/shell/sh_binary_template"/>
         <include name="com/facebook/buck/jvm/java/FatJar.java" />
@@ -984,7 +985,7 @@
     <exec executable="python" output="${buck.info.file}" logError="true" failonerror="true">
       <arg value="programs/gen_buck_info.py"/>
       <arg value="--java-version"/>
-      <arg value="${ant.java.version}"/>
+      <arg value="${java.version}"/>
     </exec>
   </target>
 

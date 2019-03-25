@@ -28,6 +28,7 @@ import com.facebook.buck.artifact_cache.config.MultiFetchType;
 import com.facebook.buck.artifact_cache.config.SQLiteCacheEntry;
 import com.facebook.buck.core.config.BuckConfig;
 import com.facebook.buck.core.exceptions.HumanReadableException;
+import com.facebook.buck.core.model.TargetConfigurationSerializer;
 import com.facebook.buck.core.model.UnconfiguredBuildTarget;
 import com.facebook.buck.core.util.log.Logger;
 import com.facebook.buck.event.BuckEventBus;
@@ -87,6 +88,7 @@ public class ArtifactCaches implements ArtifactCacheFactory, AutoCloseable {
   private final ArtifactCacheBuckConfig buckConfig;
   private final BuckEventBus buckEventBus;
   private final Function<String, UnconfiguredBuildTarget> unconfiguredBuildTargetFactory;
+  private final TargetConfigurationSerializer targetConfigurationSerializer;
   private final ProjectFilesystem projectFilesystem;
   private final Optional<String> wifiSsid;
   private final ListeningExecutorService httpWriteExecutorService;
@@ -150,6 +152,7 @@ public class ArtifactCaches implements ArtifactCacheFactory, AutoCloseable {
       ArtifactCacheBuckConfig buckConfig,
       BuckEventBus buckEventBus,
       Function<String, UnconfiguredBuildTarget> unconfiguredBuildTargetFactory,
+      TargetConfigurationSerializer targetConfigurationSerializer,
       ProjectFilesystem projectFilesystem,
       Optional<String> wifiSsid,
       ListeningExecutorService httpWriteExecutorService,
@@ -163,6 +166,7 @@ public class ArtifactCaches implements ArtifactCacheFactory, AutoCloseable {
     this.buckConfig = buckConfig;
     this.buckEventBus = buckEventBus;
     this.unconfiguredBuildTargetFactory = unconfiguredBuildTargetFactory;
+    this.targetConfigurationSerializer = targetConfigurationSerializer;
     this.projectFilesystem = projectFilesystem;
     this.wifiSsid = wifiSsid;
     this.httpWriteExecutorService = httpWriteExecutorService;
@@ -229,6 +233,7 @@ public class ArtifactCaches implements ArtifactCacheFactory, AutoCloseable {
             buckConfig,
             buckEventBus,
             unconfiguredBuildTargetFactory,
+            targetConfigurationSerializer,
             projectFilesystem,
             wifiSsid,
             httpWriteExecutorService,
@@ -254,6 +259,7 @@ public class ArtifactCaches implements ArtifactCacheFactory, AutoCloseable {
         new ArtifactCacheBuckConfig(newConfig),
         buckEventBus,
         unconfiguredBuildTargetFactory,
+        targetConfigurationSerializer,
         projectFilesystem,
         wifiSsid,
         httpWriteExecutorService,
@@ -276,6 +282,7 @@ public class ArtifactCaches implements ArtifactCacheFactory, AutoCloseable {
   public static Optional<ArtifactCache> newServedCache(
       ArtifactCacheBuckConfig buckConfig,
       Function<String, UnconfiguredBuildTarget> unconfiguredBuildTargetFactory,
+      TargetConfigurationSerializer targetConfigurationSerializer,
       ProjectFilesystem projectFilesystem) {
     return buckConfig
         .getServedLocalCache()
@@ -285,6 +292,7 @@ public class ArtifactCaches implements ArtifactCacheFactory, AutoCloseable {
                     Optional.empty(),
                     input,
                     unconfiguredBuildTargetFactory,
+                    targetConfigurationSerializer,
                     projectFilesystem,
                     MoreExecutors.newDirectExecutorService()));
   }
@@ -293,6 +301,7 @@ public class ArtifactCaches implements ArtifactCacheFactory, AutoCloseable {
       ArtifactCacheBuckConfig buckConfig,
       BuckEventBus buckEventBus,
       Function<String, UnconfiguredBuildTarget> unconfiguredBuildTargetFactory,
+      TargetConfigurationSerializer targetConfigurationSerializer,
       ProjectFilesystem projectFilesystem,
       Optional<String> wifiSsid,
       ListeningExecutorService httpWriteExecutorService,
@@ -322,6 +331,7 @@ public class ArtifactCaches implements ArtifactCacheFactory, AutoCloseable {
               cacheEntries,
               buckEventBus,
               unconfiguredBuildTargetFactory,
+              targetConfigurationSerializer,
               projectFilesystem,
               builder,
               dirWriteExecutorService);
@@ -332,6 +342,7 @@ public class ArtifactCaches implements ArtifactCacheFactory, AutoCloseable {
               buckConfig,
               buckEventBus,
               unconfiguredBuildTargetFactory,
+              targetConfigurationSerializer,
               projectFilesystem,
               wifiSsid,
               httpWriteExecutorService,
@@ -346,6 +357,7 @@ public class ArtifactCaches implements ArtifactCacheFactory, AutoCloseable {
               cacheEntries,
               buckEventBus,
               unconfiguredBuildTargetFactory,
+              targetConfigurationSerializer,
               projectFilesystem,
               builder);
           break;
@@ -358,6 +370,7 @@ public class ArtifactCaches implements ArtifactCacheFactory, AutoCloseable {
               buckConfig,
               buckEventBus,
               unconfiguredBuildTargetFactory,
+              targetConfigurationSerializer,
               projectFilesystem,
               wifiSsid,
               httpWriteExecutorService,
@@ -406,6 +419,7 @@ public class ArtifactCaches implements ArtifactCacheFactory, AutoCloseable {
       ArtifactCacheEntries artifactCacheEntries,
       BuckEventBus buckEventBus,
       Function<String, UnconfiguredBuildTarget> unconfiguredBuildTargetFactory,
+      TargetConfigurationSerializer targetConfigurationSerializer,
       ProjectFilesystem projectFilesystem,
       ImmutableList.Builder<ArtifactCache> builder,
       ListeningExecutorService storeExecutorService) {
@@ -415,6 +429,7 @@ public class ArtifactCaches implements ArtifactCacheFactory, AutoCloseable {
               Optional.ofNullable(buckEventBus),
               cacheEntry,
               unconfiguredBuildTargetFactory,
+              targetConfigurationSerializer,
               projectFilesystem,
               storeExecutorService));
     }
@@ -425,6 +440,7 @@ public class ArtifactCaches implements ArtifactCacheFactory, AutoCloseable {
       ArtifactCacheBuckConfig buckConfig,
       BuckEventBus buckEventBus,
       Function<String, UnconfiguredBuildTarget> unconfiguredBuildTargetFactory,
+      TargetConfigurationSerializer targetConfigurationSerializer,
       ProjectFilesystem projectFilesystem,
       Optional<String> wifiSsid,
       ListeningExecutorService httpWriteExecutorService,
@@ -450,6 +466,7 @@ public class ArtifactCaches implements ArtifactCacheFactory, AutoCloseable {
               buckConfig.getHostToReportToRemoteCacheServer(),
               buckEventBus,
               unconfiguredBuildTargetFactory,
+              targetConfigurationSerializer,
               projectFilesystem,
               httpWriteExecutorService,
               httpFetchExecutorService,
@@ -464,6 +481,7 @@ public class ArtifactCaches implements ArtifactCacheFactory, AutoCloseable {
       ArtifactCacheEntries artifactCacheEntries,
       BuckEventBus buckEventBus,
       Function<String, UnconfiguredBuildTarget> unconfiguredBuildTargetFactory,
+      TargetConfigurationSerializer targetConfigurationSerializer,
       ProjectFilesystem projectFilesystem,
       ImmutableList.Builder<ArtifactCache> builder) {
     artifactCacheEntries
@@ -475,6 +493,7 @@ public class ArtifactCaches implements ArtifactCacheFactory, AutoCloseable {
                         buckEventBus,
                         cacheEntry,
                         unconfiguredBuildTargetFactory,
+                        targetConfigurationSerializer,
                         projectFilesystem)));
   }
 
@@ -482,6 +501,7 @@ public class ArtifactCaches implements ArtifactCacheFactory, AutoCloseable {
       Optional<BuckEventBus> buckEventBus,
       DirCacheEntry dirCacheConfig,
       Function<String, UnconfiguredBuildTarget> unconfiguredBuildTargetFactory,
+      TargetConfigurationSerializer targetConfigurationSerializer,
       ProjectFilesystem projectFilesystem,
       ListeningExecutorService storeExecutorService) {
     Path cacheDir = dirCacheConfig.getCacheDir();
@@ -502,7 +522,8 @@ public class ArtifactCaches implements ArtifactCacheFactory, AutoCloseable {
       return new LoggingArtifactCacheDecorator(
           buckEventBus.get(),
           dirArtifactCache,
-          new DirArtifactCacheEvent.DirArtifactCacheEventFactory(unconfiguredBuildTargetFactory));
+          new DirArtifactCacheEvent.DirArtifactCacheEventFactory(
+              unconfiguredBuildTargetFactory, targetConfigurationSerializer));
 
     } catch (IOException e) {
       throw new HumanReadableException(
@@ -515,6 +536,7 @@ public class ArtifactCaches implements ArtifactCacheFactory, AutoCloseable {
       String hostToReportToRemote,
       BuckEventBus buckEventBus,
       Function<String, UnconfiguredBuildTarget> unconfiguredBuildTargetFactory,
+      TargetConfigurationSerializer targetConfigurationSerializer,
       ProjectFilesystem projectFilesystem,
       ListeningExecutorService httpWriteExecutorService,
       ListeningExecutorService httpFetchExecutorService,
@@ -528,6 +550,7 @@ public class ArtifactCaches implements ArtifactCacheFactory, AutoCloseable {
             hostToReportToRemote,
             buckEventBus,
             unconfiguredBuildTargetFactory,
+            targetConfigurationSerializer,
             projectFilesystem,
             httpWriteExecutorService,
             httpFetchExecutorService,
@@ -543,6 +566,7 @@ public class ArtifactCaches implements ArtifactCacheFactory, AutoCloseable {
       String hostToReportToRemote,
       BuckEventBus buckEventBus,
       Function<String, UnconfiguredBuildTarget> unconfiguredBuildTargetFactory,
+      TargetConfigurationSerializer targetConfigurationSerializer,
       ProjectFilesystem projectFilesystem,
       ListeningExecutorService httpWriteExecutorService,
       ListeningExecutorService httpFetchExecutorService,
@@ -675,6 +699,7 @@ public class ArtifactCaches implements ArtifactCacheFactory, AutoCloseable {
             .setStoreClient(storeService)
             .setCacheReadMode(cacheDescription.getCacheReadMode())
             .setUnconfiguredBuildTargetFactory(unconfiguredBuildTargetFactory)
+            .setTargetConfigurationSerializer(targetConfigurationSerializer)
             .setProjectFilesystem(projectFilesystem)
             .setBuckEventBus(buckEventBus)
             .setHttpWriteExecutorService(httpWriteExecutorService)
@@ -688,6 +713,7 @@ public class ArtifactCaches implements ArtifactCacheFactory, AutoCloseable {
       BuckEventBus buckEventBus,
       SQLiteCacheEntry cacheConfig,
       Function<String, UnconfiguredBuildTarget> unconfiguredBuildTargetFactory,
+      TargetConfigurationSerializer targetConfigurationSerializer,
       ProjectFilesystem projectFilesystem) {
     Path cacheDir = cacheConfig.getCacheDir();
     try {
@@ -705,7 +731,7 @@ public class ArtifactCaches implements ArtifactCacheFactory, AutoCloseable {
           buckEventBus,
           sqLiteArtifactCache,
           new SQLiteArtifactCacheEvent.SQLiteArtifactCacheEventFactory(
-              unconfiguredBuildTargetFactory));
+              unconfiguredBuildTargetFactory, targetConfigurationSerializer));
     } catch (IOException | SQLException e) {
       throw new HumanReadableException(
           e, "Failure initializing artifact cache directory: %s", cacheDir);

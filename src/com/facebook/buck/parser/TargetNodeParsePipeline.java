@@ -19,6 +19,7 @@ package com.facebook.buck.parser;
 import com.facebook.buck.core.cell.Cell;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.EmptyTargetConfiguration;
+import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.model.impl.ImmutableUnconfiguredBuildTarget;
 import com.facebook.buck.core.model.targetgraph.TargetNode;
 import com.facebook.buck.core.util.log.Logger;
@@ -51,6 +52,7 @@ import javax.annotation.concurrent.ThreadSafe;
  * duplicated (the **JobsCache variables) are used to make sure we don't schedule the same work more
  * than once), however it's possible for multiple read-only commands to duplicate work.
  */
+// TODO: remove after migration to configurable attributes
 @ThreadSafe
 public class TargetNodeParsePipeline
     extends ConvertingPipeline<Map<String, Object>, TargetNode<?>> {
@@ -94,9 +96,14 @@ public class TargetNodeParsePipeline
 
   @Override
   protected BuildTarget getBuildTarget(
-      Path root, Optional<String> cellName, Path buildFile, Map<String, Object> from) {
+      Path root,
+      Optional<String> cellName,
+      Path buildFile,
+      TargetConfiguration targetConfiguration,
+      Map<String, Object> from) {
     return ImmutableUnconfiguredBuildTarget.of(
             UnflavoredBuildTargetFactory.createFromRawNode(root, cellName, from, buildFile))
+        // This pipeline doesn't support configured targets, explicitly erase this information
         .configure(EmptyTargetConfiguration.INSTANCE);
   }
 

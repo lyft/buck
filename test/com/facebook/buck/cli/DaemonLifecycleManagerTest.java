@@ -31,6 +31,8 @@ import com.facebook.buck.core.cell.Cell;
 import com.facebook.buck.core.cell.TestCellBuilder;
 import com.facebook.buck.core.config.BuckConfig;
 import com.facebook.buck.core.config.FakeBuckConfig;
+import com.facebook.buck.core.model.TargetConfigurationSerializer;
+import com.facebook.buck.core.model.impl.JsonTargetConfigurationSerializer;
 import com.facebook.buck.core.parser.buildtargetparser.ParsingUnconfiguredBuildTargetFactory;
 import com.facebook.buck.core.plugin.impl.BuckPluginManagerFactory;
 import com.facebook.buck.core.rules.knowntypes.KnownRuleTypesProvider;
@@ -75,6 +77,7 @@ public class DaemonLifecycleManagerTest {
   private PluginManager pluginManager;
   private WatchmanClient watchmanClient;
   private Watchman watchman;
+  private TargetConfigurationSerializer targetConfigurationSerializer;
 
   @Before
   public void setUp() {
@@ -88,12 +91,13 @@ public class DaemonLifecycleManagerTest {
     watchman =
         FakeWatchmanFactory.createWatchman(
             watchmanClient, filesystem.getRootPath(), filesystem.getPath(""), "watch");
+    targetConfigurationSerializer = new JsonTargetConfigurationSerializer();
   }
 
   @Test
   public void whenBuckConfigChangesParserInvalidated() {
     daemonLifecycleManager.resetDaemon();
-    Pair<Daemon, DaemonStatus> daemonResult1 =
+    Pair<BuckGlobalState, DaemonStatus> daemonResult1 =
         daemonLifecycleManager.getDaemon(
             new TestCellBuilder()
                 .setBuckConfig(
@@ -109,10 +113,11 @@ public class DaemonLifecycleManagerTest {
             Console.createNullConsole(),
             clock,
             new ParsingUnconfiguredBuildTargetFactory(),
+            targetConfigurationSerializer,
             Optional::empty,
             Optional.empty());
 
-    Pair<Daemon, DaemonStatus> daemonResult2 =
+    Pair<BuckGlobalState, DaemonStatus> daemonResult2 =
         daemonLifecycleManager.getDaemon(
             new TestCellBuilder()
                 .setBuckConfig(
@@ -128,10 +133,11 @@ public class DaemonLifecycleManagerTest {
             Console.createNullConsole(),
             clock,
             new ParsingUnconfiguredBuildTargetFactory(),
+            targetConfigurationSerializer,
             Optional::empty,
             Optional.empty());
 
-    Pair<Daemon, DaemonStatus> daemonResult3 =
+    Pair<BuckGlobalState, DaemonStatus> daemonResult3 =
         daemonLifecycleManager.getDaemon(
             new TestCellBuilder()
                 .setBuckConfig(
@@ -147,6 +153,7 @@ public class DaemonLifecycleManagerTest {
             Console.createNullConsole(),
             clock,
             new ParsingUnconfiguredBuildTargetFactory(),
+            targetConfigurationSerializer,
             Optional::empty,
             Optional.empty());
 
@@ -186,6 +193,7 @@ public class DaemonLifecycleManagerTest {
             Console.createNullConsole(),
             clock,
             new ParsingUnconfiguredBuildTargetFactory(),
+            targetConfigurationSerializer,
             Optional::empty,
             Optional.empty());
 
@@ -199,6 +207,7 @@ public class DaemonLifecycleManagerTest {
             Console.createNullConsole(),
             clock,
             new ParsingUnconfiguredBuildTargetFactory(),
+            targetConfigurationSerializer,
             Optional::empty,
             Optional.empty()));
   }
@@ -219,6 +228,7 @@ public class DaemonLifecycleManagerTest {
                 Console.createNullConsole(),
                 clock,
                 new ParsingUnconfiguredBuildTargetFactory(),
+                targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
             .getFirst();
@@ -232,6 +242,7 @@ public class DaemonLifecycleManagerTest {
                 Console.createNullConsole(),
                 clock,
                 new ParsingUnconfiguredBuildTargetFactory(),
+                targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
             .getFirst();
@@ -257,6 +268,7 @@ public class DaemonLifecycleManagerTest {
                 Console.createNullConsole(),
                 clock,
                 new ParsingUnconfiguredBuildTargetFactory(),
+                targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
             .getFirst();
@@ -274,6 +286,7 @@ public class DaemonLifecycleManagerTest {
                 Console.createNullConsole(),
                 clock,
                 new ParsingUnconfiguredBuildTargetFactory(),
+                targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
             .getFirst();
@@ -317,6 +330,7 @@ public class DaemonLifecycleManagerTest {
                 Console.createNullConsole(),
                 clock,
                 new ParsingUnconfiguredBuildTargetFactory(),
+                targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
             .getFirst();
@@ -329,6 +343,7 @@ public class DaemonLifecycleManagerTest {
                 Console.createNullConsole(),
                 clock,
                 new ParsingUnconfiguredBuildTargetFactory(),
+                targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
             .getFirst();
@@ -347,6 +362,7 @@ public class DaemonLifecycleManagerTest {
                 Console.createNullConsole(),
                 clock,
                 new ParsingUnconfiguredBuildTargetFactory(),
+                targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
             .getFirst();
@@ -361,6 +377,7 @@ public class DaemonLifecycleManagerTest {
                 Console.createNullConsole(),
                 clock,
                 new ParsingUnconfiguredBuildTargetFactory(),
+                targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
             .getFirst();
@@ -405,6 +422,7 @@ public class DaemonLifecycleManagerTest {
                 Console.createNullConsole(),
                 clock,
                 new ParsingUnconfiguredBuildTargetFactory(),
+                targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
             .getFirst();
@@ -417,6 +435,7 @@ public class DaemonLifecycleManagerTest {
                 Console.createNullConsole(),
                 clock,
                 new ParsingUnconfiguredBuildTargetFactory(),
+                targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
             .getFirst();
@@ -436,6 +455,7 @@ public class DaemonLifecycleManagerTest {
                 Console.createNullConsole(),
                 clock,
                 new ParsingUnconfiguredBuildTargetFactory(),
+                targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
             .getFirst();
@@ -450,6 +470,7 @@ public class DaemonLifecycleManagerTest {
                 Console.createNullConsole(),
                 clock,
                 new ParsingUnconfiguredBuildTargetFactory(),
+                targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
             .getFirst();
@@ -476,7 +497,7 @@ public class DaemonLifecycleManagerTest {
     Cell cell = createCellWithAndroidSdk(androidSdkPath);
     cell.getToolchainProvider()
         .getByNameIfPresent(AndroidSdkLocation.DEFAULT_NAME, AndroidSdkLocation.class);
-    Daemon daemonWithBrokenAndroidSdk =
+    BuckGlobalState buckGlobalStateWithBrokenAndroidSdk =
         daemonLifecycleManager
             .getDaemon(
                 cell,
@@ -485,6 +506,7 @@ public class DaemonLifecycleManagerTest {
                 Console.createNullConsole(),
                 clock,
                 new ParsingUnconfiguredBuildTargetFactory(),
+                targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
             .getFirst();
@@ -492,7 +514,7 @@ public class DaemonLifecycleManagerTest {
     tmp.newFolder("android-sdk");
 
     cell = createCellWithAndroidSdk(androidSdkPath);
-    Daemon daemonWithWorkingAndroidSdk =
+    BuckGlobalState buckGlobalStateWithWorkingAndroidSdk =
         daemonLifecycleManager
             .getDaemon(
                 cell,
@@ -501,11 +523,12 @@ public class DaemonLifecycleManagerTest {
                 Console.createNullConsole(),
                 clock,
                 new ParsingUnconfiguredBuildTargetFactory(),
+                targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
             .getFirst();
 
-    assertNotEquals(daemonWithBrokenAndroidSdk, daemonWithWorkingAndroidSdk);
+    assertNotEquals(buckGlobalStateWithBrokenAndroidSdk, buckGlobalStateWithWorkingAndroidSdk);
   }
 
   @Test
@@ -518,7 +541,7 @@ public class DaemonLifecycleManagerTest {
     Cell cell = createCellWithAndroidSdk(androidSdkPath);
     cell.getToolchainProvider()
         .getByNameIfPresent(AndroidSdkLocation.DEFAULT_NAME, AndroidSdkLocation.class);
-    Daemon daemonWithWorkingAndroidSdk =
+    BuckGlobalState buckGlobalStateWithWorkingAndroidSdk =
         daemonLifecycleManager
             .getDaemon(
                 cell,
@@ -527,6 +550,7 @@ public class DaemonLifecycleManagerTest {
                 Console.createNullConsole(),
                 clock,
                 new ParsingUnconfiguredBuildTargetFactory(),
+                targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
             .getFirst();
@@ -534,7 +558,7 @@ public class DaemonLifecycleManagerTest {
     Files.deleteIfExists(androidSdkPath);
 
     cell = createCellWithAndroidSdk(androidSdkPath);
-    Daemon daemonWithBrokenAndroidSdk =
+    BuckGlobalState buckGlobalStateWithBrokenAndroidSdk =
         daemonLifecycleManager
             .getDaemon(
                 cell,
@@ -543,11 +567,12 @@ public class DaemonLifecycleManagerTest {
                 Console.createNullConsole(),
                 clock,
                 new ParsingUnconfiguredBuildTargetFactory(),
+                targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
             .getFirst();
 
-    assertNotEquals(daemonWithWorkingAndroidSdk, daemonWithBrokenAndroidSdk);
+    assertNotEquals(buckGlobalStateWithWorkingAndroidSdk, buckGlobalStateWithBrokenAndroidSdk);
   }
 
   @Test
@@ -560,7 +585,7 @@ public class DaemonLifecycleManagerTest {
     Cell cell = createCellWithAndroidSdk(androidSdkPath);
     cell.getToolchainProvider()
         .getByNameIfPresent(AndroidSdkLocation.DEFAULT_NAME, AndroidSdkLocation.class);
-    Daemon daemonWithBrokenAndroidSdk1 =
+    BuckGlobalState buckGlobalStateWithBrokenAndroidSdk1 =
         daemonLifecycleManager
             .getDaemon(
                 cell,
@@ -569,6 +594,7 @@ public class DaemonLifecycleManagerTest {
                 Console.createNullConsole(),
                 clock,
                 new ParsingUnconfiguredBuildTargetFactory(),
+                targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
             .getFirst();
@@ -576,7 +602,7 @@ public class DaemonLifecycleManagerTest {
     cell = createCellWithAndroidSdk(androidSdkPath);
     cell.getToolchainProvider()
         .getByNameIfPresent(AndroidSdkLocation.DEFAULT_NAME, AndroidSdkLocation.class);
-    Daemon daemonWithBrokenAndroidSdk2 =
+    BuckGlobalState buckGlobalStateWithBrokenAndroidSdk2 =
         daemonLifecycleManager
             .getDaemon(
                 cell,
@@ -585,11 +611,12 @@ public class DaemonLifecycleManagerTest {
                 Console.createNullConsole(),
                 clock,
                 new ParsingUnconfiguredBuildTargetFactory(),
+                targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
             .getFirst();
 
-    assertEquals(daemonWithBrokenAndroidSdk1, daemonWithBrokenAndroidSdk2);
+    assertEquals(buckGlobalStateWithBrokenAndroidSdk1, buckGlobalStateWithBrokenAndroidSdk2);
   }
 
   @Test
@@ -603,7 +630,7 @@ public class DaemonLifecycleManagerTest {
     Cell cell = createCellWithAndroidSdk(androidSdkPath);
     cell.getToolchainProvider()
         .getByNameIfPresent(AndroidSdkLocation.DEFAULT_NAME, AndroidSdkLocation.class);
-    Daemon daemonWithBrokenAndroidSdk1 =
+    BuckGlobalState buckGlobalStateWithBrokenAndroidSdk1 =
         daemonLifecycleManager
             .getDaemon(
                 cell,
@@ -612,12 +639,13 @@ public class DaemonLifecycleManagerTest {
                 Console.createNullConsole(),
                 clock,
                 new ParsingUnconfiguredBuildTargetFactory(),
+                targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
             .getFirst();
 
     cell = createCellWithAndroidSdk(androidSdkPath);
-    Daemon daemonWithBrokenAndroidSdk2 =
+    BuckGlobalState buckGlobalStateWithBrokenAndroidSdk2 =
         daemonLifecycleManager
             .getDaemon(
                 cell,
@@ -626,11 +654,12 @@ public class DaemonLifecycleManagerTest {
                 Console.createNullConsole(),
                 clock,
                 new ParsingUnconfiguredBuildTargetFactory(),
+                targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
             .getFirst();
 
-    assertEquals(daemonWithBrokenAndroidSdk1, daemonWithBrokenAndroidSdk2);
+    assertEquals(buckGlobalStateWithBrokenAndroidSdk1, buckGlobalStateWithBrokenAndroidSdk2);
   }
 
   @Test
@@ -644,31 +673,29 @@ public class DaemonLifecycleManagerTest {
     cell.getToolchainProvider()
         .getByNameIfPresent(AndroidSdkLocation.DEFAULT_NAME, AndroidSdkLocation.class);
     Object daemonWithBrokenAndroidSdk1 =
-        daemonLifecycleManager
-            .getDaemon(
-                cell,
-                knownRuleTypesProvider,
-                watchman,
-                Console.createNullConsole(),
-                clock,
-                new ParsingUnconfiguredBuildTargetFactory(),
-                Optional::empty,
-                Optional.empty())
-            .getFirst();
+        daemonLifecycleManager.getDaemon(
+            cell,
+            knownRuleTypesProvider,
+            watchman,
+            Console.createNullConsole(),
+            clock,
+            new ParsingUnconfiguredBuildTargetFactory(),
+            targetConfigurationSerializer,
+            Optional::empty,
+            Optional.empty());
 
     cell = createCellWithAndroidSdk(androidSdkPath.resolve("some-other-dir"));
     Object daemonWithBrokenAndroidSdk2 =
-        daemonLifecycleManager
-            .getDaemon(
-                cell,
-                knownRuleTypesProvider,
-                watchman,
-                Console.createNullConsole(),
-                clock,
-                new ParsingUnconfiguredBuildTargetFactory(),
-                Optional::empty,
-                Optional.empty())
-            .getFirst();
+        daemonLifecycleManager.getDaemon(
+            cell,
+            knownRuleTypesProvider,
+            watchman,
+            Console.createNullConsole(),
+            clock,
+            new ParsingUnconfiguredBuildTargetFactory(),
+            targetConfigurationSerializer,
+            Optional::empty,
+            Optional.empty());
 
     assertNotEquals(daemonWithBrokenAndroidSdk1, daemonWithBrokenAndroidSdk2);
   }
@@ -677,7 +704,7 @@ public class DaemonLifecycleManagerTest {
   public void testDaemonUptime() {
     Cell cell = new TestCellBuilder().setBuckConfig(buckConfig).setFilesystem(filesystem).build();
     SettableFakeClock clock = new SettableFakeClock(1000, 0);
-    Daemon daemon =
+    BuckGlobalState buckGlobalState =
         daemonLifecycleManager
             .getDaemon(
                 cell,
@@ -686,12 +713,13 @@ public class DaemonLifecycleManagerTest {
                 Console.createNullConsole(),
                 clock,
                 new ParsingUnconfiguredBuildTargetFactory(),
+                targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
             .getFirst();
 
-    assertEquals(daemon.getUptime(), 0);
+    assertEquals(buckGlobalState.getUptime(), 0);
     clock.setCurrentTimeMillis(2000);
-    assertEquals(daemon.getUptime(), 1000);
+    assertEquals(buckGlobalState.getUptime(), 1000);
   }
 }

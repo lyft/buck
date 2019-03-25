@@ -19,8 +19,10 @@ package com.facebook.buck.parser;
 import com.facebook.buck.core.cell.Cell;
 import com.facebook.buck.core.description.attr.ImplicitFlavorsInferringDescription;
 import com.facebook.buck.core.model.BuildTarget;
+import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.model.Flavor;
 import com.facebook.buck.core.model.HasDefaultFlavors;
+import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.model.targetgraph.TargetNode;
 import com.facebook.buck.core.util.log.Logger;
 import com.facebook.buck.event.BuckEventBus;
@@ -33,7 +35,6 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.collect.Iterables;
 import com.google.common.util.concurrent.ListenableFuture;
-import java.io.IOException;
 import java.nio.file.Path;
 import java.util.function.Supplier;
 
@@ -44,6 +45,7 @@ import java.util.function.Supplier;
  * <p>Computed targets are cached but are automatically invalidated if Watchman reports any
  * filesystem changes that may affect computed results.
  */
+// TODO: remove after migration to configurable attributes
 class DefaultParser extends AbstractParser {
 
   private static final Logger LOG = Logger.get(Parser.class);
@@ -60,14 +62,14 @@ class DefaultParser extends AbstractParser {
     this.targetSpecResolver = targetSpecResolver;
   }
 
-  @SuppressWarnings("unused")
   @Override
   protected ImmutableSet<BuildTarget> collectBuildTargetsFromTargetNodeSpecs(
       ParsingContext parsingContext,
       PerBuildState state,
       Iterable<? extends TargetNodeSpec> targetNodeSpecs,
+      TargetConfiguration targetConfiguration,
       boolean excludeConfigurationTargets)
-      throws IOException, InterruptedException {
+      throws InterruptedException {
     TargetNodeProviderForSpecResolver<TargetNode<?>> targetNodeProvider =
         createTargetNodeProviderForSpecResolver(state);
 
@@ -76,6 +78,9 @@ class DefaultParser extends AbstractParser {
             targetSpecResolver.resolveTargetSpecs(
                 parsingContext.getCell(),
                 targetNodeSpecs,
+                // This parser doesn't support configured targets, explicitly erase information
+                // about target configuration
+                EmptyTargetConfiguration.INSTANCE,
                 (buildTarget, targetNode, targetType) ->
                     applyDefaultFlavors(
                         buildTarget,
@@ -97,16 +102,26 @@ class DefaultParser extends AbstractParser {
 
       @Override
       public ListenableFuture<ImmutableList<TargetNode<?>>> getAllTargetNodesJob(
-          Cell cell, Path buildFile) throws BuildTargetException {
-        return state.getAllTargetNodesJob(cell, buildFile);
+          Cell cell, Path buildFile, TargetConfiguration targetConfiguration)
+          throws BuildTargetException {
+        return state.getAllTargetNodesJob(cell, buildFile, targetConfiguration);
       }
     };
   }
 
   @Override
+  public ImmutableList<TargetNode<?>> getAllTargetNodesWithTargetCompatibilityFiltering(
+      PerBuildState state, Cell cell, Path buildFile, TargetConfiguration targetConfiguration)
+      throws BuildFileParseException {
+    return getAllTargetNodes(state, cell, buildFile, targetConfiguration);
+  }
+
+  @Override
   public ImmutableList<ImmutableSet<BuildTarget>> resolveTargetSpecs(
-      ParsingContext parsingContext, Iterable<? extends TargetNodeSpec> specs)
-      throws BuildFileParseException, InterruptedException, IOException {
+      ParsingContext parsingContext,
+      Iterable<? extends TargetNodeSpec> specs,
+      TargetConfiguration targetConfiguration)
+      throws BuildFileParseException, InterruptedException {
 
     try (PerBuildState state =
         perBuildStateFactory.create(parsingContext, permState, targetPlatforms.get())) {
@@ -115,6 +130,9 @@ class DefaultParser extends AbstractParser {
       return targetSpecResolver.resolveTargetSpecs(
           parsingContext.getCell(),
           specs,
+          // This parser doesn't support configured targets, explicitly erase information
+          // about target configuration
+          EmptyTargetConfiguration.INSTANCE,
           (buildTarget, targetNode, targetType) ->
               applyDefaultFlavors(
                   buildTarget, targetNode, targetType, parsingContext.getApplyDefaultFlavorsMode()),

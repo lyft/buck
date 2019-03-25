@@ -31,6 +31,7 @@ import com.facebook.buck.core.description.BaseDescription;
 import com.facebook.buck.core.exceptions.HumanReadableException;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.Flavor;
+import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.model.UnflavoredBuildTarget;
 import com.facebook.buck.core.model.impl.ImmutableUnflavoredBuildTarget;
 import com.facebook.buck.core.model.targetgraph.NoSuchTargetException;
@@ -51,11 +52,11 @@ import com.facebook.buck.event.BuckEventBus;
 import com.facebook.buck.event.ConsoleEvent;
 import com.facebook.buck.features.halide.HalideBuckConfig;
 import com.facebook.buck.parser.BuildFileSpec;
+import com.facebook.buck.parser.ImmutableTargetNodePredicateSpec;
 import com.facebook.buck.parser.Parser;
 import com.facebook.buck.parser.ParserConfig;
 import com.facebook.buck.parser.ParsingContext;
 import com.facebook.buck.parser.SpeculativeParsing;
-import com.facebook.buck.parser.TargetNodePredicateSpec;
 import com.facebook.buck.parser.TargetNodeSpec;
 import com.facebook.buck.parser.exceptions.BuildFileParseException;
 import com.facebook.buck.parser.exceptions.NoSuchBuildTargetException;
@@ -117,6 +118,7 @@ public class XCodeProjectCommandHelper {
   private final TypeCoercerFactory typeCoercerFactory;
   private final UnconfiguredBuildTargetFactory unconfiguredBuildTargetFactory;
   private final Cell cell;
+  private final TargetConfiguration targetConfiguration;
   private final ImmutableSet<Flavor> appleCxxFlavors;
   private final RuleKeyConfiguration ruleKeyConfiguration;
   private final Console console;
@@ -150,6 +152,7 @@ public class XCodeProjectCommandHelper {
       UnconfiguredBuildTargetFactory unconfiguredBuildTargetFactory,
       Cell cell,
       RuleKeyConfiguration ruleKeyConfiguration,
+      TargetConfiguration targetConfiguration,
       Console console,
       Optional<ProcessManager> processManager,
       ImmutableMap<String, String> environment,
@@ -179,6 +182,7 @@ public class XCodeProjectCommandHelper {
     this.typeCoercerFactory = typeCoercerFactory;
     this.unconfiguredBuildTargetFactory = unconfiguredBuildTargetFactory;
     this.cell = cell;
+    this.targetConfiguration = targetConfiguration;
     this.appleCxxFlavors = appleCxxFlavors;
     this.ruleKeyConfiguration = ruleKeyConfiguration;
     this.console = console;
@@ -218,7 +222,8 @@ public class XCodeProjectCommandHelper {
       passedInTargetsSet =
           ImmutableSet.copyOf(
               Iterables.concat(
-                  parser.resolveTargetSpecs(parsingContext, argsParser.apply(arguments))));
+                  parser.resolveTargetSpecs(
+                      parsingContext, argsParser.apply(arguments), targetConfiguration)));
       projectGraph = getProjectGraphForIde(passedInTargetsSet);
     } catch (BuildFileParseException e) {
       buckEventBus.post(ConsoleEvent.severe(MoreExceptions.getHumanReadableOrLocalizedMessage(e)));
@@ -486,10 +491,11 @@ public class XCodeProjectCommandHelper {
 
       CxxPlatform defaultCxxPlatform =
           cxxPlatformsProvider.getDefaultUnresolvedCxxPlatform().getLegacyTotallyUnsafe();
+      Cell workspaceCell = cell.getCell(inputTarget);
       WorkspaceAndProjectGenerator generator =
           new WorkspaceAndProjectGenerator(
               xcodeDescriptions,
-              cell,
+              workspaceCell,
               targetGraphAndTargets.getTargetGraph(),
               workspaceArgs,
               inputTarget,
@@ -520,7 +526,9 @@ public class XCodeProjectCommandHelper {
           inputTarget, requiredBuildTargetsForWorkspace);
       requiredBuildTargetsBuilder.addAll(requiredBuildTargetsForWorkspace);
 
-      presenter.present(inputTarget.getFullyQualifiedName(), outputPath);
+      Path absolutePath = workspaceCell.getFilesystem().resolve(outputPath);
+      Path relativePath = cell.getFilesystem().relativize(absolutePath);
+      presenter.present(inputTarget.getFullyQualifiedName(), relativePath);
     }
 
     return requiredBuildTargetsBuilder.build();
@@ -542,7 +550,9 @@ public class XCodeProjectCommandHelper {
       passedInTargetsSet =
           parser
               .resolveTargetSpecs(
-                  parsingContext.withSpeculativeParsing(SpeculativeParsing.DISABLED), specs)
+                  parsingContext.withSpeculativeParsing(SpeculativeParsing.DISABLED),
+                  specs,
+                  targetConfiguration)
               .stream()
               .flatMap(Collection::stream)
               .collect(ImmutableSet.toImmutableSet());
@@ -685,8 +695,9 @@ public class XCodeProjectCommandHelper {
           .buildTargetGraphWithConfigurationTargets(
               parsingContext,
               ImmutableList.of(
-                  TargetNodePredicateSpec.of(
-                      BuildFileSpec.fromRecursivePath(Paths.get(""), cell.getRoot()))))
+                  ImmutableTargetNodePredicateSpec.of(
+                      BuildFileSpec.fromRecursivePath(Paths.get(""), cell.getRoot()))),
+              targetConfiguration)
           .getTargetGraph();
     }
     Preconditions.checkState(!passedInTargets.isEmpty());

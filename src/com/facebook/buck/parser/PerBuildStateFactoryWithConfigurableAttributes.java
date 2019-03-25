@@ -39,10 +39,13 @@ import com.facebook.buck.core.rules.platform.RuleBasedConstraintResolver;
 import com.facebook.buck.core.select.SelectableResolver;
 import com.facebook.buck.core.select.SelectorListResolver;
 import com.facebook.buck.core.select.impl.DefaultSelectorListResolver;
+import com.facebook.buck.core.select.impl.SelectorFactory;
+import com.facebook.buck.core.select.impl.SelectorListFactory;
 import com.facebook.buck.event.BuckEventBus;
 import com.facebook.buck.io.watchman.Watchman;
 import com.facebook.buck.log.GlobalStateManager;
 import com.facebook.buck.manifestservice.ManifestService;
+import com.facebook.buck.rules.coercer.BuildTargetTypeCoercer;
 import com.facebook.buck.rules.coercer.ConstructorArgMarshaller;
 import com.facebook.buck.rules.coercer.TypeCoercerFactory;
 import com.facebook.buck.util.ThrowingCloseableMemoizedSupplier;
@@ -175,6 +178,7 @@ class PerBuildStateFactoryWithConfigurableAttributes extends PerBuildStateFactor
             MoreExecutors.newDirectExecutorService(),
             rawTargetNodePipeline,
             eventBus,
+            "nonresolving_raw_target_node_parse_pipeline",
             enableSpeculativeParsing,
             nonResolvingRawTargetNodeToTargetNodeFactory);
 
@@ -205,31 +209,37 @@ class PerBuildStateFactoryWithConfigurableAttributes extends PerBuildStateFactor
             symlinkCheckers,
             selectorListResolver,
             constraintResolver,
-            targetPlatform,
-            !parsingContext.excludeUnsupportedTargets());
+            targetPlatform);
 
-    ListeningExecutorService configuredPipeline =
+    ListeningExecutorService configuredPipelineExecutor =
         MoreExecutors.listeningDecorator(
             createExecutorService(rootCell.getBuckConfig(), "configured-pipeline"));
 
     ParsePipeline<TargetNode<?>> targetNodeParsePipeline =
         new RawTargetNodeToTargetNodeParsePipeline(
             daemonicParserState.getOrCreateNodeCache(TargetNode.class),
-            configuredPipeline,
+            configuredPipelineExecutor,
             rawTargetNodePipeline,
             eventBus,
+            "configured_raw_target_node_parse_pipeline",
             enableSpeculativeParsing,
             rawTargetNodeToTargetNodeFactory) {
           @Override
           public void close() {
             super.close();
             nonResolvingTargetNodeParsePipeline.close();
+            rawTargetNodePipeline.close();
             try {
-              MostExecutors.shutdown(configuredPipeline, 1, TimeUnit.MINUTES);
+              MostExecutors.shutdown(configuredPipelineExecutor, 1, TimeUnit.MINUTES);
             } catch (InterruptedException e) {
             }
           }
         };
+
+    SelectorListFactory selectorListFactory =
+        new SelectorListFactory(
+            new SelectorFactory(
+                new BuildTargetTypeCoercer(unconfiguredBuildTargetFactory)::coerce));
 
     cellManager.register(rootCell);
 
@@ -237,8 +247,10 @@ class PerBuildStateFactoryWithConfigurableAttributes extends PerBuildStateFactor
         cellManager,
         buildFileRawNodeParsePipeline,
         targetNodeParsePipeline,
+        parsingContext,
         constraintResolver,
         selectorListResolver,
+        selectorListFactory,
         targetPlatform);
   }
 
