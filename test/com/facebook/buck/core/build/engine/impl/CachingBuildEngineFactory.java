@@ -24,13 +24,15 @@ import com.facebook.buck.core.build.engine.delegate.LocalCachingBuildEngineDeleg
 import com.facebook.buck.core.build.engine.type.BuildType;
 import com.facebook.buck.core.build.engine.type.DepFiles;
 import com.facebook.buck.core.build.engine.type.MetadataStorage;
+import com.facebook.buck.core.cell.TestCellPathResolver;
 import com.facebook.buck.core.model.TargetConfigurationSerializer;
-import com.facebook.buck.core.model.impl.JsonTargetConfigurationSerializer;
+import com.facebook.buck.core.model.TargetConfigurationSerializerForTests;
 import com.facebook.buck.core.rules.BuildRuleResolver;
 import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.build.strategy.BuildRuleStrategy;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
 import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
+import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
 import com.facebook.buck.rules.keys.DefaultRuleKeyCache;
 import com.facebook.buck.rules.keys.RuleKeyDiagnostics;
 import com.facebook.buck.rules.keys.RuleKeyFactories;
@@ -140,7 +142,8 @@ public class CachingBuildEngineFactory {
     SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(buildRuleResolver);
     SourcePathResolver sourcePathResolver = DefaultSourcePathResolver.from(ruleFinder);
     TargetConfigurationSerializer targetConfigurationSerializer =
-        new JsonTargetConfigurationSerializer();
+        TargetConfigurationSerializerForTests.create(
+            TestCellPathResolver.get(new FakeProjectFilesystem()));
     if (ruleKeyFactories.isPresent()) {
       return new CachingBuildEngine(
           cachingBuildEngineDelegate,

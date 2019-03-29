@@ -1,7 +1,5 @@
-load("//tools/build_rules:export_files.bzl", "export_files")
-
 java_library(
-    name = "moduleclass",
+    name = "modulewithdeps",
     srcs = glob(["*.java"]),
     deps = [
         "//src/com/facebook/buck/core/module/impl:impl",
@@ -14,36 +12,53 @@ java_library(
 )
 
 java_binary(
-    name = "moduleclass-jar",
+    name = "modulewithdeps-jar",
     main_class = "com.facebook.buck.core.module.impl.modulewithdeps.ModuleWithDependenciesTest",
     deps = [
-        ":moduleclass",
+        ":modulewithdeps",
         "//third-party/java/slf4j:slf4j",
     ],
 )
 
-export_files(["known-hash.txt"])
+export_file(
+    name = "known-hash.txt",
+    visibility = [
+        "PUBLIC",
+    ],
+)
 
 # Replace real hash in the module jar with a known value
 genrule(
     name = "test_module-jar-with-known-hash",
     out = "test_module.jar",
-    cmd = " ".join([
-        "$(exe //py/buck/zip:append_with_copy)",
-        "$(location {}) $OUT".format("//test/com/facebook/buck/core/module/impl/modulewithdeps/test_module:test_module-module"),
-        "META-INF/module-binary-hash.txt $(location :{})".format("known-hash.txt"),
-    ]),
+    cmd = " ".join(
+        [
+            "$(exe //py/buck/zip:append_with_copy)",
+            "$(location {}) $OUT".format(
+                "//test/com/facebook/buck/core/module/impl/modulewithdeps/test_module:test_module-module",
+            ),
+            "META-INF/module-binary-hash.txt $(location :{})".format(
+                "known-hash.txt",
+            ),
+        ],
+    ),
 )
 
 # Replace real hash in the module jar with a known value
 genrule(
     name = "dependent_module-jar-with-known-hash",
     out = "dependent_module.jar",
-    cmd = " ".join([
-        "$(exe //py/buck/zip:append_with_copy)",
-        "$(location {}) $OUT".format("//test/com/facebook/buck/core/module/impl/modulewithdeps/dependent_module:dependent_module-module"),
-        "META-INF/module-binary-hash.txt $(location :{})".format("known-hash.txt"),
-    ]),
+    cmd = " ".join(
+        [
+            "$(exe //py/buck/zip:append_with_copy)",
+            "$(location {}) $OUT".format(
+                "//test/com/facebook/buck/core/module/impl/modulewithdeps/dependent_module:dependent_module-module",
+            ),
+            "META-INF/module-binary-hash.txt $(location :{})".format(
+                "known-hash.txt",
+            ),
+        ],
+    ),
 )
 
 # Copy modules to a place where they can be loaded by plugin manager
@@ -55,13 +70,12 @@ genrule(
 )
 
 # Running tests as a shell script to reconstruct the layout of modules and how they are loaded
-sh_test(
-    name = "moduleclass-test",
-    args = [
-        "java",
-        "-Dpf4j.pluginsDir=$(location :copy-modules)",
-        "-jar",
-        "$(location :moduleclass-jar)",
+python_test(
+    name = "modulewithdeps-test",
+    srcs = [
+        "//test/com/facebook/buck/core/module/impl:test_app.py",
     ],
-    test = "//test/com/facebook/buck/core/module/impl:run.sh",
+    env = {
+        "CMD": "java -Dpf4j.pluginsDir=$(location :copy-modules) -jar $(location :modulewithdeps-jar)",
+    },
 )

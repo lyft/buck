@@ -84,7 +84,7 @@ public interface NativeLinkable {
     return getNativeLinkableInput(cxxPlatform, type, false, graphBuilder);
   }
 
-  Linkage getPreferredLinkage(CxxPlatform cxxPlatform, ActionGraphBuilder graphBuilder);
+  Linkage getPreferredLinkage(CxxPlatform cxxPlatform);
 
   /**
    * @return a map of shared library SONAME to shared library path for the given {@link
@@ -95,7 +95,7 @@ public interface NativeLinkable {
 
   /** @return whether this {@link NativeLinkable} supports omnibus linking. */
   @SuppressWarnings("unused")
-  default boolean supportsOmnibusLinking(CxxPlatform cxxPlatform, ActionGraphBuilder graphBuilder) {
+  default boolean supportsOmnibusLinking(CxxPlatform cxxPlatform) {
     return true;
   }
 

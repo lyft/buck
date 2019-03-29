@@ -275,7 +275,7 @@ abstract class AbstractPrebuiltCxxLibraryGroupDescription
       }
 
       @Override
-      public Linkage getPreferredLinkage(CxxPlatform cxxPlatform, ActionGraphBuilder graphBuilder) {
+      public Linkage getPreferredLinkage(CxxPlatform cxxPlatform) {
 
         // If we both shared and static libs, we support any linkage.
         if (!args.getSharedLink().isEmpty()
@@ -298,9 +298,8 @@ abstract class AbstractPrebuiltCxxLibraryGroupDescription
       }
 
       @Override
-      public boolean supportsOmnibusLinking(
-          CxxPlatform cxxPlatform, ActionGraphBuilder graphBuilder) {
-        return getPreferredLinkage(cxxPlatform, graphBuilder) != Linkage.SHARED;
+      public boolean supportsOmnibusLinking(CxxPlatform cxxPlatform) {
+        return getPreferredLinkage(cxxPlatform) != Linkage.SHARED;
       }
 
       @Override

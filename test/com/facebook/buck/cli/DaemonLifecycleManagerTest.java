@@ -28,12 +28,15 @@ import com.facebook.buck.apple.AppleNativeIntegrationTestUtils;
 import com.facebook.buck.apple.toolchain.ApplePlatform;
 import com.facebook.buck.cli.DaemonLifecycleManager.DaemonStatus;
 import com.facebook.buck.core.cell.Cell;
+import com.facebook.buck.core.cell.CellPathResolver;
 import com.facebook.buck.core.cell.TestCellBuilder;
+import com.facebook.buck.core.cell.TestCellPathResolver;
 import com.facebook.buck.core.config.BuckConfig;
 import com.facebook.buck.core.config.FakeBuckConfig;
 import com.facebook.buck.core.model.TargetConfigurationSerializer;
 import com.facebook.buck.core.model.impl.JsonTargetConfigurationSerializer;
 import com.facebook.buck.core.parser.buildtargetparser.ParsingUnconfiguredBuildTargetFactory;
+import com.facebook.buck.core.parser.buildtargetparser.UnconfiguredBuildTargetFactory;
 import com.facebook.buck.core.plugin.impl.BuckPluginManagerFactory;
 import com.facebook.buck.core.rules.knowntypes.KnownRuleTypesProvider;
 import com.facebook.buck.core.rules.knowntypes.TestKnownRuleTypesProvider;
@@ -77,6 +80,7 @@ public class DaemonLifecycleManagerTest {
   private PluginManager pluginManager;
   private WatchmanClient watchmanClient;
   private Watchman watchman;
+  private UnconfiguredBuildTargetFactory unconfiguredBuildTargetFactory;
   private TargetConfigurationSerializer targetConfigurationSerializer;
 
   @Before
@@ -91,7 +95,11 @@ public class DaemonLifecycleManagerTest {
     watchman =
         FakeWatchmanFactory.createWatchman(
             watchmanClient, filesystem.getRootPath(), filesystem.getPath(""), "watch");
-    targetConfigurationSerializer = new JsonTargetConfigurationSerializer();
+    unconfiguredBuildTargetFactory = new ParsingUnconfiguredBuildTargetFactory();
+    CellPathResolver cellPathResolver = TestCellPathResolver.get(filesystem);
+    targetConfigurationSerializer =
+        new JsonTargetConfigurationSerializer(
+            buildTarget -> unconfiguredBuildTargetFactory.create(cellPathResolver, buildTarget));
   }
 
   @Test
@@ -112,7 +120,7 @@ public class DaemonLifecycleManagerTest {
             watchman,
             Console.createNullConsole(),
             clock,
-            new ParsingUnconfiguredBuildTargetFactory(),
+            unconfiguredBuildTargetFactory,
             targetConfigurationSerializer,
             Optional::empty,
             Optional.empty());
@@ -132,7 +140,7 @@ public class DaemonLifecycleManagerTest {
             watchman,
             Console.createNullConsole(),
             clock,
-            new ParsingUnconfiguredBuildTargetFactory(),
+            unconfiguredBuildTargetFactory,
             targetConfigurationSerializer,
             Optional::empty,
             Optional.empty());
@@ -152,7 +160,7 @@ public class DaemonLifecycleManagerTest {
             watchman,
             Console.createNullConsole(),
             clock,
-            new ParsingUnconfiguredBuildTargetFactory(),
+            unconfiguredBuildTargetFactory,
             targetConfigurationSerializer,
             Optional::empty,
             Optional.empty());
@@ -192,7 +200,7 @@ public class DaemonLifecycleManagerTest {
             watchman,
             Console.createNullConsole(),
             clock,
-            new ParsingUnconfiguredBuildTargetFactory(),
+            unconfiguredBuildTargetFactory,
             targetConfigurationSerializer,
             Optional::empty,
             Optional.empty());
@@ -206,7 +214,7 @@ public class DaemonLifecycleManagerTest {
             watchman,
             Console.createNullConsole(),
             clock,
-            new ParsingUnconfiguredBuildTargetFactory(),
+            unconfiguredBuildTargetFactory,
             targetConfigurationSerializer,
             Optional::empty,
             Optional.empty()));
@@ -227,7 +235,7 @@ public class DaemonLifecycleManagerTest {
                 watchman,
                 Console.createNullConsole(),
                 clock,
-                new ParsingUnconfiguredBuildTargetFactory(),
+                unconfiguredBuildTargetFactory,
                 targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
@@ -241,7 +249,7 @@ public class DaemonLifecycleManagerTest {
                 watchman,
                 Console.createNullConsole(),
                 clock,
-                new ParsingUnconfiguredBuildTargetFactory(),
+                unconfiguredBuildTargetFactory,
                 targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
@@ -267,7 +275,7 @@ public class DaemonLifecycleManagerTest {
                 watchman,
                 Console.createNullConsole(),
                 clock,
-                new ParsingUnconfiguredBuildTargetFactory(),
+                unconfiguredBuildTargetFactory,
                 targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
@@ -285,7 +293,7 @@ public class DaemonLifecycleManagerTest {
                 watchman,
                 Console.createNullConsole(),
                 clock,
-                new ParsingUnconfiguredBuildTargetFactory(),
+                unconfiguredBuildTargetFactory,
                 targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
@@ -329,7 +337,7 @@ public class DaemonLifecycleManagerTest {
                 watchman,
                 Console.createNullConsole(),
                 clock,
-                new ParsingUnconfiguredBuildTargetFactory(),
+                unconfiguredBuildTargetFactory,
                 targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
@@ -342,7 +350,7 @@ public class DaemonLifecycleManagerTest {
                 watchman,
                 Console.createNullConsole(),
                 clock,
-                new ParsingUnconfiguredBuildTargetFactory(),
+                unconfiguredBuildTargetFactory,
                 targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
@@ -361,7 +369,7 @@ public class DaemonLifecycleManagerTest {
                 watchman,
                 Console.createNullConsole(),
                 clock,
-                new ParsingUnconfiguredBuildTargetFactory(),
+                unconfiguredBuildTargetFactory,
                 targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
@@ -376,7 +384,7 @@ public class DaemonLifecycleManagerTest {
                 watchman,
                 Console.createNullConsole(),
                 clock,
-                new ParsingUnconfiguredBuildTargetFactory(),
+                unconfiguredBuildTargetFactory,
                 targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
@@ -421,7 +429,7 @@ public class DaemonLifecycleManagerTest {
                 watchman,
                 Console.createNullConsole(),
                 clock,
-                new ParsingUnconfiguredBuildTargetFactory(),
+                unconfiguredBuildTargetFactory,
                 targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
@@ -434,7 +442,7 @@ public class DaemonLifecycleManagerTest {
                 watchman,
                 Console.createNullConsole(),
                 clock,
-                new ParsingUnconfiguredBuildTargetFactory(),
+                unconfiguredBuildTargetFactory,
                 targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
@@ -454,7 +462,7 @@ public class DaemonLifecycleManagerTest {
                 watchman,
                 Console.createNullConsole(),
                 clock,
-                new ParsingUnconfiguredBuildTargetFactory(),
+                unconfiguredBuildTargetFactory,
                 targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
@@ -469,7 +477,7 @@ public class DaemonLifecycleManagerTest {
                 watchman,
                 Console.createNullConsole(),
                 clock,
-                new ParsingUnconfiguredBuildTargetFactory(),
+                unconfiguredBuildTargetFactory,
                 targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
@@ -505,7 +513,7 @@ public class DaemonLifecycleManagerTest {
                 watchman,
                 Console.createNullConsole(),
                 clock,
-                new ParsingUnconfiguredBuildTargetFactory(),
+                unconfiguredBuildTargetFactory,
                 targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
@@ -522,7 +530,7 @@ public class DaemonLifecycleManagerTest {
                 watchman,
                 Console.createNullConsole(),
                 clock,
-                new ParsingUnconfiguredBuildTargetFactory(),
+                unconfiguredBuildTargetFactory,
                 targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
@@ -549,7 +557,7 @@ public class DaemonLifecycleManagerTest {
                 watchman,
                 Console.createNullConsole(),
                 clock,
-                new ParsingUnconfiguredBuildTargetFactory(),
+                unconfiguredBuildTargetFactory,
                 targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
@@ -566,7 +574,7 @@ public class DaemonLifecycleManagerTest {
                 watchman,
                 Console.createNullConsole(),
                 clock,
-                new ParsingUnconfiguredBuildTargetFactory(),
+                unconfiguredBuildTargetFactory,
                 targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
@@ -593,7 +601,7 @@ public class DaemonLifecycleManagerTest {
                 watchman,
                 Console.createNullConsole(),
                 clock,
-                new ParsingUnconfiguredBuildTargetFactory(),
+                unconfiguredBuildTargetFactory,
                 targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
@@ -610,7 +618,7 @@ public class DaemonLifecycleManagerTest {
                 watchman,
                 Console.createNullConsole(),
                 clock,
-                new ParsingUnconfiguredBuildTargetFactory(),
+                unconfiguredBuildTargetFactory,
                 targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
@@ -638,7 +646,7 @@ public class DaemonLifecycleManagerTest {
                 watchman,
                 Console.createNullConsole(),
                 clock,
-                new ParsingUnconfiguredBuildTargetFactory(),
+                unconfiguredBuildTargetFactory,
                 targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
@@ -653,7 +661,7 @@ public class DaemonLifecycleManagerTest {
                 watchman,
                 Console.createNullConsole(),
                 clock,
-                new ParsingUnconfiguredBuildTargetFactory(),
+                unconfiguredBuildTargetFactory,
                 targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())
@@ -679,7 +687,7 @@ public class DaemonLifecycleManagerTest {
             watchman,
             Console.createNullConsole(),
             clock,
-            new ParsingUnconfiguredBuildTargetFactory(),
+            unconfiguredBuildTargetFactory,
             targetConfigurationSerializer,
             Optional::empty,
             Optional.empty());
@@ -692,7 +700,7 @@ public class DaemonLifecycleManagerTest {
             watchman,
             Console.createNullConsole(),
             clock,
-            new ParsingUnconfiguredBuildTargetFactory(),
+            unconfiguredBuildTargetFactory,
             targetConfigurationSerializer,
             Optional::empty,
             Optional.empty());
@@ -712,7 +720,7 @@ public class DaemonLifecycleManagerTest {
                 watchman,
                 Console.createNullConsole(),
                 clock,
-                new ParsingUnconfiguredBuildTargetFactory(),
+                unconfiguredBuildTargetFactory,
                 targetConfigurationSerializer,
                 Optional::empty,
                 Optional.empty())

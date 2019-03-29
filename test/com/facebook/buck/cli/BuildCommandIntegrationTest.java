@@ -38,6 +38,7 @@ import com.facebook.buck.testutil.integration.ProjectWorkspace;
 import com.facebook.buck.testutil.integration.TestDataHelper;
 import com.facebook.buck.testutil.integration.ZipInspector;
 import com.facebook.buck.util.ExitCode;
+import com.facebook.buck.util.MoreStringsForTests;
 import com.facebook.buck.util.ThriftRuleKeyDeserializer;
 import com.facebook.buck.util.environment.Platform;
 import com.google.common.collect.ImmutableSet;
@@ -372,6 +373,24 @@ public class BuildCommandIntegrationTest {
   }
 
   @Test
+  public void testBuildDoesNotFailWhenDepDoesNotMatchTargetPlatformAndChecksAreDisables()
+      throws IOException {
+    ProjectWorkspace workspace =
+        TestDataHelper.createProjectWorkspaceForScenario(this, "builds_with_constraints", tmp);
+    workspace.setUp();
+
+    ProcessResult result =
+        workspace.runBuckCommand(
+            "build",
+            "--target-platforms",
+            "//config:osx_x86-64",
+            "-c",
+            "parser.enable_target_compatibility_checks=false",
+            "//:lib");
+    result.assertSuccess();
+  }
+
+  @Test
   public void testBuildFailsWhenDepDoesNotMatchTargetPlatform() throws IOException {
     ProjectWorkspace workspace =
         TestDataHelper.createProjectWorkspaceForScenario(this, "builds_with_constraints", tmp);
@@ -382,9 +401,10 @@ public class BuildCommandIntegrationTest {
     result.assertFailure();
     MatcherAssert.assertThat(
         result.getStderr(),
-        Matchers.containsString(
+        MoreStringsForTests.containsIgnoringPlatformNewlines(
             "Build target //:dep is restricted to constraints in \"target_compatible_with\" "
-                + "that do not match the target platform //config:osx_x86-64"));
+                + "that do not match the target platform //config:osx_x86-64.\n"
+                + "Target constraints:\n//config:linux"));
   }
 
   @Test

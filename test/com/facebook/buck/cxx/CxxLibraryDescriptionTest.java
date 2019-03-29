@@ -1211,7 +1211,7 @@ public class CxxLibraryDescriptionTest {
     TargetGraph targetGraph = TargetGraphFactory.newInstance(libBuilder.build());
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder(targetGraph);
     Archive lib = (Archive) libBuilder.build(graphBuilder, filesystem, targetGraph);
-    assertThat(lib.getContents(), equalTo(ArchiveContents.THIN));
+    assertThat(lib.getBuildable().getContents(), equalTo(ArchiveContents.THIN));
   }
 
   @Test
@@ -1224,7 +1224,7 @@ public class CxxLibraryDescriptionTest {
         new TestActionGraphBuilder(TargetGraphFactory.newInstance(cxxLibraryBuilder.build()));
     CxxLibrary rule = (CxxLibrary) cxxLibraryBuilder.build(graphBuilder, filesystem);
     assertThat(
-        rule.getPreferredLinkage(CxxPlatformUtils.DEFAULT_PLATFORM, graphBuilder),
+        rule.getPreferredLinkage(CxxPlatformUtils.DEFAULT_PLATFORM),
         equalTo(NativeLinkable.Linkage.STATIC));
   }
 

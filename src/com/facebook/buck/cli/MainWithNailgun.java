@@ -15,7 +15,7 @@
  */
 package com.facebook.buck.cli;
 
-import com.facebook.buck.cli.Main.DaemonBootstrap;
+import com.facebook.buck.cli.BuckDaemon.DaemonCommandExecutionScope;
 import com.facebook.buck.core.util.log.Logger;
 import com.facebook.nailgun.NGContext;
 import java.io.IOException;
@@ -41,20 +41,16 @@ public class MainWithNailgun {
 
   /**
    * When running as a daemon in the NailGun server, {@link #nailMain(NGContext)} is called instead
-   * of {@link Main#main(String[])} so that the given context can be used to listen for client
-   * disconnections and interrupt command processing when they occur.
+   * of {@link MainRunner} so that the given context can be used to listen for client disconnections
+   * and interrupt command processing when they occur.
    */
   @SuppressWarnings("unused")
   public static void nailMain(NGContext context) {
     obtainResourceFileLock();
-    try (IdleKiller.CommandExecutionScope ignored =
-        DaemonBootstrap.getDaemonKillers().newCommandExecutionScope()) {
-      DaemonBootstrap.commandStarted();
-      new Main(context.out, context.err, context.in, Optional.of(context))
+    try (DaemonCommandExecutionScope ignored =
+        BuckDaemon.getInstance().getDaemonCommandExecutionScope()) {
+      new MainRunner(context.out, context.err, context.in, Optional.of(context))
           .runMainThenExit(context.getArgs(), System.nanoTime());
-    } finally {
-      // Reclaim memory after a command finishes.
-      DaemonBootstrap.commandFinished();
     }
   }
 

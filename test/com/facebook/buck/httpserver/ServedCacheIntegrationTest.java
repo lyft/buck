@@ -35,8 +35,8 @@ import com.facebook.buck.core.config.BuckConfig;
 import com.facebook.buck.core.config.BuckConfigTestUtils;
 import com.facebook.buck.core.model.BuildId;
 import com.facebook.buck.core.model.TargetConfigurationSerializer;
+import com.facebook.buck.core.model.TargetConfigurationSerializerForTests;
 import com.facebook.buck.core.model.UnconfiguredBuildTarget;
-import com.facebook.buck.core.model.impl.JsonTargetConfigurationSerializer;
 import com.facebook.buck.core.parser.buildtargetparser.ParsingUnconfiguredBuildTargetFactory;
 import com.facebook.buck.core.rulekey.RuleKey;
 import com.facebook.buck.event.BuckEventBus;
@@ -85,6 +85,7 @@ public class ServedCacheIntegrationTest {
 
   private ProjectFilesystem projectFilesystem;
   private Function<String, UnconfiguredBuildTarget> unconfiguredBuildTargetFactory;
+  private CellPathResolver cellPathResolver;
   private TargetConfigurationSerializer targetConfigurationSerializer;
   private WebServer webServer = null;
   private BuckEventBus buckEventBus;
@@ -112,12 +113,12 @@ public class ServedCacheIntegrationTest {
     bgTaskManager = new TestBackgroundTaskManager();
     managerScope = bgTaskManager.getNewScope(BUILD_ID);
 
-    CellPathResolver cellPathResolver = TestCellPathResolver.get(projectFilesystem);
+    cellPathResolver = TestCellPathResolver.get(projectFilesystem);
     ParsingUnconfiguredBuildTargetFactory parsingUnconfiguredBuildTargetFactory =
         new ParsingUnconfiguredBuildTargetFactory();
     unconfiguredBuildTargetFactory =
         target -> parsingUnconfiguredBuildTargetFactory.create(cellPathResolver, target);
-    targetConfigurationSerializer = new JsonTargetConfigurationSerializer();
+    targetConfigurationSerializer = TargetConfigurationSerializerForTests.create(cellPathResolver);
   }
 
   @After
@@ -561,7 +562,7 @@ public class ServedCacheIntegrationTest {
             buckConfig,
             buckEventBus,
             unconfiguredBuildTargetFactory,
-            new JsonTargetConfigurationSerializer(),
+            TargetConfigurationSerializerForTests.create(cellPathResolver),
             projectFilesystem,
             Optional.empty(),
             DIRECT_EXECUTOR_SERVICE,

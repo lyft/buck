@@ -183,6 +183,7 @@ public class HaskellDescriptionUtils {
         ruleFinder,
         platform.getCompiler().resolve(graphBuilder),
         platform.getHaskellVersion(),
+        platform.shouldUseArgsfile(),
         compileFlags,
         ppFlags,
         cxxPlatform,
@@ -300,8 +301,7 @@ public class HaskellDescriptionUtils {
     for (NativeLinkable nativeLinkable :
         NativeLinkables.getNativeLinkables(
             platform.getCxxPlatform(), graphBuilder, deps, depType)) {
-      NativeLinkable.Linkage link =
-          nativeLinkable.getPreferredLinkage(platform.getCxxPlatform(), graphBuilder);
+      NativeLinkable.Linkage link = nativeLinkable.getPreferredLinkage(platform.getCxxPlatform());
       NativeLinkableInput input =
           nativeLinkable.getNativeLinkableInput(
               platform.getCxxPlatform(),
@@ -355,7 +355,7 @@ public class HaskellDescriptionUtils {
                 graphBuilder,
                 ruleFinder,
                 platform.getCxxPlatform(),
-                BuildTargetPaths.getGenPath(projectFilesystem, emptyArchiveTarget, "%s/libempty.a"),
+                "libempty.a",
                 emptyCompiledModule.getObjects(),
                 /* cacheable */ true));
     argsBuilder.add(SourcePathArg.of(emptyArchive.getSourcePathToOutput()));
@@ -532,8 +532,7 @@ public class HaskellDescriptionUtils {
         .values()
         .stream()
         // Skip statically linked libraries.
-        .filter(
-            l -> l.getPreferredLinkage(platform.getCxxPlatform(), graphBuilder) != Linkage.STATIC)
+        .filter(l -> l.getPreferredLinkage(platform.getCxxPlatform()) != Linkage.STATIC)
         .forEach(l -> sharedLibsBuilder.add(platform.getCxxPlatform(), l, graphBuilder));
     ImmutableSortedMap<String, SourcePath> sharedLibs = sharedLibsBuilder.build();
 
@@ -548,7 +547,7 @@ public class HaskellDescriptionUtils {
         // always link dynamically.
         .filter(
             l ->
-                l.getPreferredLinkage(platform.getCxxPlatform(), graphBuilder) != Linkage.STATIC
+                l.getPreferredLinkage(platform.getCxxPlatform()) != Linkage.STATIC
                     || omnibusSpec.getExcludedRoots().containsKey(l.getBuildTarget()))
         .forEach(l -> preloadLibsBuilder.add(platform.getCxxPlatform(), l, graphBuilder));
     ImmutableSortedMap<String, SourcePath> preloadLibs = preloadLibsBuilder.build();

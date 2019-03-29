@@ -17,9 +17,9 @@
 package com.facebook.buck.core.select.impl;
 
 import com.facebook.buck.core.cell.CellPathResolver;
-import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.model.TargetConfiguration;
+import com.facebook.buck.core.model.UnconfiguredBuildTarget;
 import com.facebook.buck.core.select.Selector;
 import com.facebook.buck.core.select.SelectorKey;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
@@ -39,9 +39,9 @@ import java.util.Set;
 /** Factory to create {@link Selector} using raw (non-coerced) data. */
 public class SelectorFactory {
 
-  private final BuildTargetCoercer buildTargetTypeCoercer;
+  private final TypeCoercer<UnconfiguredBuildTarget> buildTargetTypeCoercer;
 
-  public SelectorFactory(BuildTargetCoercer buildTargetTypeCoercer) {
+  public SelectorFactory(TypeCoercer<UnconfiguredBuildTarget> buildTargetTypeCoercer) {
     this.buildTargetTypeCoercer = buildTargetTypeCoercer;
   }
 
@@ -50,6 +50,7 @@ public class SelectorFactory {
       CellPathResolver cellPathResolver,
       ProjectFilesystem filesystem,
       Path pathRelativeToProjectRoot,
+      TargetConfiguration targetConfiguration,
       Map<String, ?> rawAttributes,
       TypeCoercer<T> elementTypeCoercer)
       throws CoerceFailedException {
@@ -57,6 +58,7 @@ public class SelectorFactory {
         cellPathResolver,
         filesystem,
         pathRelativeToProjectRoot,
+        targetConfiguration,
         rawAttributes,
         elementTypeCoercer,
         "");
@@ -73,6 +75,7 @@ public class SelectorFactory {
       CellPathResolver cellPathResolver,
       ProjectFilesystem filesystem,
       Path pathRelativeToProjectRoot,
+      TargetConfiguration targetConfiguration,
       Map<String, ?> rawAttributes,
       TypeCoercer<T> elementTypeCoercer,
       String noMatchMessage)
@@ -107,7 +110,7 @@ public class SelectorFactory {
                 cellPathResolver,
                 filesystem,
                 pathRelativeToProjectRoot,
-                EmptyTargetConfiguration.INSTANCE,
+                targetConfiguration,
                 entry.getValue()));
         nullConditions.remove(selectorKey);
       }
@@ -118,15 +121,5 @@ public class SelectorFactory {
         ImmutableSet.copyOf(nullConditions),
         noMatchMessage,
         foundDefaultCondition);
-  }
-
-  public interface BuildTargetCoercer {
-    BuildTarget coerce(
-        CellPathResolver cellRoots,
-        ProjectFilesystem alsoUnused,
-        Path pathRelativeToProjectRoot,
-        TargetConfiguration targetConfiguration,
-        Object object)
-        throws CoerceFailedException;
   }
 }

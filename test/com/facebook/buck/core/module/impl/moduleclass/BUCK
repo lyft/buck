@@ -1,5 +1,3 @@
-load("//tools/build_rules:export_files.bzl", "export_files")
-
 java_library(
     name = "moduleclass",
     srcs = glob(["*.java"]),
@@ -22,7 +20,12 @@ java_binary(
     ],
 )
 
-export_files(["known-hash.txt"])
+export_file(
+    name = "known-hash.txt",
+    visibility = [
+        "PUBLIC",
+    ],
+)
 
 # Replace real hash in the module jar with a known value
 genrule(
@@ -44,13 +47,12 @@ genrule(
 )
 
 # Running tests as a shell script to reconstruct the layout of modules and how they are loaded
-sh_test(
+python_test(
     name = "moduleclass-test",
-    args = [
-        "java",
-        "-Dpf4j.pluginsDir=$(location :copy-modules)",
-        "-jar",
-        "$(location :moduleclass-jar)",
+    srcs = [
+        "//test/com/facebook/buck/core/module/impl:test_app.py",
     ],
-    test = "//test/com/facebook/buck/core/module/impl:run.sh",
+    env = {
+        "CMD": "java -Dpf4j.pluginsDir=$(location :copy-modules) -jar $(location :moduleclass-jar)",
+    },
 )

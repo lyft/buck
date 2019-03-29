@@ -45,9 +45,9 @@ import com.facebook.buck.event.BuckEventBus;
 import com.facebook.buck.io.watchman.Watchman;
 import com.facebook.buck.log.GlobalStateManager;
 import com.facebook.buck.manifestservice.ManifestService;
-import com.facebook.buck.rules.coercer.BuildTargetTypeCoercer;
 import com.facebook.buck.rules.coercer.ConstructorArgMarshaller;
 import com.facebook.buck.rules.coercer.TypeCoercerFactory;
+import com.facebook.buck.rules.coercer.UnconfiguredBuildTargetTypeCoercer;
 import com.facebook.buck.util.ThrowingCloseableMemoizedSupplier;
 import com.facebook.buck.util.cache.FileHashCache;
 import com.facebook.buck.util.concurrent.CommandThreadFactory;
@@ -184,7 +184,10 @@ class PerBuildStateFactoryWithConfigurableAttributes extends PerBuildStateFactor
 
     ConfigurationRuleResolver configurationRuleResolver =
         new SameThreadConfigurationRuleResolver(
-            cellManager::getCell, nonResolvingTargetNodeParsePipeline::getNode);
+            cellManager::getCell,
+            (cell, target) ->
+                nonResolvingTargetNodeParsePipeline.getNode(
+                    cell, target.configure(EmptyTargetConfiguration.INSTANCE)));
 
     SelectableResolver selectableResolver =
         new ConfigurationRuleSelectableResolver(configurationRuleResolver);
@@ -239,7 +242,7 @@ class PerBuildStateFactoryWithConfigurableAttributes extends PerBuildStateFactor
     SelectorListFactory selectorListFactory =
         new SelectorListFactory(
             new SelectorFactory(
-                new BuildTargetTypeCoercer(unconfiguredBuildTargetFactory)::coerce));
+                new UnconfiguredBuildTargetTypeCoercer(unconfiguredBuildTargetFactory)));
 
     cellManager.register(rootCell);
 
@@ -282,9 +285,8 @@ class PerBuildStateFactoryWithConfigurableAttributes extends PerBuildStateFactor
     String targetPlatformName = targetPlatforms.get(0);
     ConfigurationRule configurationRule =
         configurationRuleResolver.getRule(
-            unconfiguredBuildTargetFactory
-                .create(rootCell.getCellPathResolver(), targetPlatformName)
-                .configure(EmptyTargetConfiguration.INSTANCE));
+            unconfiguredBuildTargetFactory.create(
+                rootCell.getCellPathResolver(), targetPlatformName));
 
     if (!(configurationRule instanceof PlatformRule)) {
       throw new HumanReadableException(

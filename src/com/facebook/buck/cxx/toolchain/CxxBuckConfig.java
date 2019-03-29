@@ -174,6 +174,14 @@ public class CxxBuckConfig {
     this.cxxSection = FLAVORED_CXX_SECTION_PREFIX + flavor.getName();
   }
 
+  public ImmutableMap<Flavor, CxxBuckConfig> getFlavoredConfigs() {
+    ImmutableMap.Builder<Flavor, CxxBuckConfig> builder = ImmutableMap.builder();
+    for (Flavor flav : CxxBuckConfig.getCxxFlavors(this.delegate)) {
+      builder.put(flav, new CxxBuckConfig(this.delegate, flav));
+    }
+    return builder.build();
+  }
+
   /** @return the environment in which {@link BuckConfig} was created. */
   public ImmutableMap<String, String> getEnvironment() {
     return delegate.getEnvironment();
@@ -430,12 +438,20 @@ public class CxxBuckConfig {
         .build();
   }
 
+  public Optional<Boolean> getPublicHeadersSymlinksSetting() {
+    return delegate.getBoolean(cxxSection, EXPORTED_HEADERS_SYMLINKS_ENABLED);
+  }
+
   public boolean getPublicHeadersSymlinksEnabled() {
-    return delegate.getBooleanValue(cxxSection, EXPORTED_HEADERS_SYMLINKS_ENABLED, true);
+    return getPublicHeadersSymlinksSetting().orElse(true);
+  }
+
+  public Optional<Boolean> getPrivateHeadersSymlinksSetting() {
+    return delegate.getBoolean(cxxSection, HEADERS_SYMLINKS_ENABLED);
   }
 
   public boolean getPrivateHeadersSymlinksEnabled() {
-    return delegate.getBooleanValue(cxxSection, HEADERS_SYMLINKS_ENABLED, true);
+    return getPrivateHeadersSymlinksSetting().orElse(true);
   }
 
   public Optional<RuleScheduleInfo> getLinkScheduleInfo() {
@@ -660,17 +676,18 @@ public class CxxBuckConfig {
     }
 
     public CompilerProvider getCompilerProvider() {
+      boolean preferDependencyTree = getPreferDependencyTree().orElse(false);
       if (getBuildTarget().isPresent()) {
         return new CompilerProvider(
             new BinaryBuildRuleToolProvider(getBuildTarget().get(), getSource()),
             getType().get(),
-            false);
+            preferDependencyTree);
       } else {
         PathSourcePath path = getPath().get();
         return new CompilerProvider(
             new ConstantToolProvider(new HashedFileTool(path)),
             () -> getType().orElseGet(() -> CxxToolTypeInferer.getTypeFromPath(path)),
-            getPreferDependencyTree().orElse(false));
+            preferDependencyTree);
       }
     }
   }

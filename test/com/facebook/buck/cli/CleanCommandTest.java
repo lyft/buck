@@ -32,8 +32,8 @@ import com.facebook.buck.core.cell.TestCellBuilder;
 import com.facebook.buck.core.config.BuckConfig;
 import com.facebook.buck.core.config.FakeBuckConfig;
 import com.facebook.buck.core.model.EmptyTargetConfiguration;
+import com.facebook.buck.core.model.TargetConfigurationSerializerForTests;
 import com.facebook.buck.core.model.actiongraph.computation.ActionGraphProviderBuilder;
-import com.facebook.buck.core.model.impl.JsonTargetConfigurationSerializer;
 import com.facebook.buck.core.module.TestBuckModuleManagerFactory;
 import com.facebook.buck.core.parser.buildtargetparser.ParsingUnconfiguredBuildTargetFactory;
 import com.facebook.buck.core.plugin.impl.BuckPluginManagerFactory;
@@ -314,7 +314,7 @@ public class CleanCommandTest {
         typeCoercerFactory,
         new ParsingUnconfiguredBuildTargetFactory(),
         () -> EmptyTargetConfiguration.INSTANCE,
-        new JsonTargetConfigurationSerializer(),
+        TargetConfigurationSerializerForTests.create(cell.getCellPathResolver()),
         TestParserFactory.create(cell, knownRuleTypesProvider),
         BuckEventBusForTests.newInstance(),
         Platform.detect(),
@@ -333,7 +333,7 @@ public class CleanCommandTest {
         new ActionGraphProviderBuilder()
             .withMaxEntries(
                 buckConfig.getView(BuildBuckConfig.class).getMaxActionGraphCacheEntries())
-            .withPoolSupplier(Main.getForkJoinPoolSupplier(buckConfig))
+            .withPoolSupplier(MainRunner.getForkJoinPoolSupplier(buckConfig))
             .build(),
         knownRuleTypesProvider,
         new BuildInfoStoreManager(),
@@ -345,7 +345,7 @@ public class CleanCommandTest {
         executableFinder,
         pluginManager,
         TestBuckModuleManagerFactory.create(pluginManager),
-        Main.getForkJoinPoolSupplier(buckConfig),
+        MainRunner.getForkJoinPoolSupplier(buckConfig),
         MetadataProviderFactory.emptyMetadataProvider(),
         getManifestSupplier());
   }
