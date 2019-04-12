@@ -199,6 +199,8 @@ public class KotlinLibraryDescription
     Optional<AnnotationProcessingTool> getAnnotationProcessingTool();
 
     ImmutableList<SourcePath> getFriendPaths();
+
+    ImmutableList<SourcePath> getKotlincPlugins();
   }
 
   @BuckStyleImmutable
