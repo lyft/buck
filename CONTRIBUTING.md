@@ -212,3 +212,5 @@ assertFalse(t.getDescription().isPresent());
 ```
 
 For more documentation, see the reference at https://immutables.github.io.
+
+---
