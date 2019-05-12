@@ -294,8 +294,7 @@ public class HaskellGhciRule extends AbstractBuildRuleWithDeclaredAndExtraDeps
     }
 
     @Override
-    public StepExecutionResult execute(ExecutionContext context)
-        throws IOException, InterruptedException {
+    public StepExecutionResult execute(ExecutionContext context) throws IOException {
       Path src = resolver.getRelativePath(lib).toRealPath();
       Path dest = symlinkDir.resolve(name);
       SymlinkFileStep.Builder sl = SymlinkFileStep.builder();
@@ -422,8 +421,7 @@ public class HaskellGhciRule extends AbstractBuildRuleWithDeclaredAndExtraDeps
       steps.add(
           new AbstractExecutionStep("ghci_iserv_wrapper") {
             @Override
-            public StepExecutionResult execute(ExecutionContext context)
-                throws IOException, InterruptedException {
+            public StepExecutionResult execute(ExecutionContext context) throws IOException {
               String template;
               template = new String(Files.readAllBytes(ghciIservScriptTemplate), Charsets.UTF_8);
               ST st = new ST(template);
@@ -537,6 +535,7 @@ public class HaskellGhciRule extends AbstractBuildRuleWithDeclaredAndExtraDeps
     if (enableProfiling) {
       compilerFlagsBuilder.addAll(HaskellDescriptionUtils.PROF_FLAGS);
     }
+    compilerFlagsBuilder.addAll(HaskellDescriptionUtils.PIC_FLAGS);
 
     String ghc = ghcPath;
     ImmutableMap.Builder<String, String> templateArgs = ImmutableMap.builder();

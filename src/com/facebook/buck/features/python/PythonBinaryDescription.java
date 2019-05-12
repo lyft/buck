@@ -31,19 +31,16 @@ import com.facebook.buck.core.model.targetgraph.BuildRuleCreationContextWithTarg
 import com.facebook.buck.core.model.targetgraph.DescriptionWithTargetGraph;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.impl.SymlinkTree;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.ToolchainProvider;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
 import com.facebook.buck.core.util.log.Logger;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.CxxPlatformsProvider;
 import com.facebook.buck.cxx.toolchain.UnresolvedCxxPlatform;
-import com.facebook.buck.cxx.toolchain.linker.WindowsLinker;
+import com.facebook.buck.cxx.toolchain.linker.impl.WindowsLinker;
 import com.facebook.buck.features.python.PythonBuckConfig.PackageStyle;
 import com.facebook.buck.features.python.toolchain.PexToolProvider;
 import com.facebook.buck.features.python.toolchain.PythonPlatform;
@@ -140,7 +137,6 @@ public class PythonBinaryDescription
       ProjectFilesystem projectFilesystem,
       BuildRuleParams params,
       ActionGraphBuilder graphBuilder,
-      SourcePathRuleFinder ruleFinder,
       PythonPlatform pythonPlatform,
       CxxPlatform cxxPlatform,
       String mainModule,
@@ -150,7 +146,8 @@ public class PythonBinaryDescription
       PackageStyle packageStyle) {
 
     // We don't currently support targeting Windows.
-    if (cxxPlatform.getLd().resolve(graphBuilder) instanceof WindowsLinker) {
+    if (cxxPlatform.getLd().resolve(graphBuilder, buildTarget.getTargetConfiguration())
+        instanceof WindowsLinker) {
       throw new HumanReadableException(
           "%s: cannot build in-place python binaries for Windows (%s)",
           buildTarget, cxxPlatform.getFlavor());
@@ -175,7 +172,7 @@ public class PythonBinaryDescription
                     .putAll(components.getNativeLibraries())
                     .build(),
                 components.getModuleDirs(),
-                ruleFinder));
+                graphBuilder));
 
     return new PythonInPlaceBinary(
         buildTarget,
@@ -199,7 +196,6 @@ public class PythonBinaryDescription
       ProjectFilesystem projectFilesystem,
       BuildRuleParams params,
       ActionGraphBuilder graphBuilder,
-      SourcePathRuleFinder ruleFinder,
       PythonPlatform pythonPlatform,
       CxxPlatform cxxPlatform,
       String mainModule,
@@ -217,7 +213,6 @@ public class PythonBinaryDescription
             projectFilesystem,
             params,
             graphBuilder,
-            ruleFinder,
             pythonPlatform,
             cxxPlatform,
             mainModule,
@@ -230,14 +225,16 @@ public class PythonBinaryDescription
         return new PythonPackagedBinary(
             buildTarget,
             projectFilesystem,
-            ruleFinder,
+            graphBuilder,
             params.getDeclaredDeps(),
             pythonPlatform,
             toolchainProvider
                 .getByName(PexToolProvider.DEFAULT_NAME, PexToolProvider.class)
-                .getPexTool(graphBuilder),
+                .getPexTool(graphBuilder, buildTarget.getTargetConfiguration()),
             buildArgs,
-            pythonBuckConfig.getPexExecutor(graphBuilder).orElse(pythonPlatform.getEnvironment()),
+            pythonBuckConfig
+                .getPexExecutor(graphBuilder, buildTarget.getTargetConfiguration())
+                .orElse(pythonPlatform.getEnvironment()),
             extension.orElse(pythonBuckConfig.getPexExtension()),
             pythonPlatform.getEnvironment(),
             mainModule,
@@ -280,15 +277,14 @@ public class PythonBinaryDescription
     String mainModule;
     ImmutableMap.Builder<Path, SourcePath> modules = ImmutableMap.builder();
     ActionGraphBuilder graphBuilder = context.getActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
 
     // If `main` is set, add it to the map of modules for this binary and also set it as the
     // `mainModule`, otherwise, use the explicitly set main module.
     if (args.getMain().isPresent()) {
       LOG.warn(
           "%s: parameter `main` is deprecated, please use `main_module` instead.", buildTarget);
-      String mainName = pathResolver.getSourcePathName(buildTarget, args.getMain().get());
+      String mainName =
+          graphBuilder.getSourcePathResolver().getSourcePathName(buildTarget, args.getMain().get());
       Path main = baseModule.resolve(mainName);
       modules.put(baseModule.resolve(mainName), args.getMain().get());
       mainModule = PythonUtil.toModuleName(buildTarget, main.toString());
@@ -319,13 +315,16 @@ public class PythonBinaryDescription
                     args.getPlatform()
                         .<Flavor>map(InternalFlavor::of)
                         .orElse(pythonPlatforms.getFlavors().iterator().next())));
-    CxxPlatform cxxPlatform = getCxxPlatform(buildTarget, args).resolve(graphBuilder);
+    CxxPlatform cxxPlatform =
+        getCxxPlatform(buildTarget, args)
+            .resolve(graphBuilder, buildTarget.getTargetConfiguration());
     CellPathResolver cellRoots = context.getCellPathResolver();
     ProjectFilesystem projectFilesystem = context.getProjectFilesystem();
     StringWithMacrosConverter macrosConverter =
         StringWithMacrosConverter.builder()
             .setBuildTarget(buildTarget)
             .setCellPathResolver(cellRoots)
+            .setActionGraphBuilder(graphBuilder)
             .setExpanders(PythonUtil.MACRO_EXPANDERS)
             .build();
     PythonPackageComponents allPackageComponents =
@@ -335,7 +334,6 @@ public class PythonBinaryDescription
             projectFilesystem,
             params,
             graphBuilder,
-            ruleFinder,
             PythonUtil.getDeps(pythonPlatform, cxxPlatform, args.getDeps(), args.getPlatformDeps())
                 .stream()
                 .map(graphBuilder::getRule)
@@ -344,9 +342,8 @@ public class PythonBinaryDescription
             pythonPlatform,
             cxxBuckConfig,
             cxxPlatform,
-            args.getLinkerFlags()
-                .stream()
-                .map(x -> macrosConverter.convert(x, graphBuilder))
+            args.getLinkerFlags().stream()
+                .map(macrosConverter::convert)
                 .collect(ImmutableList.toImmutableList()),
             pythonBuckConfig.getNativeLinkStrategy(),
             args.getPreloadDeps());
@@ -355,7 +352,6 @@ public class PythonBinaryDescription
         projectFilesystem,
         params,
         graphBuilder,
-        ruleFinder,
         pythonPlatform,
         cxxPlatform,
         mainModule,
@@ -375,12 +371,17 @@ public class PythonBinaryDescription
       ImmutableCollection.Builder<BuildTarget> targetGraphOnlyDepsBuilder) {
     // We need to use the C/C++ linker for native libs handling, so add in the C/C++ linker to
     // parse time deps.
-    extraDepsBuilder.addAll(getCxxPlatform(buildTarget, constructorArg).getLinkerParseTimeDeps());
+    extraDepsBuilder.addAll(
+        getCxxPlatform(buildTarget, constructorArg)
+            .getLinkerParseTimeDeps(buildTarget.getTargetConfiguration()));
 
     if (constructorArg.getPackageStyle().orElse(pythonBuckConfig.getPackageStyle())
         == PythonBuckConfig.PackageStyle.STANDALONE) {
-      Optionals.addIfPresent(pythonBuckConfig.getPexTarget(), extraDepsBuilder);
-      Optionals.addIfPresent(pythonBuckConfig.getPexExecutorTarget(), extraDepsBuilder);
+      Optionals.addIfPresent(
+          pythonBuckConfig.getPexTarget(buildTarget.getTargetConfiguration()), extraDepsBuilder);
+      Optionals.addIfPresent(
+          pythonBuckConfig.getPexExecutorTarget(buildTarget.getTargetConfiguration()),
+          extraDepsBuilder);
     }
   }
 

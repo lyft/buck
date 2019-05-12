@@ -31,11 +31,8 @@ import com.facebook.buck.core.model.actiongraph.computation.ActionGraphProviderB
 import com.facebook.buck.core.model.targetgraph.TargetGraph;
 import com.facebook.buck.core.model.targetgraph.TargetGraphFactory;
 import com.facebook.buck.core.model.targetgraph.TargetNode;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.transformer.impl.DefaultTargetNodeToBuildRuleTransformer;
 import com.facebook.buck.core.sourcepath.FakeSourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.event.BuckEventBusForTests;
 import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
 import com.facebook.buck.jvm.java.KeystoreBuilder;
@@ -260,10 +257,6 @@ public class DuplicateResourcesTest {
             .build()
             .getFreshActionGraph(new DefaultTargetNodeToBuildRuleTransformer(), targetGraph);
 
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(
-            new SourcePathRuleFinder(actionGraphAndBuilder.getActionGraphBuilder()));
-
     ImmutableSet<ImmutableList<Step>> ruleSteps =
         RichStream.from(actionGraphAndBuilder.getActionGraph().getNodes())
             .filter(AaptPackageResources.class)
@@ -275,12 +268,12 @@ public class DuplicateResourcesTest {
             .map(
                 b ->
                     b.getBuildSteps(
-                        FakeBuildContext.withSourcePathResolver(pathResolver),
+                        FakeBuildContext.withSourcePathResolver(
+                            actionGraphAndBuilder.getActionGraphBuilder().getSourcePathResolver()),
                         new FakeBuildableContext()))
             .map(
                 steps ->
-                    steps
-                        .stream()
+                    steps.stream()
                         .filter(step -> step instanceof AaptStep)
                         .collect(ImmutableList.toImmutableList()))
             .filter(steps -> !steps.isEmpty())

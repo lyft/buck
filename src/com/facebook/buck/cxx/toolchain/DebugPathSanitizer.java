@@ -17,7 +17,7 @@ package com.facebook.buck.cxx.toolchain;
 
 import com.facebook.buck.core.rulekey.AddToRuleKey;
 import com.facebook.buck.core.rulekey.AddsToRuleKey;
-import com.facebook.buck.io.file.MorePaths;
+import com.facebook.buck.io.pathformat.PathFormatter;
 import com.facebook.buck.rules.modern.CustomFieldSerialization;
 import com.facebook.buck.rules.modern.ValueCreator;
 import com.facebook.buck.rules.modern.ValueVisitor;
@@ -26,7 +26,6 @@ import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableBiMap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Map;
@@ -125,7 +124,7 @@ public abstract class DebugPathSanitizer implements AddsToRuleKey {
       String replacement = entry.getValue();
       String pathToReplace =
           useUnixPathSeparator
-              ? MorePaths.pathWithUnixSeparators(entry.getKey())
+              ? PathFormatter.pathWithUnixSeparators(entry.getKey())
               : entry.getKey().toString();
       if (contents.contains(pathToReplace)) {
         // String.replace creates a number of objects, and creates a fair
@@ -139,5 +138,5 @@ public abstract class DebugPathSanitizer implements AddsToRuleKey {
 
   // Construct the replacer, giving the expanded current directory and the desired directory.
   // We use ASCII, since all the relevant debug standards we care about (e.g. DWARF) use it.
-  public abstract void restoreCompilationDirectory(Path path, Path workingDir) throws IOException;
+  public abstract void restoreCompilationDirectory(Path path, Path workingDir);
 }

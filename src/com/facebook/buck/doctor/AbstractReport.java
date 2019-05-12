@@ -165,7 +165,7 @@ public abstract class AbstractReport {
             .setHighlightedBuildIds(
                 RichStream.from(selectedBuilds)
                     .map(BuildLogEntry::getBuildId)
-                    .flatMap(Optionals::toStream)
+                    .flatMap(RichStream::from)
                     .toOnceIterable())
             .setBuildEnvironmentDescription(buildEnvironmentDescription)
             .setSourceControlInfo(sourceControlInfo)
@@ -219,15 +219,12 @@ public abstract class AbstractReport {
     ImmutableList<Path> overrideFiles;
     try {
       overrideFiles =
-          Configs.getDefaultConfigurationFiles(rootPath)
-              .stream()
+          Configs.getDefaultConfigurationFiles(rootPath).stream()
               .filter(f -> !f.equals(Configs.getMainConfigurationFile(rootPath)))
               .filter(
                   config -> {
                     try {
-                      return Configs.parseConfigFile(rootPath.resolve(config))
-                              .values()
-                              .stream()
+                      return Configs.parseConfigFile(rootPath.resolve(config)).values().stream()
                               .mapToLong(Map::size)
                               .sum()
                           != 0;

@@ -21,7 +21,7 @@ import static org.eclipse.aether.util.artifact.JavaScopes.TEST;
 
 import com.facebook.buck.core.util.graph.MutableDirectedGraph;
 import com.facebook.buck.core.util.graph.TraversableGraph;
-import com.facebook.buck.io.file.MorePaths;
+import com.facebook.buck.io.pathformat.PathFormatter;
 import com.facebook.buck.maven.aether.AetherUtil;
 import com.facebook.buck.util.concurrent.MostExecutors;
 import com.google.common.annotations.VisibleForTesting;
@@ -145,9 +145,7 @@ public class Resolver {
     this.visibility = config.visibility;
 
     this.repos =
-        config
-            .repositories
-            .stream()
+        config.repositories.stream()
             .map(AetherUtil::toRemoteRepository)
             .collect(ImmutableList.toImmutableList());
   }
@@ -203,9 +201,7 @@ public class Resolver {
         (List<ListenableFuture<Map.Entry<Path, Prebuilt>>>)
             (List<?>)
                 exec.invokeAll(
-                    graph
-                        .getNodes()
-                        .stream()
+                    graph.getNodes().stream()
                         .map(
                             artifact ->
                                 (Callable<Map.Entry<Path, Prebuilt>>)
@@ -463,9 +459,7 @@ public class Resolver {
   }
 
   private ImmutableList<RemoteRepository> getReposFromPom(Model model) {
-    return model
-        .getRepositories()
-        .stream()
+    return model.getRepositories().stream()
         .map(
             input ->
                 new RemoteRepository.Builder(input.getId(), input.getLayout(), input.getUrl())
@@ -485,9 +479,7 @@ public class Resolver {
   }
 
   private ImmutableList<Dependency> getDependenciesFromPom(Model model) {
-    return model
-        .getDependencies()
-        .stream()
+    return model.getDependencies().stream()
         .map(
             dep -> {
               ArtifactType stereotype = session.getArtifactTypeRegistry().get(dep.getType());
@@ -657,7 +649,7 @@ public class Resolver {
     private String formatDep(Path buckThirdPartyRelativePath, Artifact artifact) {
       return String.format(
           "//%s/%s:%s",
-          MorePaths.pathWithUnixSeparators(buckThirdPartyRelativePath),
+          PathFormatter.pathWithUnixSeparators(buckThirdPartyRelativePath),
           getProjectName(artifact),
           artifact.getArtifactId());
     }

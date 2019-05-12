@@ -20,7 +20,6 @@ import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.common.BuildRules;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
@@ -61,11 +60,6 @@ abstract class AbstractDefaultJavaLibraryClasspaths {
   }
 
   @Value.Lazy
-  SourcePathRuleFinder getSourcePathRuleFinder() {
-    return new SourcePathRuleFinder(getActionGraphBuilder());
-  }
-
-  @Value.Lazy
   public ImmutableSortedSet<BuildRule> getFirstOrderPackageableDeps() {
     if (shouldCreateSourceOnlyAbi()) {
       // Nothing is packaged based on a source ABI rule
@@ -77,8 +71,7 @@ abstract class AbstractDefaultJavaLibraryClasspaths {
 
   @Value.Lazy
   protected ImmutableSortedSet<SourcePath> getCompileTimeClasspathSourcePaths() {
-    return getCompileTimeClasspathDeps()
-        .stream()
+    return getCompileTimeClasspathDeps().stream()
         .map(BuildRule::getSourcePathToOutput)
         .filter(Objects::nonNull)
         .collect(ImmutableSortedSet.toImmutableSortedSet(Ordering.natural()));
@@ -103,8 +96,7 @@ abstract class AbstractDefaultJavaLibraryClasspaths {
 
   @Value.Lazy
   protected ImmutableSortedSet<BuildRule> getCompileTimeClasspathFullDeps() {
-    return getCompileTimeClasspathUnfilteredFullDeps()
-        .stream()
+    return getCompileTimeClasspathUnfilteredFullDeps().stream()
         .filter(dep -> dep instanceof HasJavaAbi)
         .collect(ImmutableSortedSet.toImmutableSortedSet(Ordering.natural()));
   }

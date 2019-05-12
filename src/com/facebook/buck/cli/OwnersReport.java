@@ -23,6 +23,7 @@ import com.facebook.buck.core.model.targetgraph.TargetNode;
 import com.facebook.buck.io.file.MorePaths;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.parser.Parser;
+import com.facebook.buck.parser.ParserConfig;
 import com.facebook.buck.parser.PerBuildState;
 import com.facebook.buck.parser.exceptions.BuildFileParseException;
 import com.facebook.buck.util.RichStream;
@@ -181,7 +182,10 @@ final class OwnersReport {
         Cell cell,
         Path basePath,
         Path cellRelativePath) {
-      Path buckFile = cell.getFilesystem().resolve(basePath).resolve(cell.getBuildFileName());
+      Path buckFile =
+          cell.getFilesystem()
+              .resolve(basePath)
+              .resolve(cell.getBuckConfigView(ParserConfig.class).getBuildFileName());
       ImmutableList<TargetNode<?>> targetNodes =
           map.computeIfAbsent(
               buckFile,
@@ -193,15 +197,16 @@ final class OwnersReport {
                   throw new HumanReadableException(e);
                 }
               });
-      return targetNodes
-          .stream()
+      return targetNodes.stream()
           .map(targetNode -> generateOwnersReport(cell, targetNode, cellRelativePath.toString()))
           .reduce(OwnersReport.emptyReport(), OwnersReport::updatedWith);
     }
 
     private ImmutableSet<Path> getAllBasePathsForPath(
         BuildFileTree buildFileTree, Path cellRelativePath) {
-      if (rootCell.isEnforcingBuckPackageBoundaries(cellRelativePath)) {
+      if (rootCell
+          .getBuckConfigView(ParserConfig.class)
+          .isEnforcingBuckPackageBoundaries(cellRelativePath)) {
         return buildFileTree
             .getBasePathOfAncestorTarget(cellRelativePath)
             .map(ImmutableSet::of)
@@ -290,8 +295,7 @@ final class OwnersReport {
             continue;
           }
           report =
-              basePaths
-                  .stream()
+              basePaths.stream()
                   .map(basePath -> getReportForBasePath(map, cell, basePath, cellRelativePath))
                   .reduce(report, OwnersReport::updatedWith);
         }

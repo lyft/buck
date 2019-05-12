@@ -22,6 +22,7 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.sameInstance;
 import static org.junit.Assert.assertThat;
 
+import com.facebook.buck.core.build.action.resolver.BuildEngineActionToBuildRuleResolver;
 import com.facebook.buck.core.build.engine.RuleDepsCache;
 import com.facebook.buck.core.build.event.BuildEvent;
 import com.facebook.buck.core.model.BuildId;
@@ -29,7 +30,7 @@ import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
+import com.facebook.buck.core.rules.BuildRuleResolver;
 import com.facebook.buck.core.rules.attr.HasRuntimeDeps;
 import com.facebook.buck.core.rules.impl.FakeBuildRule;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
@@ -51,7 +52,7 @@ import org.junit.Test;
 
 public class UnskippedRulesTrackerTest {
 
-  private UnskippedRulesTracker unskippedRulesTracker;
+  private UnskippedBuildEngineActionTracker unskippedRulesTracker;
   private BuckEventBus eventBus;
   private BlockingQueue<BuckEvent> events = new LinkedBlockingQueue<>();
 
@@ -67,8 +68,10 @@ public class UnskippedRulesTrackerTest {
   @Before
   public void setUp() {
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder();
-    RuleDepsCache depsCache = new DefaultRuleDepsCache(graphBuilder);
-    unskippedRulesTracker = new UnskippedRulesTracker(depsCache, graphBuilder);
+    BuildEngineActionToBuildRuleResolver actionToBuildRuleResolver =
+        new BuildEngineActionToBuildRuleResolver();
+    RuleDepsCache depsCache = new DefaultRuleDepsCache(graphBuilder, actionToBuildRuleResolver);
+    unskippedRulesTracker = new UnskippedBuildEngineActionTracker(depsCache, graphBuilder);
     eventBus = new DefaultBuckEventBus(FakeClock.doNotCare(), new BuildId());
     eventBus.register(
         new Object() {
@@ -238,7 +241,7 @@ public class UnskippedRulesTrackerTest {
     }
 
     @Override
-    public Stream<BuildTarget> getRuntimeDeps(SourcePathRuleFinder ruleFinder) {
+    public Stream<BuildTarget> getRuntimeDeps(BuildRuleResolver buildRuleResolver) {
       return runtimeDeps.stream().map(BuildRule::getBuildTarget);
     }
   }

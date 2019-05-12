@@ -17,9 +17,11 @@
 package com.facebook.buck.artifact_cache;
 
 import com.facebook.buck.artifact_cache.config.ArtifactCacheBuckConfig;
-import com.facebook.buck.artifact_cache.thrift.BuckCacheFetchResponse;
+import com.facebook.buck.artifact_cache.thrift.BuckCacheMultiFetchResponse;
 import com.facebook.buck.artifact_cache.thrift.BuckCacheResponse;
 import com.facebook.buck.artifact_cache.thrift.BuckCacheStoreResponse;
+import com.facebook.buck.artifact_cache.thrift.FetchResult;
+import com.facebook.buck.artifact_cache.thrift.FetchResultType;
 import com.facebook.buck.core.cell.CellPathResolver;
 import com.facebook.buck.core.cell.TestCellPathResolver;
 import com.facebook.buck.core.model.BuildId;
@@ -35,8 +37,7 @@ import com.facebook.buck.io.file.LazyPath;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
 import com.facebook.buck.slb.ThriftUtil;
-import com.facebook.buck.support.bgtasks.BackgroundTaskManager;
-import com.facebook.buck.support.bgtasks.TaskManagerScope;
+import com.facebook.buck.support.bgtasks.TaskManagerCommandScope;
 import com.facebook.buck.support.bgtasks.TestBackgroundTaskManager;
 import com.facebook.buck.testutil.TemporaryPaths;
 import com.facebook.buck.testutil.integration.HttpdForTests;
@@ -208,8 +209,8 @@ public class ArtifactCachesIntegrationTest {
 
   @Rule public TemporaryPaths tempDir = new TemporaryPaths();
 
-  private BackgroundTaskManager bgTaskManager;
-  private TaskManagerScope managerScope;
+  private TestBackgroundTaskManager bgTaskManager;
+  private TaskManagerCommandScope managerScope;
   private Path clientCertPath;
   private Path clientKeyPath;
   private Path serverCertPath;
@@ -219,7 +220,7 @@ public class ArtifactCachesIntegrationTest {
 
   @Before
   public void setUp() throws IOException {
-    bgTaskManager = new TestBackgroundTaskManager();
+    bgTaskManager = TestBackgroundTaskManager.of();
     managerScope = bgTaskManager.getNewScope(BUILD_ID);
 
     clientCertPath = tempDir.newFile("client.crt");
@@ -446,7 +447,7 @@ public class ArtifactCachesIntegrationTest {
    * hostnames for tests), and that accepts certs signed by the CA
    */
   private ClientCertificateHandler createClientCertificateHandler(
-      Path clientKeyPath, Path clientCertPath, Path caCertPath) throws IOException {
+      Path clientKeyPath, Path clientCertPath, Path caCertPath) {
     X509Certificate certificate =
         ClientCertificateHandler.parseCertificate(Optional.of(clientCertPath), true).get();
     X509Certificate caCertificate =
@@ -497,9 +498,11 @@ public class ArtifactCachesIntegrationTest {
           BuckCacheStoreResponse storeResponse = new BuckCacheStoreResponse();
           response.setStoreResponse(storeResponse);
         } else {
-          BuckCacheFetchResponse fetchResponse = new BuckCacheFetchResponse();
-          fetchResponse.setArtifactExists(false);
-          response.setFetchResponse(fetchResponse);
+          BuckCacheMultiFetchResponse multiFetchResponse = new BuckCacheMultiFetchResponse();
+          List<FetchResult> fetchResults = new ArrayList<>();
+          fetchResults.add(new FetchResult().setResultType(FetchResultType.MISS));
+          multiFetchResponse.setResults(fetchResults);
+          response.setMultiFetchResponse(multiFetchResponse);
         }
 
         byte[] serialized = ThriftUtil.serialize(ThriftArtifactCache.PROTOCOL, response);

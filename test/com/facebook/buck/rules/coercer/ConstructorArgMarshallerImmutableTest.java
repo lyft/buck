@@ -27,9 +27,10 @@ import com.facebook.buck.core.description.arg.Hint;
 import com.facebook.buck.core.exceptions.HumanReadableException;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
-import com.facebook.buck.core.model.UnconfiguredBuildTarget;
+import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.model.UnconfiguredBuildTargetFactoryForTests;
-import com.facebook.buck.core.model.platform.ConstraintBasedPlatform;
+import com.facebook.buck.core.model.UnconfiguredBuildTargetView;
+import com.facebook.buck.core.model.platform.impl.ConstraintBasedPlatform;
 import com.facebook.buck.core.rules.platform.DummyConfigurationRule;
 import com.facebook.buck.core.rules.platform.RuleBasedConstraintResolver;
 import com.facebook.buck.core.select.SelectableConfigurationContext;
@@ -558,9 +559,7 @@ public class ConstructorArgMarshallerImmutableTest {
                 "srcs", ImmutableList.of("main.py", "lib/__init__.py", "lib/manifest.py")));
 
     ImmutableSet<String> observedValues =
-        built
-            .getSrcs()
-            .stream()
+        built.getSrcs().stream()
             .map(input -> ((PathSourcePath) input).getRelativePath().toString())
             .collect(ImmutableSet.toImmutableSet());
     assertEquals(
@@ -630,7 +629,7 @@ public class ConstructorArgMarshallerImmutableTest {
 
   @Test
   public void populateWithConfiguringAttributesResolvesConfigurableAttributes() throws Exception {
-    UnconfiguredBuildTarget selectableTarget =
+    UnconfiguredBuildTargetView selectableTarget =
         UnconfiguredBuildTargetFactoryForTests.newInstance("//x:y");
     SelectorListResolver selectorListResolver =
         new DefaultSelectorListResolver(
@@ -648,7 +647,8 @@ public class ConstructorArgMarshallerImmutableTest {
         DefaultSelectableConfigurationContext.of(
             FakeBuckConfig.builder().build(),
             new RuleBasedConstraintResolver(DummyConfigurationRule::of),
-            new ConstraintBasedPlatform("", ImmutableSet.of()));
+            EmptyTargetConfiguration.INSTANCE,
+            configuration -> new ConstraintBasedPlatform("", ImmutableSet.of()));
     ImmutableSet.Builder<BuildTarget> declaredDeps = ImmutableSet.builder();
 
     DtoWithString dto =

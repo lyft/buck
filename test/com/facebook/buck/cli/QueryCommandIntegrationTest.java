@@ -30,6 +30,7 @@ import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 
 import com.facebook.buck.io.file.MorePaths;
+import com.facebook.buck.io.pathformat.PathFormatter;
 import com.facebook.buck.query.thrift.DirectedAcyclicGraph;
 import com.facebook.buck.slb.ThriftProtocol;
 import com.facebook.buck.slb.ThriftUtil;
@@ -349,7 +350,7 @@ public class QueryCommandIntegrationTest {
 
     ProcessResult result =
         workspace.runBuckCommand(
-            "query", "owner(%s)", MorePaths.pathWithUnixSeparators("example/1.txt"));
+            "query", "owner(%s)", PathFormatter.pathWithUnixSeparators("example/1.txt"));
 
     result.assertSuccess();
     assertThat(result.getStdout(), containsString("//example:one"));
@@ -1344,6 +1345,78 @@ public class QueryCommandIntegrationTest {
                     + "    }\n"
                     + "  }\n"
                     + "}\n")));
+  }
+
+  @Test
+  public void testBooleanConfigurableValuesWorkInOutputAttributes() throws IOException {
+    ProjectWorkspace workspace =
+        TestDataHelper.createProjectWorkspaceForScenario(
+            this, "query_command_with_configurable_attributes", tmp);
+    workspace.setUp();
+
+    ProcessResult result =
+        workspace.runBuckCommand(
+            "query",
+            "-c",
+            "config.mode=a",
+            "//:genrule_with_boolean",
+            "--output-attributes",
+            "executable");
+    result.assertSuccess();
+    assertThat(
+        result.getStdout(),
+        is(
+            equalToIgnoringPlatformNewlines(
+                "{\n"
+                    + "  \"//:genrule_with_boolean\" : {\n"
+                    + "    \"executable\" : false\n"
+                    + "  }\n"
+                    + "}\n")));
+
+    result =
+        workspace.runBuckCommand(
+            "query", "//:genrule_with_boolean", "--output-attributes", "executable");
+    result.assertSuccess();
+    assertThat(
+        result.getStdout(),
+        is(
+            equalToIgnoringPlatformNewlines(
+                "{\n"
+                    + "  \"//:genrule_with_boolean\" : {\n"
+                    + "    \"executable\" : true\n"
+                    + "  }\n"
+                    + "}\n")));
+  }
+
+  @Test
+  public void testBooleanConfigurableValuesThrowWhenConcatenated() throws IOException {
+    ProjectWorkspace workspace =
+        TestDataHelper.createProjectWorkspaceForScenario(
+            this, "query_command_with_configurable_attributes", tmp);
+    workspace.setUp();
+
+    ProcessResult result =
+        workspace.runBuckCommand(
+            "query",
+            "-c",
+            "config.mode=a",
+            "//:genrule_with_concatenated_boolean",
+            "--output-attributes",
+            "executable");
+    result.assertFailure();
+    assertThat(
+        result.getStderr(),
+        containsIgnoringPlatformNewlines(
+            "type 'class java.lang.Boolean' doesn't support select concatenation"));
+
+    result =
+        workspace.runBuckCommand(
+            "query", "//:genrule_with_concatenated_boolean", "--output-attributes", "executable");
+    result.assertFailure();
+    assertThat(
+        result.getStderr(),
+        containsIgnoringPlatformNewlines(
+            "type 'class java.lang.Boolean' doesn't support select concatenation"));
   }
 
   @Test

@@ -18,6 +18,7 @@ package com.facebook.buck.core.files;
 
 import com.facebook.buck.core.graph.transformation.GraphEngineCache;
 import com.facebook.buck.io.file.MorePaths;
+import com.facebook.buck.io.watchman.WatchmanEvent.Kind;
 import com.facebook.buck.io.watchman.WatchmanOverflowEvent;
 import com.facebook.buck.io.watchman.WatchmanPathEvent;
 import com.google.common.eventbus.Subscribe;
@@ -31,12 +32,10 @@ public class FileTreeCache implements GraphEngineCache<FileTreeKey, FileTree> {
   // TODO(sergeyb): probably use same cache data for DirectoryList and FileTree
 
   private ConcurrentHashMap<FileTreeKey, FileTree> cache = new ConcurrentHashMap<>();
-  private final Path rootPath;
   private final Invalidator invalidator;
 
   private FileTreeCache(Path rootPath) {
-    this.rootPath = rootPath;
-    invalidator = new Invalidator(this);
+    invalidator = new Invalidator(this, rootPath);
   }
 
   /**
@@ -69,20 +68,22 @@ public class FileTreeCache implements GraphEngineCache<FileTreeKey, FileTree> {
    */
   public static class Invalidator {
     private final FileTreeCache fileTreeCache;
+    private final Path rootPath;
 
-    public Invalidator(FileTreeCache fileTreeCache) {
+    private Invalidator(FileTreeCache fileTreeCache, Path rootPath) {
       this.fileTreeCache = fileTreeCache;
+      this.rootPath = rootPath;
     }
 
     /** Invoked asynchronously by event bus when file system change is detected with Watchman */
     @Subscribe
     public void onFileSystemChange(WatchmanPathEvent event) {
-      if (event.getKind() == WatchmanPathEvent.Kind.MODIFY) {
+      if (event.getKind() == Kind.MODIFY) {
         // file modifications do not change directory structure, do nothing
         return;
       }
 
-      if (!fileTreeCache.rootPath.equals(event.getCellPath())) {
+      if (!rootPath.equals(event.getCellPath())) {
         // must be same cell
         return;
       }
@@ -95,7 +96,7 @@ public class FileTreeCache implements GraphEngineCache<FileTreeKey, FileTree> {
       while (true) {
         fileTreeCache.cache.remove(ImmutableFileTreeKey.of(folderPath));
 
-        if (folderPath.equals(MorePaths.EMPTY_PATH)) {
+        if (MorePaths.isEmpty(folderPath)) {
           // empty path means root, it has no parent so return
           break;
         }

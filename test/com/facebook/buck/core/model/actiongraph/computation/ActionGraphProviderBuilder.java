@@ -17,21 +17,29 @@ package com.facebook.buck.core.model.actiongraph.computation;
 
 import com.facebook.buck.core.cell.CellProvider;
 import com.facebook.buck.core.cell.TestCellBuilder;
+import com.facebook.buck.core.graph.transformation.executor.DepsAwareExecutor;
+import com.facebook.buck.core.graph.transformation.model.ComputeResult;
+import com.facebook.buck.core.rules.analysis.config.RuleAnalysisComputationMode;
 import com.facebook.buck.event.BuckEventBus;
 import com.facebook.buck.event.BuckEventBusForTests;
 import com.facebook.buck.rules.keys.config.RuleKeyConfiguration;
 import com.facebook.buck.rules.keys.config.TestRuleKeyConfigurationFactory;
 import com.facebook.buck.util.CloseableMemoizedSupplier;
+import com.facebook.buck.util.concurrent.ExecutorPool;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.util.concurrent.ListeningExecutorService;
 import java.util.Map;
-import java.util.concurrent.ForkJoinPool;
 import javax.annotation.Nullable;
 
 public class ActionGraphProviderBuilder {
 
   @Nullable private ActionGraphCache actionGraphCache;
 
-  @Nullable private CloseableMemoizedSupplier<ForkJoinPool> poolSupplier;
+  @Nullable private ImmutableMap<ExecutorPool, ListeningExecutorService> executors;
+
+  @Nullable
+  private CloseableMemoizedSupplier<DepsAwareExecutor<? super ComputeResult, ?>>
+      depsAwareExecutorSupplier;
 
   @Nullable private BuckEventBus eventBus;
 
@@ -40,6 +48,8 @@ public class ActionGraphProviderBuilder {
   @Nullable private CellProvider cellProvider;
 
   @Nullable private ActionGraphParallelizationMode parallelizationMode;
+
+  @Nullable private RuleAnalysisComputationMode ruleAnalysisComputationMode;
 
   @Nullable private Boolean checkActionGraphs;
 
@@ -60,8 +70,15 @@ public class ActionGraphProviderBuilder {
   }
 
   public ActionGraphProviderBuilder withPoolSupplier(
-      CloseableMemoizedSupplier<ForkJoinPool> poolSupplier) {
-    this.poolSupplier = poolSupplier;
+      ImmutableMap<ExecutorPool, ListeningExecutorService> executors) {
+    this.executors = executors;
+    return this;
+  }
+
+  public ActionGraphProviderBuilder withDepsAwareExecutorSupplier(
+      CloseableMemoizedSupplier<DepsAwareExecutor<? super ComputeResult, ?>>
+          depsAwareExecutorSupplier) {
+    this.depsAwareExecutorSupplier = depsAwareExecutorSupplier;
     return this;
   }
 
@@ -84,6 +101,12 @@ public class ActionGraphProviderBuilder {
   public ActionGraphProviderBuilder withParallelizationMode(
       ActionGraphParallelizationMode parallelizationMode) {
     this.parallelizationMode = parallelizationMode;
+    return this;
+  }
+
+  public ActionGraphProviderBuilder withRuleAnalysisComputationMode(
+      RuleAnalysisComputationMode ruleAnalysisComputationMode) {
+    this.ruleAnalysisComputationMode = ruleAnalysisComputationMode;
     return this;
   }
 
@@ -112,15 +135,17 @@ public class ActionGraphProviderBuilder {
   public ActionGraphProvider build() {
     ActionGraphCache actionGraphCache =
         this.actionGraphCache == null ? new ActionGraphCache(1) : this.actionGraphCache;
-    CloseableMemoizedSupplier<ForkJoinPool> poolSupplier =
-        this.poolSupplier == null
-            ? CloseableMemoizedSupplier.of(
-                () -> {
-                  throw new IllegalStateException(
-                      "should not use parallel executor for action graph construction in test");
-                },
-                ignored -> {})
-            : this.poolSupplier;
+    ImmutableMap<ExecutorPool, ListeningExecutorService> executors = this.executors;
+    CloseableMemoizedSupplier<DepsAwareExecutor<? super ComputeResult, ?>>
+        depsAwareExecutorSupplier =
+            this.depsAwareExecutorSupplier == null
+                ? CloseableMemoizedSupplier.of(
+                    () -> {
+                      throw new IllegalStateException(
+                          "should not use deps aware executor for action graph construction in test");
+                    },
+                    ignored -> {})
+                : this.depsAwareExecutorSupplier;
     BuckEventBus eventBus =
         this.eventBus == null ? BuckEventBusForTests.newInstance() : this.eventBus;
     RuleKeyConfiguration ruleKeyConfiguration =
@@ -135,6 +160,10 @@ public class ActionGraphProviderBuilder {
         this.parallelizationMode == null
             ? ActionGraphParallelizationMode.DISABLED
             : this.parallelizationMode;
+    RuleAnalysisComputationMode ruleAnalysisComputationMode =
+        this.ruleAnalysisComputationMode == null
+            ? RuleAnalysisComputationMode.DISABLED
+            : this.ruleAnalysisComputationMode;
     boolean checkActionGraphs = this.checkActionGraphs != null && this.checkActionGraphs;
     boolean skipActionGraphCache = this.skipActionGraphCache != null && this.skipActionGraphCache;
     Map<IncrementalActionGraphMode, Double> incrementalActionGraphExperimentGroups =
@@ -151,8 +180,10 @@ public class ActionGraphProviderBuilder {
         ActionGraphFactory.create(
             eventBus,
             cellProvider,
-            poolSupplier,
+            executors,
+            depsAwareExecutorSupplier,
             parallelizationMode,
+            ruleAnalysisComputationMode,
             false,
             incrementalActionGraphExperimentGroups),
         actionGraphCache,

@@ -16,8 +16,8 @@
 
 package com.facebook.buck.util.cache.impl;
 
+import com.facebook.buck.core.io.ArchiveMemberPath;
 import com.facebook.buck.event.AbstractBuckEvent;
-import com.facebook.buck.io.ArchiveMemberPath;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.ProjectFilesystemFactory;
 import com.facebook.buck.util.cache.FileHashCacheEngine;
@@ -163,8 +163,7 @@ public class DefaultFileHashCache implements ProjectFileHashCache {
   }
 
   public static ImmutableList<? extends ProjectFileHashCache> createOsRootDirectoriesCaches(
-      ProjectFilesystemFactory projectFilesystemFactory, FileHashCacheMode fileHashCacheMode)
-      throws InterruptedException {
+      ProjectFilesystemFactory projectFilesystemFactory, FileHashCacheMode fileHashCacheMode) {
     ImmutableList.Builder<ProjectFileHashCache> allCaches = ImmutableList.builder();
     for (Path root : FileSystems.getDefault().getRootDirectories()) {
       if (!root.toFile().exists()) {
@@ -331,10 +330,7 @@ public class DefaultFileHashCache implements ProjectFileHashCache {
 
   @Override
   public Stream<Entry<Path, HashCode>> debugDump() {
-    return fileHashCacheEngine
-        .asMap()
-        .entrySet()
-        .stream()
+    return fileHashCacheEngine.asMap().entrySet().stream()
         .map(
             entry ->
                 new AbstractMap.SimpleEntry<>(

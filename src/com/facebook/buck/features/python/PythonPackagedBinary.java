@@ -22,6 +22,7 @@ import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.impl.BuildTargetPaths;
 import com.facebook.buck.core.rulekey.AddToRuleKey;
 import com.facebook.buck.core.rules.BuildRule;
+import com.facebook.buck.core.rules.BuildRuleResolver;
 import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.attr.HasRuntimeDeps;
 import com.facebook.buck.core.rules.common.BuildableSupport;
@@ -154,10 +155,7 @@ public class PythonPackagedBinary extends PythonBinary implements HasRuntimeDeps
             resolver.getMappedPaths(getComponents().getModules()),
             resolver.getMappedPaths(getComponents().getResources()),
             resolver.getMappedPaths(getComponents().getNativeLibraries()),
-            getComponents()
-                .getModuleDirs()
-                .entries()
-                .stream()
+            getComponents().getModuleDirs().entries().stream()
                 .collect(
                     ImmutableSetMultimap.toImmutableSetMultimap(
                         Entry::getKey, e -> resolver.getAbsolutePath(e.getValue()))),
@@ -171,11 +169,11 @@ public class PythonPackagedBinary extends PythonBinary implements HasRuntimeDeps
   }
 
   @Override
-  public Stream<BuildTarget> getRuntimeDeps(SourcePathRuleFinder ruleFinder) {
-    return RichStream.<BuildTarget>empty()
-        .concat(super.getRuntimeDeps(ruleFinder))
+  public Stream<BuildTarget> getRuntimeDeps(BuildRuleResolver buildRuleResolver) {
+    return RichStream.from(super.getRuntimeDeps(buildRuleResolver))
         .concat(
-            BuildableSupport.getDeps(pathToPexExecuter, ruleFinder).map(BuildRule::getBuildTarget));
+            BuildableSupport.getDeps(pathToPexExecuter, buildRuleResolver)
+                .map(BuildRule::getBuildTarget));
   }
 
   @Override

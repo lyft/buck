@@ -32,6 +32,7 @@ import com.facebook.buck.json.BuildFileParseExceptionStackTraceEntry;
 import com.facebook.buck.json.BuildFilePythonResult;
 import com.facebook.buck.json.BuildFileSyntaxError;
 import com.facebook.buck.parser.api.BuildFileManifest;
+import com.facebook.buck.parser.api.ImmutableBuildFileManifest;
 import com.facebook.buck.parser.api.ProjectBuildFileParser;
 import com.facebook.buck.parser.events.ParseBuckFileEvent;
 import com.facebook.buck.parser.events.ParseBuckProfilerReportEvent;
@@ -68,9 +69,9 @@ import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.FileSystem;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -164,9 +165,7 @@ public class PythonDslProjectBuildFileParser implements ProjectBuildFileParser {
                     new BufferedOutputStream(Files.newOutputStream(ignorePathsJson1))) {
                   ObjectMappers.WRITER.writeValue(
                       output,
-                      options
-                          .getIgnorePaths()
-                          .stream()
+                      options.getIgnorePaths().stream()
                           .map(PathMatcher::getPathOrGlob)
                           .collect(ImmutableList.toImmutableList()));
                 }
@@ -443,7 +442,7 @@ public class PythonDslProjectBuildFileParser implements ProjectBuildFileParser {
       if (values.isEmpty()) {
         // in case Python process cannot send values due to serialization issues, it will send an
         // empty list
-        return BuildFileManifest.of(
+        return ImmutableBuildFileManifest.of(
             ImmutableMap.of(),
             ImmutableSortedSet.of(),
             ImmutableMap.of(),
@@ -470,7 +469,7 @@ public class PythonDslProjectBuildFileParser implements ProjectBuildFileParser {
 
   @SuppressWarnings("unchecked")
   private BuildFileManifest toBuildFileManifest(ImmutableList<Map<String, Object>> values) {
-    return BuildFileManifest.of(
+    return ImmutableBuildFileManifest.of(
         indexTargetsByName(values.subList(0, values.size() - 3).asList()),
         ImmutableSortedSet.copyOf(
             Objects.requireNonNull(
@@ -668,12 +667,13 @@ public class PythonDslProjectBuildFileParser implements ProjectBuildFileParser {
     }
   }
 
-  private static Optional<BuildFileSyntaxError> parseSyntaxError(Map<String, Object> exceptionMap) {
+  private static Optional<BuildFileSyntaxError> parseSyntaxError(
+      Map<String, Object> exceptionMap, FileSystem fileSystem) {
     String type = (String) exceptionMap.get("type");
     if ("SyntaxError".equals(type)) {
       return Optional.of(
           BuildFileSyntaxError.of(
-              Paths.get((String) Objects.requireNonNull(exceptionMap.get("filename"))),
+              fileSystem.getPath((String) Objects.requireNonNull(exceptionMap.get("filename"))),
               (Number) Objects.requireNonNull(exceptionMap.get("lineno")),
               Optional.ofNullable((Number) exceptionMap.get("offset")),
               (String) Objects.requireNonNull(exceptionMap.get("text"))));
@@ -684,7 +684,7 @@ public class PythonDslProjectBuildFileParser implements ProjectBuildFileParser {
 
   @SuppressWarnings("unchecked")
   private static ImmutableList<BuildFileParseExceptionStackTraceEntry> parseStackTrace(
-      Map<String, Object> exceptionMap) {
+      Map<String, Object> exceptionMap, FileSystem fileSystem) {
     List<Map<String, Object>> traceback =
         (List<Map<String, Object>>) Objects.requireNonNull(exceptionMap.get("traceback"));
     ImmutableList.Builder<BuildFileParseExceptionStackTraceEntry> stackTraceBuilder =
@@ -692,7 +692,7 @@ public class PythonDslProjectBuildFileParser implements ProjectBuildFileParser {
     for (Map<String, Object> tracebackItem : traceback) {
       stackTraceBuilder.add(
           BuildFileParseExceptionStackTraceEntry.of(
-              Paths.get((String) Objects.requireNonNull(tracebackItem.get("filename"))),
+              fileSystem.getPath((String) Objects.requireNonNull(tracebackItem.get("filename"))),
               (Number) Objects.requireNonNull(tracebackItem.get("line_number")),
               (String) Objects.requireNonNull(tracebackItem.get("function_name")),
               (String) Objects.requireNonNull(tracebackItem.get("text"))));
@@ -701,17 +701,19 @@ public class PythonDslProjectBuildFileParser implements ProjectBuildFileParser {
   }
 
   @VisibleForTesting
-  static BuildFileParseExceptionData parseExceptionData(Map<String, Object> exceptionMap) {
+  static BuildFileParseExceptionData parseExceptionData(
+      Map<String, Object> exceptionMap, FileSystem fileSystem) {
     return BuildFileParseExceptionData.of(
         (String) Objects.requireNonNull(exceptionMap.get("type")),
         (String) Objects.requireNonNull(exceptionMap.get("value")),
-        parseSyntaxError(exceptionMap),
-        parseStackTrace(exceptionMap));
+        parseSyntaxError(exceptionMap, fileSystem),
+        parseStackTrace(exceptionMap, fileSystem));
   }
 
   private static boolean stackFrameFileIsBuckParser(Path filename, Path buckPyDir) {
     return filename.getParent().equals(buckPyDir)
-        || filename.endsWith(Paths.get("buck_server", "buck_parser", "buck.py"));
+        || filename.endsWith(
+            filename.getFileSystem().getPath("buck_server", "buck_parser", "buck.py"));
   }
 
   private static String formatStackTrace(
@@ -743,7 +745,8 @@ public class PythonDslProjectBuildFileParser implements ProjectBuildFileParser {
       return new IOException(message);
     } else {
       Map<String, Object> exceptionMap = (Map<String, Object>) exception;
-      BuildFileParseExceptionData exceptionData = parseExceptionData(exceptionMap);
+      BuildFileParseExceptionData exceptionData =
+          parseExceptionData(exceptionMap, buildFile.getFileSystem());
       LOG.debug("Received exception from buck.py parser: %s", exceptionData);
       Optional<BuildFileSyntaxError> syntaxErrorOpt = exceptionData.getSyntaxError();
       if (syntaxErrorOpt.isPresent()) {

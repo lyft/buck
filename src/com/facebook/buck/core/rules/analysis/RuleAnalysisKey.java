@@ -15,8 +15,11 @@
  */
 package com.facebook.buck.core.rules.analysis;
 
-import com.facebook.buck.core.graph.transformation.ComputeKey;
+import com.facebook.buck.core.graph.transformation.model.ClassBasedComputationIdentifier;
+import com.facebook.buck.core.graph.transformation.model.ComputationIdentifier;
+import com.facebook.buck.core.graph.transformation.model.ComputeKey;
 import com.facebook.buck.core.model.BuildTarget;
+import org.immutables.value.Value;
 
 /**
  * The key of a computation of the {@link com.facebook.buck.core.model.targetgraph.TargetGraph} to
@@ -25,12 +28,22 @@ import com.facebook.buck.core.model.BuildTarget;
  *
  * <p>This key will be used to indicate which rule's analysis we are currently interested in.
  */
-public interface RuleAnalysisKey extends ComputeKey<RuleAnalysisResult> {
+@Value.Immutable(builder = false, copy = false, prehash = true)
+public abstract class RuleAnalysisKey implements ComputeKey<RuleAnalysisResult> {
+
+  public static final ComputationIdentifier<RuleAnalysisResult> IDENTIFIER =
+      ClassBasedComputationIdentifier.of(RuleAnalysisKey.class, RuleAnalysisResult.class);
 
   /**
    * TODO(bobyf) this really should be a ConfiguredBuildTarget
    *
    * @return the {@link BuildTarget} of this key
    */
-  BuildTarget getBuildTarget();
+  @Value.Parameter
+  public abstract BuildTarget getBuildTarget();
+
+  @Override
+  public ComputationIdentifier<RuleAnalysisResult> getIdentifier() {
+    return IDENTIFIER;
+  }
 }

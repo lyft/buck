@@ -43,7 +43,7 @@ from releases import (
 )
 
 TARGET_MACOS_VERSION = "yosemite"
-TARGET_MACOS_VERSION_SPEC = TARGET_MACOS_VERSION + "_or_later"
+TARGET_MACOS_VERSION_SPEC = TARGET_MACOS_VERSION
 
 
 def parse_args(args):
@@ -142,6 +142,16 @@ def parse_args(args):
         help="If provided, the docker:port to connect to to build windows images",
     )
     parser.add_argument(
+        "--docker-windows-memory",
+        default="4g",
+        help="The memory argument to pass to docker for windows containers",
+    )
+    parser.add_argument(
+        "--docker-windows-isolation",
+        default="process",
+        help="The --isolation= argument for windows docker commands",
+    )
+    parser.add_argument(
         "--keep-temp-files",
         action="store_true",
         help="Keep temporary files regardless of success/failure",
@@ -195,7 +205,11 @@ def parse_args(args):
         help=(
             "Where homebrew is (e.g. /usr/local). If not specified, homebrew will be "
             "installed in a separate, temporary directory that gets cleaned up after "
-            "building (unless --keep-temp-files is specified)"
+            "building (unless --keep-temp-files is specified). If --output-dir is "
+            "specified, homebrew will be installed in a subdirectory there. This can "
+            "be useful to ensure that tap directories are preserved and can be "
+            "validated and pushed to github if a first run fails, or if a "
+            "--no-upload-asset run is done"
         ),
     )
     parser.add_argument(
@@ -342,6 +356,7 @@ def build(args, output_dir, release, github_token, homebrew_dir):
         homebrew_file = build_bottle(
             homebrew_dir,
             release,
+            args.repository,
             args.tap_repository,
             args.homebrew_target_macos_version,
             args.homebrew_target_macos_version_spec,
@@ -349,7 +364,12 @@ def build(args, output_dir, release, github_token, homebrew_dir):
         )
     if args.build_chocolatey:
         chocolatey_file = build_chocolatey(
-            args.repository, release, args.docker_windows_host, output_dir
+            args.repository,
+            release,
+            args.docker_windows_host,
+            args.docker_windows_memory,
+            args.docker_windows_isolation,
+            output_dir,
         )
 
     return deb_file, homebrew_file, chocolatey_file
@@ -418,11 +438,18 @@ def main():
             )
         if args.output_dir:
             output_dir = args.output_dir
+            if not os.path.exists(output_dir):
+                logging.info("{} does not exist. Creating it".format(output_dir))
+                os.makedirs(output_dir, exist_ok=True)
         else:
             temp_dir = tempfile.mkdtemp()
             output_dir = temp_dir
         if args.homebrew_dir:
             homebrew_dir = args.homebrew_dir
+        elif args.output_dir:
+            homebrew_dir = os.path.abspath(
+                os.path.join(output_dir, "homebrew_" + version_tag)
+            )
         else:
             temp_homebrew_dir = tempfile.mkdtemp()
             homebrew_dir = temp_homebrew_dir

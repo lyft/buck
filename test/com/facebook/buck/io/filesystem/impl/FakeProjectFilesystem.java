@@ -318,7 +318,7 @@ public class FakeProjectFilesystem extends DefaultProjectFilesystem {
     return this;
   }
 
-  protected byte[] getFileBytes(Path path) {
+  public byte[] getFileBytes(Path path) {
     return Objects.requireNonNull(fileContents.get(MorePaths.normalize(path)));
   }
 
@@ -459,9 +459,7 @@ public class FakeProjectFilesystem extends DefaultProjectFilesystem {
     Preconditions.checkState(isDirectory(pathRelativeToProjectRoot));
     PathMatcher pathMatcher = FileSystems.getDefault().getPathMatcher("glob:" + globPattern);
 
-    return fileContents
-        .keySet()
-        .stream()
+    return fileContents.keySet().stream()
         .filter(
             i ->
                 i.getParent().equals(pathRelativeToProjectRoot)

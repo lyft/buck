@@ -23,9 +23,7 @@ import com.facebook.buck.core.model.impl.BuildTargetPaths;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.cxx.CxxLibrary;
 import com.facebook.buck.cxx.CxxPreprocessorInput;
 import com.facebook.buck.cxx.HeaderSymlinkTreeWithHeaderMap;
@@ -55,7 +53,6 @@ public class AppleLibraryDescriptionSwiftEnhancer {
       BuildTarget target,
       CellPathResolver cellRoots,
       ActionGraphBuilder graphBuilder,
-      SourcePathRuleFinder ruleFinder,
       BuildRuleParams params,
       AppleNativeTargetDescriptionArg args,
       ProjectFilesystem filesystem,
@@ -64,21 +61,17 @@ public class AppleLibraryDescriptionSwiftEnhancer {
       SwiftBuckConfig swiftBuckConfig,
       ImmutableSet<CxxPreprocessorInput> inputs) {
 
-    SourcePathRuleFinder rulePathFinder = new SourcePathRuleFinder(graphBuilder);
     SwiftLibraryDescriptionArg.Builder delegateArgsBuilder = SwiftLibraryDescriptionArg.builder();
     SwiftDescriptions.populateSwiftLibraryDescriptionArg(
-        swiftBuckConfig,
-        DefaultSourcePathResolver.from(rulePathFinder),
-        delegateArgsBuilder,
-        args,
-        target);
+        swiftBuckConfig, graphBuilder.getSourcePathResolver(), delegateArgsBuilder, args, target);
     SwiftLibraryDescriptionArg swiftArgs = delegateArgsBuilder.build();
 
-    Preprocessor preprocessor = platform.getCpp().resolve(graphBuilder);
+    Preprocessor preprocessor =
+        platform.getCpp().resolve(graphBuilder, target.getTargetConfiguration());
 
     ImmutableSet<BuildRule> inputDeps =
         RichStream.from(inputs)
-            .flatMap(input -> RichStream.from(input.getDeps(graphBuilder, rulePathFinder)))
+            .flatMap(input -> RichStream.from(input.getDeps(graphBuilder)))
             .toImmutableSet();
 
     ImmutableSortedSet.Builder<BuildRule> sortedDeps = ImmutableSortedSet.naturalOrder();
@@ -102,7 +95,6 @@ public class AppleLibraryDescriptionSwiftEnhancer {
         target,
         paramsWithDeps,
         graphBuilder,
-        rulePathFinder,
         cellRoots,
         filesystem,
         swiftArgs,
@@ -142,7 +134,6 @@ public class AppleLibraryDescriptionSwiftEnhancer {
   public static BuildRule createObjCGeneratedHeaderBuildRule(
       BuildTarget buildTarget,
       ProjectFilesystem projectFilesystem,
-      SourcePathRuleFinder ruleFinder,
       ActionGraphBuilder graphBuilder,
       CxxPlatform cxxPlatform,
       HeaderVisibility headerVisibility) {
@@ -152,7 +143,7 @@ public class AppleLibraryDescriptionSwiftEnhancer {
     Path outputPath = BuildTargetPaths.getGenPath(projectFilesystem, buildTarget, "%s");
 
     return HeaderSymlinkTreeWithHeaderMap.create(
-        buildTarget, projectFilesystem, outputPath, headers, ruleFinder);
+        buildTarget, projectFilesystem, outputPath, headers, graphBuilder);
   }
 
   public static ImmutableMap<Path, SourcePath> getObjCGeneratedHeader(

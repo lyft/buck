@@ -43,8 +43,6 @@ public class BuckSyntaxHighlighter extends SyntaxHighlighterBase {
   public static final TextAttributesKey BUCK_RULE_NAME =
       createTextAttributesKey(
           "BUCK.RULE_NAME", DefaultLanguageHighlighterColors.FUNCTION_DECLARATION);
-  public static final TextAttributesKey BUCK_GLOB =
-      createTextAttributesKey("BUCK.GLOB", DefaultLanguageHighlighterColors.FUNCTION_CALL);
   public static final TextAttributesKey BUCK_FUNCTION_NAME =
       createTextAttributesKey("BUCK.FUNCTION_NAME", DefaultLanguageHighlighterColors.FUNCTION_CALL);
   public static final TextAttributesKey BUCK_STRING =
@@ -86,15 +84,16 @@ public class BuckSyntaxHighlighter extends SyntaxHighlighterBase {
         }) {
       sKeys.put(type, BUCK_KEYWORD);
     }
-    sKeys.put(BuckTypes.SINGLE_QUOTED_DOC_STRING, BUCK_STRING);
-    sKeys.put(BuckTypes.DOUBLE_QUOTED_DOC_STRING, BUCK_STRING);
-    sKeys.put(BuckTypes.GLOB, BUCK_GLOB);
-    sKeys.put(BuckTypes.DOUBLE_QUOTED_STRING, BUCK_STRING);
-    sKeys.put(BuckTypes.SINGLE_QUOTED_STRING, BUCK_STRING);
-    sKeys.put(BuckTypes.NUMBER, BUCK_NUMBER);
+    sKeys.put(BuckTypes.APOSTROPHED_STRING, BUCK_STRING);
+    sKeys.put(BuckTypes.APOSTROPHED_RAW_STRING, BUCK_STRING);
+    sKeys.put(BuckTypes.TRIPLE_APOSTROPHED_STRING, BUCK_STRING);
+    sKeys.put(BuckTypes.TRIPLE_APOSTROPHED_RAW_STRING, BUCK_STRING);
+    sKeys.put(BuckTypes.QUOTED_STRING, BUCK_STRING);
+    sKeys.put(BuckTypes.QUOTED_RAW_STRING, BUCK_STRING);
+    sKeys.put(BuckTypes.TRIPLE_QUOTED_STRING, BUCK_STRING);
+    sKeys.put(BuckTypes.TRIPLE_QUOTED_RAW_STRING, BUCK_STRING);
+    sKeys.put(BuckTypes.INTEGER, BUCK_NUMBER);
     sKeys.put(BuckTypes.LINE_COMMENT, BUCK_COMMENT);
-    sKeys.put(BuckTypes.FUNCTION_NAME, BUCK_FUNCTION_NAME);
-    sKeys.put(BuckTypes.PROPERTY_LVALUE, BUCK_PROPERTY_LVALUE);
     sKeys.put(BuckTypes.IDENTIFIER, BUCK_IDENTIFIER);
 
     sKeys.put(TokenType.BAD_CHARACTER, HighlighterColors.BAD_CHARACTER);

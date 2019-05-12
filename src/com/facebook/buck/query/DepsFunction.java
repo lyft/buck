@@ -30,6 +30,7 @@
 
 package com.facebook.buck.query;
 
+import com.facebook.buck.core.model.QueryTarget;
 import com.facebook.buck.query.QueryEnvironment.Argument;
 import com.facebook.buck.query.QueryEnvironment.ArgumentType;
 import com.facebook.buck.query.QueryEnvironment.QueryFunction;
@@ -56,7 +57,7 @@ import java.util.function.Consumer;
  *
  * <pre>       | DEPS '(' expr ',' INTEGER ',' expr ')'</pre>
  */
-public class DepsFunction implements QueryFunction {
+public class DepsFunction<T extends QueryTarget> implements QueryFunction<T, T> {
 
   private static final ImmutableList<ArgumentType> ARGUMENT_TYPES =
       ImmutableList.of(ArgumentType.EXPRESSION, ArgumentType.INTEGER, ArgumentType.EXPRESSION);
@@ -79,16 +80,16 @@ public class DepsFunction implements QueryFunction {
   }
 
   private void forEachDep(
-      QueryEnvironment env,
-      QueryExpression depsExpression,
-      Iterable<QueryTarget> targets,
-      Consumer<? super QueryTarget> consumer)
+      QueryEnvironment<T> env,
+      QueryExpression<T> depsExpression,
+      Iterable<T> targets,
+      Consumer<T> consumer)
       throws QueryException {
-    for (QueryTarget target : targets) {
-      Set<QueryTarget> deps =
+    for (T target : targets) {
+      ImmutableSet<T> deps =
           depsExpression.eval(
-              new NoopQueryEvaluator(),
-              new TargetVariablesQueryEnvironment(
+              new NoopQueryEvaluator<T>(),
+              new TargetVariablesQueryEnvironment<T>(
                   ImmutableMap.of(
                       FirstOrderDepsFunction.NAME,
                       ImmutableSet.copyOf(env.getFwdDeps(ImmutableList.of(target))),
@@ -105,25 +106,25 @@ public class DepsFunction implements QueryFunction {
    * supplied) is reached.
    */
   @Override
-  public ImmutableSet<QueryTarget> eval(
-      QueryEvaluator evaluator, QueryEnvironment env, ImmutableList<Argument> args)
+  public ImmutableSet<T> eval(
+      QueryEvaluator<T> evaluator, QueryEnvironment<T> env, ImmutableList<Argument<T>> args)
       throws QueryException {
-    Set<QueryTarget> argumentSet = evaluator.eval(args.get(0).getExpression(), env);
+    ImmutableSet<T> argumentSet = evaluator.eval(args.get(0).getExpression(), env);
     int depthBound = args.size() > 1 ? args.get(1).getInteger() : Integer.MAX_VALUE;
-    Optional<QueryExpression> deps =
+    Optional<QueryExpression<T>> deps =
         args.size() > 2 ? Optional.of(args.get(2).getExpression()) : Optional.empty();
     env.buildTransitiveClosure(argumentSet, depthBound);
 
     // LinkedHashSet preserves the order of insertion when iterating over the values.
     // The order by which we traverse the result is meaningful because the dependencies are
     // traversed level-by-level.
-    Set<QueryTarget> result = new LinkedHashSet<>(argumentSet);
-    Collection<QueryTarget> current = argumentSet;
+    Set<T> result = new LinkedHashSet<T>(argumentSet);
+    Collection<T> current = argumentSet;
 
     // Iterating depthBound+1 times because the first one processes the given argument set.
     for (int i = 0; i < depthBound; i++) {
-      Collection<QueryTarget> next = new ArrayList<>();
-      Consumer<? super QueryTarget> consumer =
+      Collection<T> next = new ArrayList<>();
+      Consumer<T> consumer =
           queryTarget -> {
             boolean added = result.add(queryTarget);
             if (added) {
@@ -147,7 +148,7 @@ public class DepsFunction implements QueryFunction {
    * A function that resolves to the current node's target being traversed when evaluating the deps
    * function.
    */
-  public static class FirstOrderDepsFunction implements QueryFunction {
+  public static class FirstOrderDepsFunction<T extends QueryTarget> implements QueryFunction<T, T> {
 
     private static final String NAME = "first_order_deps";
 
@@ -167,15 +168,16 @@ public class DepsFunction implements QueryFunction {
     }
 
     @Override
-    public ImmutableSet<QueryTarget> eval(
-        QueryEvaluator evaluator, QueryEnvironment env, ImmutableList<Argument> args) {
+    public ImmutableSet<T> eval(
+        QueryEvaluator<T> evaluator, QueryEnvironment<T> env, ImmutableList<Argument<T>> args) {
       Preconditions.checkArgument(args.isEmpty());
       return env.resolveTargetVariable(getName());
     }
   }
 
   /** A function that looks up target variables by name */
-  public static class LookupFunction implements QueryFunction {
+  public static class LookupFunction<OUTPUT_TYPE extends QueryTarget, ENV_NODE_TYPE>
+      implements QueryFunction<OUTPUT_TYPE, ENV_NODE_TYPE> {
     @Override
     public String getName() {
       return "lookup";
@@ -192,10 +194,13 @@ public class DepsFunction implements QueryFunction {
     }
 
     @Override
-    public ImmutableSet<QueryTarget> eval(
-        QueryEvaluator evaluator, QueryEnvironment env, ImmutableList<Argument> args) {
+    @SuppressWarnings("unchecked")
+    public ImmutableSet<OUTPUT_TYPE> eval(
+        QueryEvaluator<ENV_NODE_TYPE> evaluator,
+        QueryEnvironment<ENV_NODE_TYPE> env,
+        ImmutableList<Argument<ENV_NODE_TYPE>> args) {
       Preconditions.checkArgument(args.size() == 1);
-      return env.resolveTargetVariable(args.get(0).getWord());
+      return (ImmutableSet<OUTPUT_TYPE>) env.resolveTargetVariable(args.get(0).getWord());
     }
   }
 }

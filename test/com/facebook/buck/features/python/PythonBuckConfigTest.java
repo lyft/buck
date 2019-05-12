@@ -21,11 +21,9 @@ import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 
 import com.facebook.buck.core.config.FakeBuckConfig;
+import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
 import com.facebook.buck.testutil.ProcessResult;
@@ -56,8 +54,6 @@ public class PythonBuckConfigTest {
   @Test
   public void testPathToPexExecuterUsesConfigSetting() throws IOException {
     BuildRuleResolver resolver = new TestActionGraphBuilder();
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(resolver));
     Path projectDir = Files.createTempDirectory("project");
     Path pexExecuter = Paths.get("pex-executer");
     ProjectFilesystem projectFilesystem =
@@ -75,7 +71,10 @@ public class PythonBuckConfigTest {
                 .setFilesystem(projectFilesystem)
                 .build());
     assertThat(
-        config.getPexExecutor(resolver).get().getCommandPrefix(pathResolver),
+        config
+            .getPexExecutor(resolver, EmptyTargetConfiguration.INSTANCE)
+            .get()
+            .getCommandPrefix(resolver.getSourcePathResolver()),
         Matchers.contains(projectDir.resolve(pexExecuter).toString()));
   }
 

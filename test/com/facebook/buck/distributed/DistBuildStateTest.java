@@ -26,8 +26,12 @@ import com.facebook.buck.core.cell.Cell;
 import com.facebook.buck.core.cell.TestCellBuilder;
 import com.facebook.buck.core.config.BuckConfig;
 import com.facebook.buck.core.config.FakeBuckConfig;
+import com.facebook.buck.core.graph.transformation.executor.DepsAwareExecutor;
+import com.facebook.buck.core.graph.transformation.executor.impl.DefaultDepsAwareExecutor;
+import com.facebook.buck.core.graph.transformation.model.ComputeResult;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
+import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.model.actiongraph.ActionGraph;
 import com.facebook.buck.core.model.targetgraph.TargetGraph;
 import com.facebook.buck.core.model.targetgraph.TargetGraphFactory;
@@ -40,14 +44,11 @@ import com.facebook.buck.core.parser.buildtargetparser.ParsingUnconfiguredBuildT
 import com.facebook.buck.core.parser.buildtargetparser.UnconfiguredBuildTargetFactory;
 import com.facebook.buck.core.plugin.impl.BuckPluginManagerFactory;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.knowntypes.KnownRuleTypesProvider;
 import com.facebook.buck.core.rules.knowntypes.TestKnownRuleTypesProvider;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.DefaultBuildTargetSourcePath;
 import com.facebook.buck.core.sourcepath.PathSourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.distributed.thrift.BuildJobState;
 import com.facebook.buck.io.ExecutableFinder;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
@@ -67,6 +68,7 @@ import com.facebook.buck.rules.coercer.DefaultTypeCoercerFactory;
 import com.facebook.buck.rules.coercer.PathTypeCoercer;
 import com.facebook.buck.rules.coercer.TypeCoercerFactory;
 import com.facebook.buck.rules.keys.config.TestRuleKeyConfigurationFactory;
+import com.facebook.buck.testutil.CloseableResource;
 import com.facebook.buck.testutil.TemporaryPaths;
 import com.facebook.buck.testutil.TestConsole;
 import com.facebook.buck.testutil.integration.ProjectWorkspace;
@@ -103,6 +105,10 @@ public class DistBuildStateTest {
   @Rule public ExpectedException expectedException = ExpectedException.none();
 
   @Rule public TemporaryPaths temporaryFolder = new TemporaryPaths();
+
+  @Rule
+  public CloseableResource<DepsAwareExecutor<? super ComputeResult, ?>> executor =
+      CloseableResource.of(() -> DefaultDepsAwareExecutor.of(4));
 
   private ProcessExecutor processExecutor;
   private ExecutableFinder executableFinder;
@@ -156,7 +162,8 @@ public class DistBuildStateTest {
             moduleManager,
             pluginManager,
             new DefaultProjectFilesystemFactory(),
-            unconfiguredBuildTargetFactory);
+            unconfiguredBuildTargetFactory,
+            () -> EmptyTargetConfiguration.INSTANCE);
     ImmutableMap<Integer, Cell> cells = distributedBuildState.getCells();
     assertThat(cells, Matchers.aMapWithSize(1));
     assertThat(cells.get(0).getBuckConfig(), Matchers.equalTo(buckConfig));
@@ -224,7 +231,8 @@ public class DistBuildStateTest {
             moduleManager,
             pluginManager,
             new DefaultProjectFilesystemFactory(),
-            unconfiguredBuildTargetFactory);
+            unconfiguredBuildTargetFactory,
+            () -> EmptyTargetConfiguration.INSTANCE);
     ImmutableMap<Integer, Cell> cells = distributedBuildState.getCells();
 
     assertThat(cells, Matchers.aMapWithSize(1));
@@ -242,7 +250,7 @@ public class DistBuildStateTest {
     ProjectFilesystem projectFilesystem = cell.getFilesystem();
     projectFilesystem.mkdirs(projectFilesystem.getBuckPaths().getBuckOut());
     setUp();
-    Parser parser = TestParserFactory.create(cell);
+    Parser parser = TestParserFactory.create(executor.get(), cell);
     TargetGraph targetGraph =
         parser.buildTargetGraph(
             ParsingContext.builder(
@@ -277,24 +285,22 @@ public class DistBuildStateTest {
             moduleManager,
             pluginManager,
             new DefaultProjectFilesystemFactory(),
-            unconfiguredBuildTargetFactory);
+            unconfiguredBuildTargetFactory,
+            () -> EmptyTargetConfiguration.INSTANCE);
 
     ProjectFilesystem reconstructedCellFilesystem =
         distributedBuildState.getCells().get(0).getFilesystem();
     TargetGraph reconstructedGraph =
         distributedBuildState.createTargetGraph(targetGraphCodec).getTargetGraph();
     assertEquals(
-        reconstructedGraph
-            .getNodes()
-            .stream()
+        reconstructedGraph.getNodes().stream()
             .map(
                 targetNode ->
                     TargetNodes.castArg(targetNode, JavaLibraryDescriptionArg.class).get())
             .sorted()
             .map(targetNode -> targetNode.getConstructorArg().getSrcs())
             .collect(Collectors.toList()),
-        Lists.newArrayList("A.java", "B.java", "C.java")
-            .stream()
+        Lists.newArrayList("A.java", "B.java", "C.java").stream()
             .map(f -> reconstructedCellFilesystem.getPath(f))
             .map(p -> PathSourcePath.of(reconstructedCellFilesystem, p))
             .map(ImmutableSortedSet::of)
@@ -365,7 +371,8 @@ public class DistBuildStateTest {
             moduleManager,
             pluginManager,
             new DefaultProjectFilesystemFactory(),
-            unconfiguredBuildTargetFactory);
+            unconfiguredBuildTargetFactory,
+            () -> EmptyTargetConfiguration.INSTANCE);
     ImmutableMap<Integer, Cell> cells = distributedBuildState.getCells();
     assertThat(cells, Matchers.aMapWithSize(2));
 
@@ -379,11 +386,9 @@ public class DistBuildStateTest {
         cacheSection.get().get("slb_server_pool"), Matchers.equalTo("http://someserver:8080"));
   }
 
-  private DistBuildFileHashes emptyActionGraph() throws IOException, InterruptedException {
+  private DistBuildFileHashes emptyActionGraph() throws IOException {
     ActionGraph actionGraph = new ActionGraph(ImmutableList.of());
     BuildRuleResolver ruleResolver = new TestActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(ruleResolver);
-    SourcePathResolver sourcePathResolver = DefaultSourcePathResolver.from(ruleFinder);
     ProjectFilesystem projectFilesystem = createJavaOnlyFilesystem("/opt/buck");
     Cell rootCell =
         new TestCellBuilder()
@@ -392,8 +397,7 @@ public class DistBuildStateTest {
             .build();
     return new DistBuildFileHashes(
         actionGraph,
-        sourcePathResolver,
-        ruleFinder,
+        ruleResolver,
         new StackedFileHashCache(
             ImmutableList.of(
                 DefaultFileHashCache.createDefaultFileHashCache(
@@ -427,8 +431,7 @@ public class DistBuildStateTest {
       nodeToRawNode = ignored -> ImmutableMap.of();
     }
 
-    TypeCoercerFactory typeCoercerFactory =
-        new DefaultTypeCoercerFactory(PathTypeCoercer.PathExistenceVerificationMode.DO_NOT_VERIFY);
+    TypeCoercerFactory typeCoercerFactory = new DefaultTypeCoercerFactory();
     KnownRuleTypesProvider knownRuleTypesProvider =
         TestKnownRuleTypesProvider.create(BuckPluginManagerFactory.createPluginManager());
     ParserTargetNodeFactory<Map<String, Object>> parserTargetNodeFactory =

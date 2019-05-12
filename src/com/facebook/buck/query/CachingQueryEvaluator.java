@@ -16,6 +16,7 @@
 
 package com.facebook.buck.query;
 
+import com.facebook.buck.core.model.QueryTarget;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
@@ -23,25 +24,27 @@ import com.google.common.collect.ImmutableSet;
 import java.util.Objects;
 import java.util.concurrent.ExecutionException;
 
-public class CachingQueryEvaluator implements QueryEvaluator {
-  private final Cache<QueryExpression, ImmutableSet<QueryTarget>> cache;
+public class CachingQueryEvaluator<ENV_NODE_TYPE> implements QueryEvaluator<ENV_NODE_TYPE> {
+  private final Cache<QueryExpression<?>, ImmutableSet<?>> cache;
 
   public CachingQueryEvaluator() {
     this.cache = CacheBuilder.newBuilder().build();
   }
 
   @Override
-  public ImmutableSet<QueryTarget> eval(QueryExpression exp, QueryEnvironment env)
+  @SuppressWarnings("unchecked")
+  public <OUTPUT_TYPE extends QueryTarget> ImmutableSet<OUTPUT_TYPE> eval(
+      QueryExpression<ENV_NODE_TYPE> exp, QueryEnvironment<ENV_NODE_TYPE> env)
       throws QueryException {
     try {
-      return cache.get(exp, () -> exp.eval(this, env));
+      return (ImmutableSet<OUTPUT_TYPE>) cache.get(exp, () -> exp.eval(this, env));
     } catch (ExecutionException e) {
       throw new QueryException(e, "Failed executing query [%s]", exp);
     }
   }
 
   @VisibleForTesting
-  public boolean isPresent(QueryExpression exp) {
+  public boolean isPresent(QueryExpression<?> exp) {
     return Objects.nonNull(cache.getIfPresent(exp));
   }
 }

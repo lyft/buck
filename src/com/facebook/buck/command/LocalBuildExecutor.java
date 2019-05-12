@@ -39,8 +39,6 @@ import com.facebook.buck.core.resources.ResourcesConfig;
 import com.facebook.buck.core.rulekey.RuleKey;
 import com.facebook.buck.core.rulekey.config.RuleKeyConfig;
 import com.facebook.buck.core.rules.BuildRule;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
 import com.facebook.buck.event.BuckEventBus;
 import com.facebook.buck.io.filesystem.ProjectFilesystemFactory;
@@ -54,7 +52,6 @@ import com.facebook.buck.rules.keys.RuleKeyFactories;
 import com.facebook.buck.rules.keys.config.RuleKeyConfiguration;
 import com.facebook.buck.rules.modern.builders.ModernBuildRuleBuilderFactory;
 import com.facebook.buck.rules.modern.config.ModernBuildRuleConfig;
-import com.facebook.buck.step.DefaultStepRunner;
 import com.facebook.buck.util.Console;
 import com.facebook.buck.util.DefaultProcessExecutor;
 import com.facebook.buck.util.ExitCode;
@@ -227,8 +224,6 @@ public class LocalBuildExecutor implements BuildExecutor {
 
     CachingBuildEngineBuckConfig engineConfig =
         args.getBuckConfig().getView(CachingBuildEngineBuckConfig.class);
-    SourcePathRuleFinder sourcePathRuleFinder =
-        new SourcePathRuleFinder(actionGraphAndBuilder.getActionGraphBuilder());
 
     return new CachingBuildEngine(
         cachingBuildEngineDelegate,
@@ -242,15 +237,13 @@ public class LocalBuildExecutor implements BuildExecutor {
             args.getBuckEventBus(),
             metadataProvider),
         executorService,
-        new DefaultStepRunner(),
         buildEngineMode.orElse(engineConfig.getBuildEngineMode()),
         engineConfig.getBuildMetadataStorage(),
         engineConfig.getBuildDepFiles(),
         engineConfig.getBuildMaxDepFileCacheEntries(),
         engineConfig.getBuildArtifactCacheSizeLimit(),
         actionGraphAndBuilder.getActionGraphBuilder(),
-        sourcePathRuleFinder,
-        DefaultSourcePathResolver.from(sourcePathRuleFinder),
+        actionGraphAndBuilder.getBuildEngineActionToBuildRuleResolver(),
         targetConfigurationSerializer,
         args.getBuildInfoStoreManager(),
         engineConfig.getResourceAwareSchedulingInfo(),

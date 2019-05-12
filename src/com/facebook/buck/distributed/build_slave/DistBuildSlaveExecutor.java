@@ -24,12 +24,11 @@ import com.facebook.buck.core.build.engine.impl.DefaultRuleDepsCache;
 import com.facebook.buck.core.build.execution.context.ExecutionContext;
 import com.facebook.buck.core.model.BuildId;
 import com.facebook.buck.core.model.BuildTarget;
-import com.facebook.buck.core.model.EmptyTargetConfiguration;
+import com.facebook.buck.core.model.impl.HostTargetConfiguration;
 import com.facebook.buck.core.parser.buildtargetparser.UnconfiguredBuildTargetFactory;
 import com.facebook.buck.core.rulekey.RuleKey;
 import com.facebook.buck.core.rulekey.calculator.ParallelRuleKeyCalculator;
 import com.facebook.buck.core.rules.SourcePathRuleFinder;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.util.log.Logger;
 import com.facebook.buck.distributed.BuildStatusUtil;
 import com.facebook.buck.distributed.DistBuildMode;
@@ -137,19 +136,20 @@ public class DistBuildSlaveExecutor {
                   initializer.getDelegateAndGraphs(),
                   graphs -> {
                     SourcePathRuleFinder ruleFinder =
-                        new SourcePathRuleFinder(
-                            graphs.getActionGraphAndBuilder().getActionGraphBuilder());
+                        graphs.getActionGraphAndBuilder().getActionGraphBuilder();
                     return new ParallelRuleKeyCalculator<RuleKey>(
                         args.getExecutorService(),
                         new DefaultRuleKeyFactory(
                             new RuleKeyFieldLoader(args.getRuleKeyConfiguration()),
                             graphs.getCachingBuildEngineDelegate().getFileHashCache(),
-                            DefaultSourcePathResolver.from(ruleFinder),
                             ruleFinder,
                             args.getRuleKeyCacheScope().getCache(),
                             Optional.empty()),
                         new DefaultRuleDepsCache(
-                            graphs.getActionGraphAndBuilder().getActionGraphBuilder()),
+                            graphs.getActionGraphAndBuilder().getActionGraphBuilder(),
+                            graphs
+                                .getActionGraphAndBuilder()
+                                .getBuildEngineActionToBuildRuleResolver()),
                         (buckEventBus, rule) -> () -> {});
                   },
                   MoreExecutors.directExecutor()),
@@ -296,7 +296,7 @@ public class DistBuildSlaveExecutor {
                 new NoOpRemoteBuildRuleCompletionWaiter(),
                 args.getMetadataProvider(),
                 args.getUnconfiguredBuildTargetFactory(),
-                EmptyTargetConfiguration.INSTANCE,
+                HostTargetConfiguration.INSTANCE,
                 args.getTargetConfigurationSerializer()),
         args.getExecutorService());
   }
@@ -304,17 +304,14 @@ public class DistBuildSlaveExecutor {
   private List<BuildTarget> getTopLevelTargetsToBuild() {
     UnconfiguredBuildTargetFactory unconfiguredBuildTargetFactory =
         args.getUnconfiguredBuildTargetFactory();
-    return args.getState()
-        .getRemoteState()
-        .getTopLevelTargets()
-        .stream()
+    return args.getState().getRemoteState().getTopLevelTargets().stream()
         .map(
             target ->
                 unconfiguredBuildTargetFactory.create(
                     args.getRootCell().getCellPathResolver(), target))
         .map(
             unconfiguredBuildTarget ->
-                unconfiguredBuildTarget.configure(EmptyTargetConfiguration.INSTANCE))
+                unconfiguredBuildTarget.configure(HostTargetConfiguration.INSTANCE))
         .collect(Collectors.toList());
   }
 }

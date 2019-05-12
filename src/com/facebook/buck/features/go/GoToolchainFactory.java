@@ -23,8 +23,8 @@ import com.facebook.buck.core.toolchain.ToolchainCreationContext;
 import com.facebook.buck.core.toolchain.ToolchainFactory;
 import com.facebook.buck.core.toolchain.ToolchainProvider;
 import com.facebook.buck.cxx.toolchain.CxxPlatformsProvider;
-import com.facebook.buck.cxx.toolchain.DefaultCxxPlatforms;
 import com.facebook.buck.cxx.toolchain.UnresolvedCxxPlatform;
+import com.facebook.buck.cxx.toolchain.impl.DefaultCxxPlatforms;
 import com.facebook.buck.util.RichStream;
 import com.facebook.buck.util.string.MoreStrings;
 import com.google.common.collect.ImmutableList;
@@ -59,10 +59,7 @@ public class GoToolchainFactory implements ToolchainFactory<GoToolchain> {
                 .add(platformFactory.getPlatform(GoBuckConfig.SECTION, DefaultCxxPlatforms.FLAVOR))
                 // Add custom platforms.
                 .addAll(
-                    context
-                        .getBuckConfig()
-                        .getSections()
-                        .stream()
+                    context.getBuckConfig().getSections().stream()
                         .flatMap(
                             section ->
                                 RichStream.from(

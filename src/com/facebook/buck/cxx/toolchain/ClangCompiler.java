@@ -18,7 +18,7 @@ package com.facebook.buck.cxx.toolchain;
 
 import com.facebook.buck.core.rulekey.AddToRuleKey;
 import com.facebook.buck.core.toolchain.tool.Tool;
-import com.facebook.buck.io.file.MorePaths;
+import com.facebook.buck.io.pathformat.PathFormatter;
 import com.google.common.collect.ImmutableList;
 import java.nio.file.Path;
 import java.util.Optional;
@@ -31,14 +31,17 @@ public class ClangCompiler extends DefaultCompiler {
   @AddToRuleKey private final boolean useDependencyTree;
 
   @AddToRuleKey private final DependencyTrackingMode dependencyTrackingMode;
+  @AddToRuleKey private final ToolType toolType;
 
-  public ClangCompiler(Tool tool, boolean useDependencyTree) {
-    this(tool, useDependencyTree, true);
+  public ClangCompiler(Tool tool, ToolType toolType, boolean useDependencyTree) {
+    this(tool, toolType, useDependencyTree, true);
   }
 
-  public ClangCompiler(Tool tool, boolean useDependencyTree, boolean useUnixPathSeparator) {
+  public ClangCompiler(
+      Tool tool, ToolType toolType, boolean useDependencyTree, boolean useUnixPathSeparator) {
     super(tool, useUnixPathSeparator);
     this.useDependencyTree = useDependencyTree;
+    this.toolType = toolType;
     if (useDependencyTree) {
       dependencyTrackingMode = DependencyTrackingMode.SHOW_HEADERS;
     } else {
@@ -56,7 +59,7 @@ public class ClangCompiler extends DefaultCompiler {
     if (useDependencyTree) {
       return ImmutableList.of("-H");
     } else {
-      return ImmutableList.of("-MD", "-MF", MorePaths.pathWithUnixSeparators(outputPath));
+      return ImmutableList.of("-MD", "-MF", PathFormatter.pathWithUnixSeparators(outputPath));
     }
   }
 
@@ -68,7 +71,12 @@ public class ClangCompiler extends DefaultCompiler {
 
   @Override
   public Optional<ImmutableList<String>> getFlagsForColorDiagnostics() {
-    return Optional.of(ImmutableList.of("-fcolor-diagnostics"));
+    // We invoke asm compiler as clang but asm compiler doesn't support color diagnostics flag.
+    if (toolType == ToolType.ASM || toolType == ToolType.AS) {
+      return Optional.empty();
+    } else {
+      return Optional.of(ImmutableList.of("-fcolor-diagnostics"));
+    }
   }
 
   @Override

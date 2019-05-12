@@ -20,7 +20,7 @@ import com.facebook.buck.core.cell.CellPathResolver;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.Flavor;
 import com.facebook.buck.core.model.TargetConfiguration;
-import com.facebook.buck.core.model.UnconfiguredBuildTarget;
+import com.facebook.buck.core.model.UnconfiguredBuildTargetView;
 import com.facebook.buck.core.parser.buildtargetparser.BuildTargetPattern;
 import com.facebook.buck.core.parser.buildtargetparser.BuildTargetPatternParser;
 import com.facebook.buck.core.parser.buildtargetparser.ParsingUnconfiguredBuildTargetFactory;
@@ -84,20 +84,12 @@ import java.util.regex.Pattern;
  */
 public class DefaultTypeCoercerFactory implements TypeCoercerFactory {
 
-  private final TypeCoercer<UnconfiguredBuildTarget> unconfiguredBuildTargetTypeCoercer;
-  private final PathTypeCoercer.PathExistenceVerificationMode pathExistenceVerificationMode;
-
+  private final TypeCoercer<UnconfiguredBuildTargetView> unconfiguredBuildTargetTypeCoercer;
   private final TypeCoercer<Pattern> patternTypeCoercer = new PatternTypeCoercer();
 
   private final TypeCoercer<?>[] nonParameterizedTypeCoercers;
 
   public DefaultTypeCoercerFactory() {
-    this(PathTypeCoercer.PathExistenceVerificationMode.VERIFY);
-  }
-
-  public DefaultTypeCoercerFactory(
-      PathTypeCoercer.PathExistenceVerificationMode pathExistenceVerificationMode) {
-    this.pathExistenceVerificationMode = pathExistenceVerificationMode;
     TypeCoercer<String> stringTypeCoercer = new StringTypeCoercer();
     TypeCoercer<Flavor> flavorTypeCoercer = new FlavorTypeCoercer();
     // This has no implementation, but is here so that constructor succeeds so that it can be
@@ -313,8 +305,7 @@ public class DefaultTypeCoercerFactory implements TypeCoercerFactory {
         }
       }
       if (selectedTypeCoercer == null
-          && Types.getSupertypes(rawClass)
-              .stream()
+          && Types.getSupertypes(rawClass).stream()
               .anyMatch(c -> c.getAnnotation(BuckStyleImmutable.class) != null)) {
         selectedTypeCoercer =
             new ImmutableTypeCoercer<>(
@@ -420,19 +411,5 @@ public class DefaultTypeCoercerFactory implements TypeCoercerFactory {
     Preconditions.checkState(
         actualTypeArguments.length == 1, "expected type '%s' to have one parameter", typeName);
     return actualTypeArguments[0];
-  }
-
-  @Override
-  public boolean equals(Object obj) {
-    if (!(obj instanceof DefaultTypeCoercerFactory)) {
-      return false;
-    }
-    return pathExistenceVerificationMode
-        == ((DefaultTypeCoercerFactory) obj).pathExistenceVerificationMode;
-  }
-
-  @Override
-  public int hashCode() {
-    return pathExistenceVerificationMode.hashCode();
   }
 }

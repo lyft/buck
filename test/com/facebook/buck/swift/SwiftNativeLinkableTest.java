@@ -19,14 +19,13 @@ package com.facebook.buck.swift;
 import static org.junit.Assert.assertEquals;
 
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.FakeSourcePath;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.tool.Tool;
 import com.facebook.buck.core.toolchain.tool.impl.VersionedTool;
 import com.facebook.buck.cxx.toolchain.linker.Linker;
+import com.facebook.buck.io.file.MorePaths;
 import com.facebook.buck.rules.args.Arg;
 import com.facebook.buck.swift.toolchain.SwiftPlatform;
 import com.facebook.buck.swift.toolchain.impl.SwiftPlatformFactory;
@@ -48,8 +47,7 @@ public class SwiftNativeLinkableTest {
     swiftStdTool = VersionedTool.of(FakeSourcePath.of("swift-std"), "foo", "1.0");
 
     BuildRuleResolver buildRuleResolver = new TestActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(buildRuleResolver);
-    sourcePathResolver = DefaultSourcePathResolver.from(ruleFinder);
+    sourcePathResolver = buildRuleResolver.getSourcePathResolver();
   }
 
   @Test
@@ -77,11 +75,15 @@ public class SwiftNativeLinkableTest {
             "-Xlinker",
             "-rpath",
             "-Xlinker",
-            "@executable_path/Frameworks",
+            MorePaths.pathWithPlatformSeparators("/usr/lib/swift"),
             "-Xlinker",
             "-rpath",
             "-Xlinker",
-            "@loader_path/Frameworks"));
+            MorePaths.pathWithPlatformSeparators("@executable_path/Frameworks"),
+            "-Xlinker",
+            "-rpath",
+            "-Xlinker",
+            MorePaths.pathWithPlatformSeparators("@loader_path/Frameworks")));
   }
 
   @Test
@@ -101,10 +103,14 @@ public class SwiftNativeLinkableTest {
             "-Xlinker",
             "-rpath",
             "-Xlinker",
-            "@executable_path/../Frameworks",
+            MorePaths.pathWithPlatformSeparators("/usr/lib/swift"),
             "-Xlinker",
             "-rpath",
             "-Xlinker",
-            "@loader_path/../Frameworks"));
+            MorePaths.pathWithPlatformSeparators("@executable_path/../Frameworks"),
+            "-Xlinker",
+            "-rpath",
+            "-Xlinker",
+            MorePaths.pathWithPlatformSeparators("@loader_path/../Frameworks")));
   }
 }

@@ -20,6 +20,7 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertThat;
 
+import com.facebook.buck.core.model.QueryTarget;
 import com.facebook.buck.query.QueryEnvironment.Argument;
 import com.facebook.buck.query.QueryEnvironment.TargetEvaluator;
 import com.facebook.buck.testutil.TemporaryPaths;
@@ -49,8 +50,10 @@ public class QueryParserTest {
 
   @Test
   public void testDeps() throws Exception {
-    ImmutableList<Argument> args = ImmutableList.of(Argument.of(TargetLiteral.of("//foo:bar")));
-    QueryExpression expected = FunctionExpression.of(new DepsFunction(), args);
+    ImmutableList<Argument<QueryBuildTarget>> args =
+        ImmutableList.of(Argument.of(TargetLiteral.of("//foo:bar")));
+    QueryExpression<QueryBuildTarget> expected =
+        new ImmutableFunctionExpression<>(new DepsFunction(), args);
 
     String query = "deps('//foo:bar')";
     QueryExpression result = QueryParser.parse(query, queryEnvironment);
@@ -59,16 +62,17 @@ public class QueryParserTest {
 
   @Test
   public void testTestsOfDepsSet() throws Exception {
-    ImmutableList<TargetLiteral> args =
+    ImmutableList<TargetLiteral<QueryBuildTarget>> args =
         ImmutableList.of(TargetLiteral.of("//foo:bar"), TargetLiteral.of("//other:lib"));
-    QueryExpression depsExpr =
-        FunctionExpression.of(
+    QueryExpression<QueryBuildTarget> depsExpr =
+        new ImmutableFunctionExpression<>(
             new DepsFunction(), ImmutableList.of(Argument.of(SetExpression.of(args))));
-    QueryExpression testsofExpr =
-        FunctionExpression.of(new TestsOfFunction(), ImmutableList.of(Argument.of(depsExpr)));
+    QueryExpression<QueryBuildTarget> testsofExpr =
+        new ImmutableFunctionExpression<>(
+            new TestsOfFunction(), ImmutableList.of(Argument.of(depsExpr)));
 
     String query = "testsof(deps(set('//foo:bar' //other:lib)))";
-    QueryExpression result = QueryParser.parse(query, queryEnvironment);
+    QueryExpression<QueryBuildTarget> result = QueryParser.parse(query, queryEnvironment);
     assertThat(result, is(equalTo(testsofExpr)));
   }
 
@@ -131,7 +135,7 @@ public class QueryParserTest {
     }
   }
 
-  private static class TestQueryEnvironment implements QueryEnvironment {
+  private static class TestQueryEnvironment implements QueryEnvironment<QueryBuildTarget> {
 
     private final TargetEvaluator targetEvaluator;
 
@@ -145,63 +149,64 @@ public class QueryParserTest {
     }
 
     @Override
-    public Iterable<QueryFunction> getFunctions() {
+    public Iterable<QueryFunction<?, QueryBuildTarget>> getFunctions() {
       return ImmutableList.of(new DepsFunction(), new RdepsFunction(), new TestsOfFunction());
     }
 
     @Override
-    public ImmutableSet<QueryTarget> getFwdDeps(Iterable<QueryTarget> targets) {
+    public ImmutableSet<QueryBuildTarget> getFwdDeps(Iterable<QueryBuildTarget> targets) {
       throw new UnsupportedOperationException();
     }
 
     @Override
-    public Set<QueryTarget> getReverseDeps(Iterable<QueryTarget> targets) {
+    public Set<QueryBuildTarget> getReverseDeps(Iterable<QueryBuildTarget> targets) {
       throw new UnsupportedOperationException();
     }
 
     @Override
-    public Set<QueryTarget> getInputs(QueryTarget target) {
+    public Set<QueryFileTarget> getInputs(QueryBuildTarget target) {
       throw new UnsupportedOperationException();
     }
 
     @Override
-    public Set<QueryTarget> getTransitiveClosure(Set<QueryTarget> targets) {
+    public Set<QueryBuildTarget> getTransitiveClosure(Set<QueryBuildTarget> targets) {
       throw new UnsupportedOperationException();
     }
 
     @Override
-    public void buildTransitiveClosure(Set<QueryTarget> targetNodes, int maxDepth) {
+    public void buildTransitiveClosure(Set<? extends QueryTarget> targetNodes, int maxDepth) {
       throw new UnsupportedOperationException();
     }
 
     @Override
-    public String getTargetKind(QueryTarget target) {
+    public String getTargetKind(QueryBuildTarget target) {
       throw new UnsupportedOperationException();
     }
 
     @Override
-    public ImmutableSet<QueryTarget> getTestsForTarget(QueryTarget target) {
+    public ImmutableSet<QueryBuildTarget> getTestsForTarget(QueryBuildTarget target) {
       throw new UnsupportedOperationException();
     }
 
     @Override
-    public ImmutableSet<QueryTarget> getBuildFiles(Set<QueryTarget> targets) {
+    public ImmutableSet<QueryFileTarget> getBuildFiles(Set<QueryBuildTarget> targets) {
       throw new UnsupportedOperationException();
     }
 
     @Override
-    public ImmutableSet<QueryTarget> getFileOwners(ImmutableList<String> files) {
+    public ImmutableSet<QueryBuildTarget> getFileOwners(ImmutableList<String> files) {
       throw new UnsupportedOperationException();
     }
 
     @Override
-    public ImmutableSet<QueryTarget> getTargetsInAttribute(QueryTarget target, String attribute) {
+    public ImmutableSet<? extends QueryTarget> getTargetsInAttribute(
+        QueryBuildTarget target, String attribute) {
       throw new UnsupportedOperationException();
     }
 
     @Override
     public ImmutableSet<Object> filterAttributeContents(
-        QueryTarget target, String attribute, Predicate<Object> predicate) {
+        QueryBuildTarget target, String attribute, Predicate<Object> predicate) {
       throw new UnsupportedOperationException();
     }
   }

@@ -20,6 +20,7 @@ import static org.junit.Assume.assumeNoException;
 
 import com.facebook.buck.core.config.FakeBuckConfig;
 import com.facebook.buck.core.exceptions.HumanReadableException;
+import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.toolchain.ToolchainCreationContext;
 import com.facebook.buck.core.toolchain.impl.ToolchainProviderBuilder;
 import com.facebook.buck.cxx.toolchain.CxxPlatformUtils;
@@ -33,6 +34,7 @@ import com.facebook.buck.util.ProcessExecutor;
 import com.facebook.buck.util.ProcessExecutorParams;
 import com.facebook.buck.util.environment.EnvVariablesProvider;
 import com.google.common.collect.ImmutableMap;
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
@@ -79,7 +81,8 @@ abstract class GoAssumptions {
                   new FakeProjectFilesystem(),
                   executor,
                   new ExecutableFinder(),
-                  TestRuleKeyConfigurationFactory.create()))
+                  TestRuleKeyConfigurationFactory.create(),
+                  () -> EmptyTargetConfiguration.INSTANCE))
           .get()
           .getDefaultPlatform()
           .getCompiler();
@@ -87,6 +90,34 @@ abstract class GoAssumptions {
       exception = e;
     }
     assumeNoException(exception);
+  }
+
+  public static List<Integer> getActualVersionNumbers() throws IOException, InterruptedException {
+    List<Integer> actualVersionNumbers = null;
+    ProcessExecutor processExecutor = new DefaultProcessExecutor(new TestConsole());
+    ProcessExecutor.Result goToolResult =
+        processExecutor.launchAndExecute(
+            ProcessExecutorParams.builder().addCommand("go", "version").build(),
+            EnumSet.of(ProcessExecutor.Option.EXPECTING_STD_OUT),
+            /* stdin */ Optional.empty(),
+            /* timeOutMs */ Optional.empty(),
+            /* timeoutHandler */ Optional.empty());
+    if (goToolResult.getExitCode() == 0) {
+      String versionOut = goToolResult.getStdout().get().trim();
+      Matcher matcher = VERSION_PATTERN.matcher(versionOut);
+      if (matcher.matches()) {
+        actualVersionNumbers =
+            IntStream.range(1, 3)
+                .mapToObj(matcher::group)
+                .map(Integer::valueOf)
+                .collect(Collectors.toList());
+      } else {
+        throw new HumanReadableException("Unknown version: " + versionOut);
+      }
+    } else {
+      throw new HumanReadableException(goToolResult.getStderr().get());
+    }
+    return actualVersionNumbers;
   }
 
   public static void assumeGoVersionAtLeast(String minimumVersion) {
@@ -99,30 +130,8 @@ abstract class GoAssumptions {
         minimumVersionNumbers.size() >= 2);
     Throwable exception = null;
     List<Integer> actualVersionNumbers = null;
-    ProcessExecutor processExecutor = new DefaultProcessExecutor(new TestConsole());
     try {
-      ProcessExecutor.Result goToolResult =
-          processExecutor.launchAndExecute(
-              ProcessExecutorParams.builder().addCommand("go", "version").build(),
-              EnumSet.of(ProcessExecutor.Option.EXPECTING_STD_OUT),
-              /* stdin */ Optional.empty(),
-              /* timeOutMs */ Optional.empty(),
-              /* timeoutHandler */ Optional.empty());
-      if (goToolResult.getExitCode() == 0) {
-        String versionOut = goToolResult.getStdout().get().trim();
-        Matcher matcher = VERSION_PATTERN.matcher(versionOut);
-        if (matcher.matches()) {
-          actualVersionNumbers =
-              IntStream.range(1, 3)
-                  .mapToObj(matcher::group)
-                  .map(Integer::valueOf)
-                  .collect(Collectors.toList());
-        } else {
-          exception = new HumanReadableException("Unknown version: " + versionOut);
-        }
-      } else {
-        exception = new HumanReadableException(goToolResult.getStderr().get());
-      }
+      actualVersionNumbers = GoAssumptions.getActualVersionNumbers();
     } catch (Exception e) {
       exception = e;
     }

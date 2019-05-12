@@ -21,12 +21,12 @@ import com.facebook.buck.core.build.engine.delegate.CachingBuildEngineDelegate;
 import com.facebook.buck.core.build.engine.delegate.LocalCachingBuildEngineDelegate;
 import com.facebook.buck.core.cell.Cell;
 import com.facebook.buck.core.model.actiongraph.ActionGraphAndBuilder;
+import com.facebook.buck.core.model.impl.HostTargetConfiguration;
 import com.facebook.buck.core.model.targetgraph.TargetGraph;
 import com.facebook.buck.core.model.targetgraph.TargetGraphAndBuildTargets;
 import com.facebook.buck.core.model.targetgraph.impl.TargetNodeFactory;
 import com.facebook.buck.core.parser.buildtargetparser.ParsingUnconfiguredBuildTargetFactory;
 import com.facebook.buck.core.rules.SourcePathRuleFinder;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.util.log.Logger;
 import com.facebook.buck.distributed.DistBuildCachingEngineDelegate;
 import com.facebook.buck.distributed.DistBuildConfig;
@@ -130,10 +130,10 @@ public class DelegateAndGraphsInitializer {
                   .toVersionedTargetGraph(
                       args.getBuckEventBus(),
                       args.getState().getRemoteRootCellConfig(),
-                      new DefaultTypeCoercerFactory(
-                          PathTypeCoercer.PathExistenceVerificationMode.DO_NOT_VERIFY),
+                      new DefaultTypeCoercerFactory(),
                       new ParsingUnconfiguredBuildTargetFactory(),
-                      targetGraphAndBuildTargets)
+                      targetGraphAndBuildTargets,
+                      HostTargetConfiguration.INSTANCE)
                   .getTargetGraph();
         } else {
           targetGraph = targetGraphAndBuildTargets.getTargetGraph();
@@ -165,11 +165,9 @@ public class DelegateAndGraphsInitializer {
     DistBuildConfig remoteConfig = new DistBuildConfig(args.getState().getRemoteRootCellConfig());
     if (remoteConfig.materializeSourceFilesOnDemand()) {
       SourcePathRuleFinder ruleFinder =
-          new SourcePathRuleFinder(
-              Objects.requireNonNull(actionGraphAndBuilder).getActionGraphBuilder());
+          Objects.requireNonNull(actionGraphAndBuilder).getActionGraphBuilder();
       cachingBuildEngineDelegate =
           new DistBuildCachingEngineDelegate(
-              DefaultSourcePathResolver.from(ruleFinder),
               ruleFinder,
               caches.remoteStateCache,
               caches.materializingCache,
@@ -213,8 +211,7 @@ public class DelegateAndGraphsInitializer {
     // shaved off in the versioned target graph, and so they don't get recorded in the distributed
     // state, and hence they're not pre-loaded. So even when we pre-load the files, we need this
     // hack so that the coercer does not check for existence of these unrecorded files.
-    TypeCoercerFactory typeCoercerFactory =
-        new DefaultTypeCoercerFactory(PathTypeCoercer.PathExistenceVerificationMode.DO_NOT_VERIFY);
+    TypeCoercerFactory typeCoercerFactory = new DefaultTypeCoercerFactory();
     ParserTargetNodeFactory<Map<String, Object>> parserTargetNodeFactory =
         DefaultParserTargetNodeFactory.createForDistributedBuild(
             args.getKnownRuleTypesProvider(),

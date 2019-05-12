@@ -52,32 +52,27 @@ abstract class AbstractCxxDeps {
       getPlatformDeps();
 
   private Stream<BuildTarget> getSpecificPlatformDeps(CxxPlatform cxxPlatform) {
-    return getPlatformDeps()
-        .stream()
+    return getPlatformDeps().stream()
         .flatMap(
             p ->
-                p.getMatchingValues(cxxPlatform.getFlavor().toString())
-                    .stream()
+                p.getMatchingValues(cxxPlatform.getFlavor().toString()).stream()
                     .flatMap(Collection::stream));
   }
 
   private Stream<BuildTarget> getAllPlatformDeps() {
-    return getPlatformDeps()
-        .stream()
+    return getPlatformDeps().stream()
         .flatMap(p -> p.getValues().stream().flatMap(Collection::stream));
   }
 
   public ImmutableSet<BuildRule> getForAllPlatforms(BuildRuleResolver resolver) {
-    return RichStream.<BuildTarget>empty()
-        .concat(getDeps().stream())
+    return RichStream.from(getDeps())
         .concat(getAllPlatformDeps())
         .map(resolver::getRule)
         .toImmutableSet();
   }
 
   public ImmutableSet<BuildRule> get(BuildRuleResolver resolver, CxxPlatform cxxPlatform) {
-    return RichStream.<BuildTarget>empty()
-        .concat(getDeps().stream())
+    return RichStream.from(getDeps())
         .concat(getSpecificPlatformDeps(cxxPlatform))
         .map(resolver::getRule)
         .toImmutableSet();

@@ -23,7 +23,11 @@ import com.facebook.buck.core.cell.Cell;
 import com.facebook.buck.core.cell.TestCellBuilder;
 import com.facebook.buck.core.config.FakeBuckConfig;
 import com.facebook.buck.core.exceptions.HumanReadableException;
+import com.facebook.buck.core.graph.transformation.executor.DepsAwareExecutor;
+import com.facebook.buck.core.graph.transformation.executor.impl.DefaultDepsAwareExecutor;
+import com.facebook.buck.core.graph.transformation.model.ComputeResult;
 import com.facebook.buck.core.model.EmptyTargetConfiguration;
+import com.facebook.buck.core.model.QueryTarget;
 import com.facebook.buck.core.parser.buildtargetparser.ParsingUnconfiguredBuildTargetFactory;
 import com.facebook.buck.event.BuckEventBus;
 import com.facebook.buck.event.BuckEventBusForTests;
@@ -39,10 +43,10 @@ import com.facebook.buck.parser.ParsingContext;
 import com.facebook.buck.parser.PerBuildState;
 import com.facebook.buck.parser.PerBuildStateFactory;
 import com.facebook.buck.parser.SpeculativeParsing;
-import com.facebook.buck.query.QueryTarget;
 import com.facebook.buck.rules.coercer.DefaultConstructorArgMarshaller;
 import com.facebook.buck.rules.coercer.DefaultTypeCoercerFactory;
 import com.facebook.buck.rules.coercer.TypeCoercerFactory;
+import com.facebook.buck.testutil.CloseableResource;
 import com.facebook.buck.testutil.FakeFileHashCache;
 import com.facebook.buck.testutil.TemporaryPaths;
 import com.facebook.buck.testutil.TestConsole;
@@ -78,6 +82,10 @@ public class QueryCommandTest {
 
   @Rule public TemporaryPaths tmp = new TemporaryPaths();
 
+  @Rule
+  public CloseableResource<DepsAwareExecutor<? super ComputeResult, ?>> executor =
+      CloseableResource.of(() -> DefaultDepsAwareExecutor.of(4));
+
   private static ThrowingCloseableMemoizedSupplier<ManifestService, IOException>
       getManifestSupplier() {
     return ThrowingCloseableMemoizedSupplier.of(() -> null, ManifestService::close);
@@ -101,6 +109,7 @@ public class QueryCommandTest {
     queryCommand.outputAttributesSane = Suppliers.ofInstance(ImmutableSet.of());
     params =
         CommandRunnerParamsForTesting.createCommandRunnerParamsForTesting(
+            executor.get(),
             console,
             cell,
             artifactCache,
@@ -119,7 +128,6 @@ public class QueryCommandTest {
                 new DefaultConstructorArgMarshaller(typeCoercerFactory),
                 params.getKnownRuleTypesProvider(),
                 new ParserPythonInterpreterProvider(cell.getBuckConfig(), new ExecutableFinder()),
-                cell.getBuckConfig(),
                 WatchmanFactory.NULL_WATCHMAN,
                 eventBus,
                 getManifestSupplier(),

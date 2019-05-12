@@ -26,12 +26,9 @@ import com.facebook.buck.core.cell.TestCellPathResolver;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.FakeSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
 import com.facebook.buck.step.Step;
@@ -75,20 +72,22 @@ public class AssembleDirectoriesTest {
         ImmutableList.of(
             FakeSourcePath.of(filesystem, "folder_a"), FakeSourcePath.of(filesystem, "folder_b"));
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
     AssembleDirectories assembleDirectories =
-        new AssembleDirectories(target, filesystem, ruleFinder, directories);
+        new AssembleDirectories(target, filesystem, graphBuilder, directories);
     graphBuilder.addToIndex(assembleDirectories);
 
     ImmutableList<Step> steps =
         assembleDirectories.getBuildSteps(
-            FakeBuildContext.withSourcePathResolver(pathResolver).withBuildCellRootPath(tmp),
+            FakeBuildContext.withSourcePathResolver(graphBuilder.getSourcePathResolver())
+                .withBuildCellRootPath(tmp),
             new FakeBuildableContext());
     for (Step step : steps) {
       assertEquals(0, step.execute(context).getExitCode());
     }
-    Path outputFile = pathResolver.getAbsolutePath(assembleDirectories.getSourcePathToOutput());
+    Path outputFile =
+        graphBuilder
+            .getSourcePathResolver()
+            .getAbsolutePath(assembleDirectories.getSourcePathToOutput());
     try (DirectoryStream<Path> dir = Files.newDirectoryStream(outputFile)) {
       assertEquals(4, Iterables.size(dir));
     }

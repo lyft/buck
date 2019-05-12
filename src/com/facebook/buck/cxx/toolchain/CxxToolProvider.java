@@ -17,6 +17,7 @@
 package com.facebook.buck.cxx.toolchain;
 
 import com.facebook.buck.core.model.BuildTarget;
+import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.rules.BuildRuleResolver;
 import com.facebook.buck.core.toolchain.tool.Tool;
 import com.facebook.buck.core.toolchain.toolprovider.ToolProvider;
@@ -32,23 +33,32 @@ public abstract class CxxToolProvider<T> {
 
   private final ToolProvider toolProvider;
   private final Supplier<Type> type;
+  private final ToolType toolType;
   private final boolean useUnixFileSeparator;
 
-  private final LoadingCache<BuildRuleResolver, T> cache =
-      CacheBuilder.newBuilder()
-          .weakKeys()
-          .build(
-              new CacheLoader<BuildRuleResolver, T>() {
-                @Override
-                public T load(@Nonnull BuildRuleResolver resolver) {
-                  return build(type.get(), toolProvider.resolve(resolver));
-                }
-              });
+  private final LoadingCache<BuildRuleResolver, BuildRuleResolverCacheByTargetConfiguration<T>>
+      cache =
+          CacheBuilder.newBuilder()
+              .weakKeys()
+              .build(
+                  new CacheLoader<
+                      BuildRuleResolver, BuildRuleResolverCacheByTargetConfiguration<T>>() {
+                    @Override
+                    public BuildRuleResolverCacheByTargetConfiguration<T> load(
+                        @Nonnull BuildRuleResolver buildRuleResolver) {
+                      return new BuildRuleResolverCacheByTargetConfiguration<T>(
+                          buildRuleResolver, toolProvider, tool -> build(type.get(), tool));
+                    }
+                  });
 
   public CxxToolProvider(
-      ToolProvider toolProvider, Supplier<Type> type, boolean useUnixFileSeparator) {
+      ToolProvider toolProvider,
+      Supplier<Type> type,
+      ToolType toolType,
+      boolean useUnixFileSeparator) {
     this.toolProvider = toolProvider;
     this.type = type;
+    this.toolType = toolType;
     this.useUnixFileSeparator = useUnixFileSeparator;
   }
 
@@ -56,23 +66,24 @@ public abstract class CxxToolProvider<T> {
    * Build using a {@link ToolProvider} and a required type. It also allows to specify to use Unix
    * path separators for the NDK compiler.
    */
-  public CxxToolProvider(ToolProvider toolProvider, Type type, boolean useUnixFileSeparator) {
-    this(toolProvider, Suppliers.ofInstance(type), useUnixFileSeparator);
+  public CxxToolProvider(
+      ToolProvider toolProvider, Type type, ToolType toolType, boolean useUnixFileSeparator) {
+    this(toolProvider, Suppliers.ofInstance(type), toolType, useUnixFileSeparator);
   }
 
   /** Build using a {@link ToolProvider} and a required type. */
-  public CxxToolProvider(ToolProvider toolProvider, Type type) {
-    this(toolProvider, Suppliers.ofInstance(type), false);
+  public CxxToolProvider(ToolProvider toolProvider, Type type, ToolType toolType) {
+    this(toolProvider, Suppliers.ofInstance(type), toolType, false);
   }
 
   protected abstract T build(Type type, Tool tool);
 
-  public T resolve(BuildRuleResolver resolver) {
-    return cache.getUnchecked(resolver);
+  public T resolve(BuildRuleResolver resolver, TargetConfiguration targetConfiguration) {
+    return cache.getUnchecked(resolver).get(targetConfiguration);
   }
 
-  public Iterable<BuildTarget> getParseTimeDeps() {
-    return toolProvider.getParseTimeDeps();
+  public Iterable<BuildTarget> getParseTimeDeps(TargetConfiguration targetConfiguration) {
+    return toolProvider.getParseTimeDeps(targetConfiguration);
   }
 
   public enum Type {
@@ -82,6 +93,11 @@ public abstract class CxxToolProvider<T> {
     GCC,
     WINDOWS,
     WINDOWS_ML64
+  }
+
+  /** Return tool type of this provider instance */
+  public ToolType getToolType() {
+    return toolType;
   }
 
   /** @returns whether the specific CxxTool is accepting paths with Unix path separator only. */

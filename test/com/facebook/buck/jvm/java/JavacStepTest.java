@@ -28,10 +28,7 @@ import com.facebook.buck.core.build.execution.context.ExecutionContext;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.event.BuckEventBusForTests;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
@@ -61,11 +58,15 @@ public class JavacStepTest {
   public void successfulCompileDoesNotSendStdoutAndStderrToConsole() throws Exception {
     FakeJavac fakeJavac = new FakeJavac();
     BuildRuleResolver buildRuleResolver = new TestActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(buildRuleResolver);
-    SourcePathResolver sourcePathResolver = DefaultSourcePathResolver.from(ruleFinder);
     ProjectFilesystem fakeFilesystem = FakeProjectFilesystem.createJavaOnlyFilesystem();
     JavacOptions javacOptions =
-        JavacOptions.builder().setSourceLevel("8.0").setTargetLevel("8.0").build();
+        JavacOptions.builder()
+            .setLanguageLevelOptions(
+                JavacLanguageLevelOptions.builder()
+                    .setSourceLevel("8.0")
+                    .setTargetLevel("8.0")
+                    .build())
+            .build();
     ClasspathChecker classpathChecker =
         new ClasspathChecker(
             "/", ":", Paths::get, dir -> false, file -> false, (path, glob) -> ImmutableSet.of());
@@ -76,7 +77,7 @@ public class JavacStepTest {
             fakeJavac,
             javacOptions,
             target,
-            sourcePathResolver,
+            buildRuleResolver.getSourcePathResolver(),
             fakeFilesystem,
             classpathChecker,
             CompilerParameters.builder().setScratchPaths(target, fakeFilesystem).build(),
@@ -104,11 +105,15 @@ public class JavacStepTest {
   public void failedCompileSendsStdoutAndStderrToConsole() throws Exception {
     FakeJavac fakeJavac = new FakeJavac();
     BuildRuleResolver buildRuleResolver = new TestActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(buildRuleResolver);
-    SourcePathResolver sourcePathResolver = DefaultSourcePathResolver.from(ruleFinder);
     ProjectFilesystem fakeFilesystem = FakeProjectFilesystem.createJavaOnlyFilesystem();
     JavacOptions javacOptions =
-        JavacOptions.builder().setSourceLevel("8.0").setTargetLevel("8.0").build();
+        JavacOptions.builder()
+            .setLanguageLevelOptions(
+                JavacLanguageLevelOptions.builder()
+                    .setSourceLevel("8.0")
+                    .setTargetLevel("8.0")
+                    .build())
+            .build();
     ClasspathChecker classpathChecker =
         new ClasspathChecker(
             "/", ":", Paths::get, dir -> false, file -> false, (path, glob) -> ImmutableSet.of());
@@ -119,7 +124,7 @@ public class JavacStepTest {
             fakeJavac,
             javacOptions,
             target,
-            sourcePathResolver,
+            buildRuleResolver.getSourcePathResolver(),
             fakeFilesystem,
             classpathChecker,
             CompilerParameters.builder().setScratchPaths(target, fakeFilesystem).build(),
@@ -148,13 +153,14 @@ public class JavacStepTest {
   public void existingBootclasspathDirSucceeds() throws Exception {
     FakeJavac fakeJavac = new FakeJavac();
     BuildRuleResolver buildRuleResolver = new TestActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(buildRuleResolver);
-    SourcePathResolver sourcePathResolver = DefaultSourcePathResolver.from(ruleFinder);
     ProjectFilesystem fakeFilesystem = FakeProjectFilesystem.createJavaOnlyFilesystem();
     JavacOptions javacOptions =
         JavacOptions.builder()
-            .setSourceLevel("8.0")
-            .setTargetLevel("8.0")
+            .setLanguageLevelOptions(
+                JavacLanguageLevelOptions.builder()
+                    .setSourceLevel("8.0")
+                    .setTargetLevel("8.0")
+                    .build())
             .setBootclasspath("/this-totally-exists")
             .build();
     ClasspathChecker classpathChecker =
@@ -167,7 +173,7 @@ public class JavacStepTest {
             fakeJavac,
             javacOptions,
             target,
-            sourcePathResolver,
+            buildRuleResolver.getSourcePathResolver(),
             fakeFilesystem,
             classpathChecker,
             CompilerParameters.builder().setScratchPaths(target, fakeFilesystem).build(),
@@ -194,13 +200,14 @@ public class JavacStepTest {
   public void bootclasspathResolvedToAbsolutePath() {
     FakeJavac fakeJavac = new FakeJavac();
     BuildRuleResolver buildRuleResolver = new TestActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(buildRuleResolver);
-    SourcePathResolver sourcePathResolver = DefaultSourcePathResolver.from(ruleFinder);
     ProjectFilesystem fakeFilesystem = FakeProjectFilesystem.createJavaOnlyFilesystem();
     JavacOptions javacOptions =
         JavacOptions.builder()
-            .setSourceLevel("8.0")
-            .setTargetLevel("8.0")
+            .setLanguageLevelOptions(
+                JavacLanguageLevelOptions.builder()
+                    .setSourceLevel("8.0")
+                    .setTargetLevel("8.0")
+                    .build())
             .setBootclasspath("/this-totally-exists:relative-path")
             .build();
     ClasspathChecker classpathChecker =
@@ -213,7 +220,7 @@ public class JavacStepTest {
             fakeJavac,
             javacOptions,
             target,
-            sourcePathResolver,
+            buildRuleResolver.getSourcePathResolver(),
             fakeFilesystem,
             classpathChecker,
             CompilerParameters.builder().setScratchPaths(target, fakeFilesystem).build(),
@@ -246,13 +253,14 @@ public class JavacStepTest {
   public void missingBootclasspathDirFailsWithError() throws Exception {
     FakeJavac fakeJavac = new FakeJavac();
     BuildRuleResolver buildRuleResolver = new TestActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(buildRuleResolver);
-    SourcePathResolver sourcePathResolver = DefaultSourcePathResolver.from(ruleFinder);
     ProjectFilesystem fakeFilesystem = FakeProjectFilesystem.createJavaOnlyFilesystem();
     JavacOptions javacOptions =
         JavacOptions.builder()
-            .setSourceLevel("8.0")
-            .setTargetLevel("8.0")
+            .setLanguageLevelOptions(
+                JavacLanguageLevelOptions.builder()
+                    .setSourceLevel("8.0")
+                    .setTargetLevel("8.0")
+                    .build())
             .setBootclasspath("/no-such-dir")
             .build();
     ClasspathChecker classpathChecker =
@@ -265,7 +273,7 @@ public class JavacStepTest {
             fakeJavac,
             javacOptions,
             target,
-            sourcePathResolver,
+            buildRuleResolver.getSourcePathResolver(),
             fakeFilesystem,
             classpathChecker,
             CompilerParameters.builder().setScratchPaths(target, fakeFilesystem).build(),

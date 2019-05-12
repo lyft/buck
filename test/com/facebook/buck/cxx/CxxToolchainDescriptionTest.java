@@ -19,9 +19,9 @@ import static org.junit.Assert.assertEquals;
 
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
+import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.model.InternalFlavor;
 import com.facebook.buck.core.model.targetgraph.AbstractNodeBuilder;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.impl.FakeBuildRule;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.rules.tool.BinaryBuildRule;
@@ -29,7 +29,6 @@ import com.facebook.buck.core.sourcepath.DefaultBuildTargetSourcePath;
 import com.facebook.buck.core.sourcepath.FakeSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.tool.Tool;
 import com.facebook.buck.core.toolchain.tool.impl.HashedFileTool;
 import com.facebook.buck.core.toolchain.tool.impl.testutil.SimpleTool;
@@ -92,20 +91,37 @@ public class CxxToolchainDescriptionTest {
     graphBuilder.addToIndex(new SimpleToolRule(binaryToolTarget, binaryTool));
     CxxToolchainBuildRule cxxPlatformRule = builder.build(graphBuilder);
 
-    SourcePathResolver resolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder));
+    SourcePathResolver resolver = graphBuilder.getSourcePathResolver();
 
     CxxPlatform platform = cxxPlatformRule.getPlatformWithFlavor(InternalFlavor.of("dontcare"));
 
     Tool pathTool = new HashedFileTool(pathToolPath);
 
     assertIsBinaryTool(resolver, binaryTool, platform.getStrip());
-    assertIsBinaryTool(resolver, pathTool, platform.getCc().resolve(graphBuilder));
-    assertIsBinaryTool(resolver, pathTool, platform.getCxx().resolve(graphBuilder));
-    assertIsBinaryTool(resolver, pathTool, platform.getCxxpp().resolve(graphBuilder));
-    assertIsBinaryTool(resolver, pathTool, platform.getLd().resolve(graphBuilder));
-    assertIsBinaryTool(resolver, binaryTool, platform.getAr().resolve(graphBuilder));
-    assertIsBinaryTool(resolver, binaryTool, platform.getAs().resolve(graphBuilder));
+    assertIsBinaryTool(
+        resolver,
+        pathTool,
+        platform.getCc().resolve(graphBuilder, EmptyTargetConfiguration.INSTANCE));
+    assertIsBinaryTool(
+        resolver,
+        pathTool,
+        platform.getCxx().resolve(graphBuilder, EmptyTargetConfiguration.INSTANCE));
+    assertIsBinaryTool(
+        resolver,
+        pathTool,
+        platform.getCxxpp().resolve(graphBuilder, EmptyTargetConfiguration.INSTANCE));
+    assertIsBinaryTool(
+        resolver,
+        pathTool,
+        platform.getLd().resolve(graphBuilder, EmptyTargetConfiguration.INSTANCE));
+    assertIsBinaryTool(
+        resolver,
+        binaryTool,
+        platform.getAr().resolve(graphBuilder, EmptyTargetConfiguration.INSTANCE));
+    assertIsBinaryTool(
+        resolver,
+        binaryTool,
+        platform.getAs().resolve(graphBuilder, EmptyTargetConfiguration.INSTANCE));
     assertEquals(Optional.empty(), platform.getAsm());
     assertEquals(Optional.empty(), platform.getAsmpp());
     assertEquals(Optional.empty(), platform.getHip());

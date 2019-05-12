@@ -19,10 +19,9 @@ package com.facebook.buck.intellij.ideabuck.build;
 import com.facebook.buck.intellij.ideabuck.file.BuckFileUtil;
 import com.facebook.buck.intellij.ideabuck.lang.BuckFile;
 import com.facebook.buck.intellij.ideabuck.lang.psi.BuckArgument;
-import com.facebook.buck.intellij.ideabuck.lang.psi.BuckArgumentList;
-import com.facebook.buck.intellij.ideabuck.lang.psi.BuckFunctionCall;
+import com.facebook.buck.intellij.ideabuck.lang.psi.BuckExpression;
+import com.facebook.buck.intellij.ideabuck.lang.psi.BuckFunctionTrailer;
 import com.facebook.buck.intellij.ideabuck.lang.psi.BuckLoadTargetArgument;
-import com.facebook.buck.intellij.ideabuck.lang.psi.BuckSimpleExpression;
 import com.facebook.buck.intellij.ideabuck.lang.psi.BuckTypes;
 import com.facebook.buck.intellij.ideabuck.util.BuckPsiUtils;
 import com.intellij.openapi.project.Project;
@@ -39,7 +38,6 @@ public final class BuckBuildUtil {
   public static final String BUCK_FILE_NAME = BuckFileUtil.getBuildFileName();
 
   // TODO(#7908675): Use Buck's classes and get rid of these.
-  public static final String PROJECT_CONFIG_RULE_NAME = "project_config";
   public static final String SRC_TARGET_PROPERTY_NAME = "src_target";
 
   private BuckBuildUtil() {}
@@ -110,12 +108,11 @@ public final class BuckBuildUtil {
     PsiElement[] children = buckFile.getChildren();
     for (PsiElement child : children) {
       if (child.getNode().getElementType() == BuckTypes.STATEMENT) {
-        BuckFunctionCall functionCall = PsiTreeUtil.findChildOfType(child, BuckFunctionCall.class);
+        BuckFunctionTrailer functionTrailer =
+            PsiTreeUtil.findChildOfType(child, BuckFunctionTrailer.class);
         // Find rule "project_config"
-        if (functionCall != null
-            && functionCall.getFunctionName().getText().equals(PROJECT_CONFIG_RULE_NAME)) {
-          return getPropertyValue(
-              functionCall.getFunctionCallSuffix().getArgumentList(), SRC_TARGET_PROPERTY_NAME);
+        if (functionTrailer != null) {
+          return getPropertyValue(functionTrailer, SRC_TARGET_PROPERTY_NAME);
         }
       }
     }
@@ -126,17 +123,17 @@ public final class BuckBuildUtil {
    * Get the value of a property in a specific buck rule body. TODO(#7908675): We should use Buck's
    * own classes for it.
    */
-  public static String getPropertyValue(BuckArgumentList argumentList, String name) {
+  public static String getPropertyValue(BuckFunctionTrailer argumentList, String name) {
     if (argumentList == null) {
       return null;
     }
     List<BuckArgument> arguments = argumentList.getArgumentList();
     for (BuckArgument arg : arguments) {
-      PsiElement lvalue = arg.getPropertyLvalue();
+      PsiElement lvalue = arg.getIdentifier();
       if (lvalue != null) {
         PsiElement propertyName = lvalue.getFirstChild();
         if (propertyName != null && propertyName.getText().equals(name)) {
-          BuckSimpleExpression expression = arg.getSimpleExpression();
+          BuckExpression expression = arg.getExpression();
           return BuckPsiUtils.getStringValueFromExpression(expression);
         }
       }

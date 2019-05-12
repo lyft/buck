@@ -27,7 +27,7 @@ import com.facebook.buck.core.exceptions.HumanReadableException;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.impl.BuildTargetPaths;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
+import com.facebook.buck.core.rules.BuildRuleResolver;
 import com.facebook.buck.core.rules.attr.HasRuntimeDeps;
 import com.facebook.buck.core.rules.impl.AbstractBuildRuleWithDeclaredAndExtraDeps;
 import com.facebook.buck.core.sourcepath.ExplicitBuildTargetSourcePath;
@@ -48,7 +48,6 @@ import com.facebook.buck.test.TestResults;
 import com.facebook.buck.test.TestRunningOptions;
 import com.facebook.buck.test.XmlTestResultParser;
 import com.facebook.buck.test.result.type.ResultType;
-import com.facebook.buck.util.PackagedResource;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -57,11 +56,13 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.stream.Stream;
+import org.xml.sax.SAXException;
 
 @SuppressWarnings("PMD.TestClassWithoutTestCases")
 public class AndroidInstrumentationTest extends AbstractBuildRuleWithDeclaredAndExtraDeps
@@ -119,8 +120,7 @@ public class AndroidInstrumentationTest extends AbstractBuildRuleWithDeclaredAnd
     this.toolsCommonJar = toolsCommonJar;
   }
 
-  private static AndroidDevice getSingleDevice(AndroidDevicesHelper adbHelper)
-      throws InterruptedException {
+  private static AndroidDevice getSingleDevice(AndroidDevicesHelper adbHelper) {
     List<AndroidDevice> devices = adbHelper.getDevices(true);
     if (devices.isEmpty()) {
       throw new HumanReadableException("Expecting one android device/emulator to be attached.");
@@ -142,6 +142,22 @@ public class AndroidInstrumentationTest extends AbstractBuildRuleWithDeclaredAnd
 
     try {
       return DefaultAndroidManifestReader.forPath(pathToManifest).getInstrumentationTestRunner();
+    } catch (IOException e) {
+      throw new HumanReadableException("Could not extract package name from %s", pathToManifest);
+    }
+  }
+
+  private static String tryToExtractTargetPackageFromManifest(
+      SourcePathResolver pathResolver, ApkInfo apkInfo) {
+    Path pathToManifest = pathResolver.getAbsolutePath(apkInfo.getManifestPath());
+
+    if (!Files.isRegularFile(pathToManifest)) {
+      throw new HumanReadableException(
+          "Manifest file %s does not exist, so could not extract package name.", pathToManifest);
+    }
+
+    try {
+      return DefaultAndroidManifestReader.forPath(pathToManifest).getTargetPackage();
     } catch (IOException e) {
       throw new HumanReadableException("Could not extract package name from %s", pathToManifest);
     }
@@ -187,11 +203,7 @@ public class AndroidInstrumentationTest extends AbstractBuildRuleWithDeclaredAnd
 
     AndroidDevicesHelper adb = executionContext.getAndroidDevicesHelper().get();
     AndroidDevice device;
-    try {
-      device = getSingleDevice(adb);
-    } catch (InterruptedException e) {
-      throw new HumanReadableException("Unable to get connected device.");
-    }
+    device = getSingleDevice(adb);
 
     steps.add(
         getInstrumentationStep(
@@ -203,7 +215,8 @@ public class AndroidInstrumentationTest extends AbstractBuildRuleWithDeclaredAnd
             getFilterString(options),
             Optional.empty(),
             executionContext.isDebugEnabled(),
-            executionContext.isCodeCoverageEnabled()));
+            executionContext.isCodeCoverageEnabled(),
+            false));
 
     return steps.build();
   }
@@ -234,21 +247,28 @@ public class AndroidInstrumentationTest extends AbstractBuildRuleWithDeclaredAnd
       Optional<String> classFilterArg,
       Optional<Path> apkUnderTestPath,
       boolean debugEnabled,
-      boolean codeCoverageEnabled) {
+      boolean codeCoverageEnabled,
+      boolean isExternalRun) {
     String packageName =
         AdbHelper.tryToExtractPackageNameFromManifest(pathResolver, apk.getApkInfo());
     String testRunner =
         tryToExtractInstrumentationTestRunnerFromManifest(pathResolver, apk.getApkInfo());
+    String targetPackageName =
+        tryToExtractTargetPackageFromManifest(pathResolver, apk.getApkInfo());
 
     String ddmlib = getPathForResourceJar(ddmlibJar);
     String kxml2 = getPathForResourceJar(kxml2Jar);
     String guava = getPathForResourceJar(guavaJar);
     String toolsCommon = getPathForResourceJar(toolsCommonJar);
 
-    Optional<Path> exopackageSymlinkTreePath = getExopackageSymlinkTreePathIfNeeded(apk);
+    Optional<Path> exopackageSymlinkTreePath =
+        getExopackageSymlinkTreePathIfNeeded(apk, isExternalRun);
     Optional<Path> apkUnderTestSymlinkTreePath =
         getApkUnderTest(apk)
-            .flatMap(AndroidInstrumentationTest::getExopackageSymlinkTreePathIfNeeded);
+            .flatMap(
+                apkUnderTest ->
+                    AndroidInstrumentationTest.getExopackageSymlinkTreePathIfNeeded(
+                        apkUnderTest, isExternalRun));
 
     AndroidInstrumentationTestJVMArgs jvmArgs =
         AndroidInstrumentationTestJVMArgs.builder()
@@ -260,6 +280,7 @@ public class AndroidInstrumentationTest extends AbstractBuildRuleWithDeclaredAnd
             .setInstrumentationApkPath(instrumentationApkPath)
             .setExopackageLocalDir(exopackageSymlinkTreePath)
             .setTestPackage(packageName)
+            .setTargetPackage(targetPackageName)
             .setCodeCoverageEnabled(codeCoverageEnabled)
             .setDebugEnabled(debugEnabled)
             .setTestRunner(testRunner)
@@ -290,16 +311,31 @@ public class AndroidInstrumentationTest extends AbstractBuildRuleWithDeclaredAnd
         getProjectFilesystem(), getBuildTarget(), "__android_instrumentation_test_%s_output__");
   }
 
-  private TestCaseSummary getTestClassAssumedSummary() {
+  private static TestCaseSummary getTestClassAssumedSummary(String buildTargetName) {
     return new TestCaseSummary(
-        getBuildTarget().getFullyQualifiedName(),
+        buildTargetName,
         ImmutableList.of(
             new TestResultSummary(
-                getBuildTarget().getFullyQualifiedName(),
+                buildTargetName,
                 "none",
                 ResultType.ASSUMPTION_VIOLATION,
                 0L,
                 "No tests run",
+                null,
+                null,
+                null)));
+  }
+
+  private static TestCaseSummary getTestApkCrashedSummary(String buildTargetName) {
+    return new TestCaseSummary(
+        buildTargetName,
+        ImmutableList.of(
+            new TestResultSummary(
+                buildTargetName,
+                "none",
+                ResultType.FAILURE,
+                0L,
+                "The APK crashed while trying to set up the test runner. No tests ran",
                 null,
                 null,
                 null)));
@@ -312,19 +348,16 @@ public class AndroidInstrumentationTest extends AbstractBuildRuleWithDeclaredAnd
       ImmutableList.Builder<TestCaseSummary> summaries = ImmutableList.builder();
       AndroidDevice device;
       AndroidDevicesHelper adbHelper = context.getAndroidDevicesHelper().get();
-      try {
-        device = getSingleDevice(adbHelper);
-      } catch (InterruptedException e) {
-        device = null;
-      }
+      device = getSingleDevice(adbHelper);
       if (device == null) {
-        summaries.add(getTestClassAssumedSummary());
+        summaries.add(getTestClassAssumedSummary(getBuildTarget().getFullyQualifiedName()));
       } else {
         Path testResultPath =
             getProjectFilesystem()
                 .resolve(getPathToTestOutputDirectory().resolve(TEST_RESULT_FILE));
         summaries.addAll(
-            XmlTestResultParser.parseAndroid(testResultPath, device.getSerialNumber()));
+            readSummariesFromPath(
+                getBuildTarget().getFullyQualifiedName(), testResultPath, device));
       }
       return TestResults.of(
           getBuildTarget(),
@@ -332,6 +365,19 @@ public class AndroidInstrumentationTest extends AbstractBuildRuleWithDeclaredAnd
           contacts,
           labels.stream().map(Object::toString).collect(ImmutableSet.toImmutableSet()));
     };
+  }
+
+  @VisibleForTesting
+  static List<TestCaseSummary> readSummariesFromPath(
+      String buildTargetName, Path testResultPath, AndroidDevice device)
+      throws IOException, SAXException {
+    List<TestCaseSummary> summaries = new ArrayList<>();
+    if (Files.exists(testResultPath)) {
+      summaries.addAll(XmlTestResultParser.parseAndroid(testResultPath, device.getSerialNumber()));
+    } else {
+      summaries.add(getTestApkCrashedSummary(buildTargetName));
+    }
+    return summaries;
   }
 
   @Override
@@ -385,12 +431,14 @@ public class AndroidInstrumentationTest extends AbstractBuildRuleWithDeclaredAnd
             Optional.empty(),
             apkUnderTestPath,
             executionContext.isDebugEnabled(),
-            executionContext.isCodeCoverageEnabled());
+            executionContext.isCodeCoverageEnabled(),
+            true);
 
     ImmutableList<Path> requiredPaths =
         getRequiredPaths(apk, instrumentationApkPath, apkUnderTestPath);
 
     return ExternalTestRunnerTestSpec.builder()
+        .setCwd(getProjectFilesystem().getRootPath())
         .setTarget(getBuildTarget())
         .setType("android_instrumentation")
         .setCommand(step.getShellCommandInternal(executionContext))
@@ -408,24 +456,23 @@ public class AndroidInstrumentationTest extends AbstractBuildRuleWithDeclaredAnd
       HasInstallableApk apkInstance,
       Optional<Path> instrumentationApkPath,
       Optional<Path> apkUnderTestPath) {
-    Optional<Path> exopackageSymlinkTreePath = getExopackageSymlinkTreePathIfNeeded(apkInstance);
+    Optional<Path> exopackageSymlinkTreePath =
+        getExopackageSymlinkTreePathIfNeeded(apkInstance, true);
     Optional<Path> apkUnderTestSymlinkTreePath =
         getApkUnderTest(apkInstance)
-            .flatMap(AndroidInstrumentationTest::getExopackageSymlinkTreePathIfNeeded);
-    return ImmutableList.<Optional<Path>>builder()
-        .add(apkUnderTestPath)
-        .add(instrumentationApkPath)
-        .add(exopackageSymlinkTreePath)
-        .add(apkUnderTestSymlinkTreePath)
-        .build()
-        .stream()
+            .flatMap(
+                apkUnderTest ->
+                    AndroidInstrumentationTest.getExopackageSymlinkTreePathIfNeeded(
+                        apkUnderTest, true));
+    return ImmutableList.<Optional<Path>>builder().add(apkUnderTestPath).add(instrumentationApkPath)
+        .add(exopackageSymlinkTreePath).add(apkUnderTestSymlinkTreePath).build().stream()
         .filter(Optional::isPresent)
         .map(Optional::get)
         .collect(ImmutableList.toImmutableList());
   }
 
   @Override
-  public Stream<BuildTarget> getRuntimeDeps(SourcePathRuleFinder ruleFinder) {
+  public Stream<BuildTarget> getRuntimeDeps(BuildRuleResolver buildRuleResolver) {
     Stream.Builder<BuildTarget> builder = Stream.builder();
     builder.add(apk.getBuildTarget());
     getApkUnderTest(apk).map(HasInstallableApk::getBuildTarget).ifPresent(builder::add);
@@ -448,11 +495,16 @@ public class AndroidInstrumentationTest extends AbstractBuildRuleWithDeclaredAnd
 
   /**
    * @param apk the apk to install
-   * @return A Path pointing to the apk's exopackage layout dir if the apk supports exopackage
+   * @return A Path pointing to the apk's exopackage layout dir if the apk supports exopackage and
+   *     the test is run with an external runner. When running with the internal runner, the
+   *     exopackage symlink tree is not necessary because we use Buck's internal exopackage support
+   *     to do the installation.
    */
-  private static Optional<Path> getExopackageSymlinkTreePathIfNeeded(HasInstallableApk apk) {
+  private static Optional<Path> getExopackageSymlinkTreePathIfNeeded(
+      HasInstallableApk apk, boolean isExternalRun) {
     Optional<Path> exopackageSymlinkTreePath = Optional.empty();
-    if (ExopackageInstaller.exopackageEnabled(apk.getApkInfo())) {
+    // We only need the exo-dir if the apk supports it and we're preparing for an external runner.
+    if (isExternalRun && ExopackageInstaller.exopackageEnabled(apk.getApkInfo())) {
       ProjectFilesystem filesystem = apk.getProjectFilesystem();
       exopackageSymlinkTreePath =
           Optional.of(

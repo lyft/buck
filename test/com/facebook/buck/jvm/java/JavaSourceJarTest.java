@@ -30,14 +30,11 @@ import com.facebook.buck.core.build.context.FakeBuildContext;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.TestBuildRuleParams;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.DefaultBuildTargetSourcePath;
 import com.facebook.buck.core.sourcepath.FakeSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
 import com.facebook.buck.jvm.core.JavaPackageFinder;
 import com.facebook.buck.step.Step;
@@ -70,9 +67,9 @@ public class JavaSourceJarTest {
     SourcePath output = rule.getSourcePathToOutput();
 
     assertNotNull(output);
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder));
-    assertThat(pathResolver.getRelativePath(output).toString(), endsWith(JavaPaths.SRC_JAR));
+    assertThat(
+        graphBuilder.getSourcePathResolver().getRelativePath(output).toString(),
+        endsWith(JavaPaths.SRC_JAR));
   }
 
   @Test
@@ -99,8 +96,7 @@ public class JavaSourceJarTest {
 
     BuildContext buildContext =
         FakeBuildContext.withSourcePathResolver(
-                DefaultSourcePathResolver.from(
-                    new SourcePathRuleFinder(new TestActionGraphBuilder())))
+                new TestActionGraphBuilder().getSourcePathResolver())
             .withJavaPackageFinder(finderStub);
     ImmutableList<Step> steps = rule.getBuildSteps(buildContext, new FakeBuildableContext());
 

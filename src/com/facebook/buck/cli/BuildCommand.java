@@ -27,7 +27,6 @@ import com.facebook.buck.core.build.engine.delegate.LocalCachingBuildEngineDeleg
 import com.facebook.buck.core.build.engine.type.BuildType;
 import com.facebook.buck.core.build.event.BuildEvent;
 import com.facebook.buck.core.build.execution.context.ExecutionContext;
-import com.facebook.buck.core.config.AliasConfig;
 import com.facebook.buck.core.config.BuckConfig;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.TargetConfiguration;
@@ -38,11 +37,9 @@ import com.facebook.buck.core.rulekey.RuleKey;
 import com.facebook.buck.core.rulekey.calculator.ParallelRuleKeyCalculator;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.transformer.impl.DefaultTargetNodeToBuildRuleTransformer;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.util.log.Logger;
 import com.facebook.buck.distributed.DistBuildConfig;
 import com.facebook.buck.event.BuckEventListener;
@@ -57,6 +54,7 @@ import com.facebook.buck.rules.keys.DefaultRuleKeyFactory;
 import com.facebook.buck.rules.keys.RuleKeyCacheRecycler;
 import com.facebook.buck.rules.keys.RuleKeyCacheScope;
 import com.facebook.buck.rules.keys.RuleKeyFieldLoader;
+import com.facebook.buck.support.cli.config.AliasConfig;
 import com.facebook.buck.util.CommandLineException;
 import com.facebook.buck.util.ExitCode;
 import com.facebook.buck.util.ListeningProcessExecutor;
@@ -266,6 +264,10 @@ public class BuildCommand extends AbstractCommand {
     this.keepGoing = keepGoing;
   }
 
+  public void forceDisableDistributedBuild() {
+    forceDisableDistributedBuild = true;
+  }
+
   /** Whether this build is using stampede or not. */
   public boolean isUsingDistributedBuild() {
     if (forceDisableDistributedBuild) {
@@ -297,9 +299,7 @@ public class BuildCommand extends AbstractCommand {
   public boolean tryConvertingToStampede(DistBuildConfig config) {
     if (forceDisableDistributedBuild) {
       LOG.info(
-          String.format(
-              "%s has been specified. Will not auto-convert build to stampede.",
-              LOCAL_BUILD_LONG_ARG));
+          "Distributed build was forcefully disabled. Will not auto-convert build to stampede.");
 
       useDistributedBuild = false; // Make sure
       return false;
@@ -324,22 +324,29 @@ public class BuildCommand extends AbstractCommand {
 
   @Override
   public ExitCode runWithoutHelp(CommandRunnerParams params) throws Exception {
+    return runWithoutHelpInternal(params).getExitCode();
+  }
+
+  BuildRunResult runWithoutHelpInternal(CommandRunnerParams params) throws Exception {
     assertArguments(params);
 
     ListeningProcessExecutor processExecutor = new ListeningProcessExecutor();
     try (CommandThreadManager pool =
             new CommandThreadManager("Build", getConcurrencyLimit(params.getBuckConfig()));
-        BuildPrehook prehook =
-            new BuildPrehook(
-                processExecutor,
-                params.getCell(),
-                params.getBuckEventBus(),
-                params.getBuckConfig(),
-                params.getEnvironment(),
-                getArguments())) {
+        BuildPrehook prehook = getPrehook(processExecutor, params)) {
       prehook.startPrehookScript();
-      return run(params, pool, Function.identity(), ImmutableSet.of()).getExitCode();
+      return run(params, pool, Function.identity(), ImmutableSet.of());
     }
+  }
+
+  BuildPrehook getPrehook(ListeningProcessExecutor processExecutor, CommandRunnerParams params) {
+    return new BuildPrehook(
+        processExecutor,
+        params.getCell(),
+        params.getBuckEventBus(),
+        params.getBuckConfig(),
+        params.getEnvironment(),
+        getArguments());
   }
 
   /** @throw CommandLineException if arguments provided are incorrect */
@@ -538,9 +545,7 @@ public class BuildCommand extends AbstractCommand {
 
         ProjectFilesystem projectFilesystem = params.getCell().getFilesystem();
         SourcePathResolver pathResolver =
-            DefaultSourcePathResolver.from(
-                new SourcePathRuleFinder(
-                    graphs.getActionGraphAndBuilder().getActionGraphBuilder()));
+            graphs.getActionGraphAndBuilder().getActionGraphBuilder().getSourcePathResolver();
 
         Path outputPath;
         if (Files.isDirectory(outputPathForSingleBuildTarget)) {
@@ -588,8 +593,7 @@ public class BuildCommand extends AbstractCommand {
 
     ActionGraphBuilder graphBuilder =
         graphsAndBuildTargets.getGraphs().getActionGraphAndBuilder().getActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
+    SourcePathResolver pathResolver = graphBuilder.getSourcePathResolver();
 
     for (BuildTarget buildTarget : graphsAndBuildTargets.getBuildTargets()) {
       BuildRule rule = graphBuilder.requireRule(buildTarget);
@@ -615,8 +619,6 @@ public class BuildCommand extends AbstractCommand {
     Optional<DefaultRuleKeyFactory> ruleKeyFactory = Optional.empty();
     ActionGraphBuilder graphBuilder =
         graphsAndBuildTargets.getGraphs().getActionGraphAndBuilder().getActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
     if (showRuleKey) {
       RuleKeyFieldLoader fieldLoader = new RuleKeyFieldLoader(params.getRuleKeyConfiguration());
       ruleKeyFactory =
@@ -624,8 +626,7 @@ public class BuildCommand extends AbstractCommand {
               new DefaultRuleKeyFactory(
                   fieldLoader,
                   params.getFileHashCache(),
-                  pathResolver,
-                  ruleFinder,
+                  graphBuilder,
                   ruleKeyCacheScope.getCache(),
                   Optional.empty()));
     }
@@ -633,7 +634,7 @@ public class BuildCommand extends AbstractCommand {
       BuildRule rule = graphBuilder.requireRule(buildTarget);
       Optional<Path> outputPath =
           TargetsCommand.getUserFacingOutputPath(
-                  pathResolver,
+                  graphBuilder.getSourcePathResolver(),
                   rule,
                   params.getBuckConfig().getView(BuildBuckConfig.class).getBuckOutCompatLink())
               .map(
@@ -685,9 +686,7 @@ public class BuildCommand extends AbstractCommand {
                   .withApplyDefaultFlavorsMode(parserConfig.getDefaultFlavorsMode()),
               targetNodeSpecEnhancer.apply(
                   parseArgumentsAsTargetNodeSpecs(
-                      params.getCell().getCellPathResolver(),
-                      params.getBuckConfig(),
-                      getArguments())),
+                      params.getCell(), params.getBuckConfig(), getArguments())),
               params.getTargetConfiguration());
     } catch (BuildTargetException e) {
       throw new ActionGraphCreationException(MoreExceptions.getHumanReadableOrLocalizedMessage(e));

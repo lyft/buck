@@ -18,10 +18,10 @@ package com.facebook.buck.rules.args;
 
 import static org.junit.Assert.assertThat;
 
+import com.facebook.buck.core.rulekey.AddsToRuleKey;
 import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
 import com.facebook.buck.rules.keys.AlterRuleKeys;
 import com.facebook.buck.rules.keys.RuleKeyBuilder;
@@ -46,19 +46,21 @@ public class SanitizedArgTest {
             ImmutableList.of(
                 DefaultFileHashCache.createDefaultFileHashCache(
                     projectFilesystem, FileHashCacheMode.DEFAULT)));
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(new TestActionGraphBuilder());
-    SourcePathResolver resolver = DefaultSourcePathResolver.from(ruleFinder);
+    SourcePathRuleFinder ruleFinder = new TestActionGraphBuilder();
     return new UncachedRuleKeyBuilder(
-        ruleFinder,
-        resolver,
-        fileHashCache,
-        new TestDefaultRuleKeyFactory(fileHashCache, resolver, ruleFinder));
+        ruleFinder, fileHashCache, new TestDefaultRuleKeyFactory(fileHashCache, ruleFinder));
+  }
+
+  private void amendKeyList(
+      RuleKeyBuilder<HashCode> builder, ImmutableList<? extends AddsToRuleKey> values) {
+    for (AddsToRuleKey value : values) {
+      AlterRuleKeys.amendKey(builder, value);
+    }
   }
 
   @Test
   public void stringify() {
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(new TestActionGraphBuilder()));
+    SourcePathResolver pathResolver = new TestActionGraphBuilder().getSourcePathResolver();
 
     SanitizedArg arg = SanitizedArg.create(Functions.constant("sanitized"), "unsanitized");
     assertThat(Arg.stringifyList(arg, pathResolver), Matchers.contains("unsanitized"));
@@ -72,6 +74,20 @@ public class SanitizedArgTest {
     RuleKeyBuilder<HashCode> builder2 = createRuleKeyBuilder();
     AlterRuleKeys.amendKey(builder1, arg1);
     AlterRuleKeys.amendKey(builder2, arg2);
+    assertThat(builder1.build(), Matchers.equalTo(builder2.build()));
+  }
+
+  @Test
+  public void sanitizedArgsList() {
+    ImmutableList<Arg> args1 =
+        SanitizedArg.from(Functions.constant("sanitized"), ImmutableList.of("", "unsanitized 1"));
+    ImmutableList<Arg> args2 =
+        SanitizedArg.from(Functions.constant("sanitized"), ImmutableList.of("unsanitized 2"));
+
+    RuleKeyBuilder<HashCode> builder1 = createRuleKeyBuilder();
+    RuleKeyBuilder<HashCode> builder2 = createRuleKeyBuilder();
+    amendKeyList(builder1, args1);
+    amendKeyList(builder2, args2);
     assertThat(builder1.build(), Matchers.equalTo(builder2.build()));
   }
 }

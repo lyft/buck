@@ -27,7 +27,7 @@ import com.facebook.buck.core.model.targetgraph.TargetGraph;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRuleParams;
 import com.facebook.buck.core.toolchain.ToolchainProvider;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.jvm.core.JavaLibrary;
 import com.facebook.buck.jvm.java.JavaBuckConfig;
@@ -111,7 +111,8 @@ public class AndroidBinaryGraphEnhancerFactory {
     NonPredexedDexBuildableArgs nonPreDexedDexBuildableArgs =
         NonPredexedDexBuildableArgs.builder()
             .setProguardAgentPath(proGuardConfig.getProguardAgentPath())
-            .setProguardJarOverride(proGuardConfig.getProguardJarOverride())
+            .setProguardJarOverride(
+                proGuardConfig.getProguardJarOverride(buildTarget.getTargetConfiguration()))
             .setProguardMaxHeapSize(proGuardConfig.getProguardMaxHeapSize())
             .setSdkProguardConfig(androidSdkProguardConfig)
             .setPreprocessJavaClassesBash(
@@ -124,7 +125,9 @@ public class AndroidBinaryGraphEnhancerFactory {
             .setOptimizationPasses(args.getOptimizationPasses())
             .setProguardJvmArgs(args.getProguardJvmArgs())
             .setSkipProguard(args.isSkipProguard())
-            .setJavaRuntimeLauncher(javaOptions.getJavaRuntimeLauncher(graphBuilder))
+            .setJavaRuntimeLauncher(
+                javaOptions.getJavaRuntimeLauncher(
+                    graphBuilder, buildTarget.getTargetConfiguration()))
             .setProguardConfigPath(args.getProguardConfig())
             .setShouldProguard(shouldProguard)
             .build();
@@ -223,9 +226,10 @@ public class AndroidBinaryGraphEnhancerFactory {
         StringWithMacrosConverter.builder()
             .setBuildTarget(buildTarget)
             .setCellPathResolver(cellRoots)
+            .setActionGraphBuilder(graphBuilder)
             .setExpanders(MacroExpandersForAndroidRules.MACRO_EXPANDERS)
             .build();
-    return arg.getPostFilterResourcesCmd().map(x -> macrosConverter.convert(x, graphBuilder));
+    return arg.getPostFilterResourcesCmd().map(macrosConverter::convert);
   }
 
   private Optional<Arg> getPreprocessJavaClassesBash(
@@ -237,8 +241,9 @@ public class AndroidBinaryGraphEnhancerFactory {
         StringWithMacrosConverter.builder()
             .setBuildTarget(buildTarget)
             .setCellPathResolver(cellRoots)
+            .setActionGraphBuilder(graphBuilder)
             .setExpanders(MacroExpandersForAndroidRules.MACRO_EXPANDERS)
             .build();
-    return arg.getPreprocessJavaClassesBash().map(x -> macrosConverter.convert(x, graphBuilder));
+    return arg.getPreprocessJavaClassesBash().map(macrosConverter::convert);
   }
 }

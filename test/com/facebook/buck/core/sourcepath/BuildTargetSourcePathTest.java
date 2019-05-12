@@ -25,11 +25,9 @@ import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.impl.FakeBuildRule;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import org.junit.Test;
@@ -41,15 +39,13 @@ public class BuildTargetSourcePathTest {
   @Test
   public void shouldThrowAnExceptionIfRuleDoesNotHaveAnOutput() {
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder();
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder));
     FakeBuildRule rule = new FakeBuildRule(target);
     rule.setOutputFile(null);
     graphBuilder.addToIndex(rule);
     DefaultBuildTargetSourcePath path = DefaultBuildTargetSourcePath.of(rule.getBuildTarget());
 
     try {
-      pathResolver.getRelativePath(path);
+      graphBuilder.getSourcePathResolver().getRelativePath(path);
       fail();
     } catch (HumanReadableException e) {
       assertEquals("No known output for: " + target.getFullyQualifiedName(), e.getMessage());
@@ -59,8 +55,6 @@ public class BuildTargetSourcePathTest {
   @Test
   public void mustUseProjectFilesystemToResolvePathToFile() {
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder();
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder));
     BuildRule rule =
         new FakeBuildRule(target) {
           @Override
@@ -72,7 +66,7 @@ public class BuildTargetSourcePathTest {
 
     DefaultBuildTargetSourcePath path = DefaultBuildTargetSourcePath.of(rule.getBuildTarget());
 
-    Path resolved = pathResolver.getRelativePath(path);
+    Path resolved = graphBuilder.getSourcePathResolver().getRelativePath(path);
 
     assertEquals(Paths.get("cheese"), resolved);
   }
@@ -87,8 +81,7 @@ public class BuildTargetSourcePathTest {
 
   @Test
   public void explicitlySetPath() {
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(new TestActionGraphBuilder()));
+    SourcePathResolver pathResolver = new TestActionGraphBuilder().getSourcePathResolver();
     BuildTarget target = BuildTargetFactory.newInstance("//foo/bar:baz");
     FakeBuildRule rule = new FakeBuildRule(target);
     Path path = Paths.get("blah");
@@ -100,8 +93,7 @@ public class BuildTargetSourcePathTest {
 
   @Test
   public void explicitlySetSourcePathExplicitTarget() {
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(new TestActionGraphBuilder()));
+    SourcePathResolver pathResolver = new TestActionGraphBuilder().getSourcePathResolver();
     FakeBuildRule rule1 = new FakeBuildRule(BuildTargetFactory.newInstance("//foo/bar:baz"));
     FakeBuildRule rule2 = new FakeBuildRule(BuildTargetFactory.newInstance("//foo/bar:waz"));
     Path path = Paths.get("blah");
@@ -118,8 +110,7 @@ public class BuildTargetSourcePathTest {
   @Test
   public void explicitlySetSourcePathImplicitTarget() {
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder();
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder));
+    SourcePathResolver pathResolver = graphBuilder.getSourcePathResolver();
     FakeBuildRule rule1 = new FakeBuildRule(BuildTargetFactory.newInstance("//foo/bar:baz"));
     graphBuilder.addToIndex(rule1);
     Path path = Paths.get("blah");
@@ -139,8 +130,7 @@ public class BuildTargetSourcePathTest {
   @Test
   public void explicitlySetSourcePathChainsToPathSourcePath() {
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder();
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder));
+    SourcePathResolver pathResolver = graphBuilder.getSourcePathResolver();
     FakeBuildRule rule1 = new FakeBuildRule(BuildTargetFactory.newInstance("//foo/bar:rule1"));
     graphBuilder.addToIndex(rule1);
     FakeBuildRule rule2 = new FakeBuildRule(BuildTargetFactory.newInstance("//foo/bar:rule2"));

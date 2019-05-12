@@ -21,17 +21,16 @@ import static org.junit.Assert.assertFalse;
 
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
+import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.model.targetgraph.TargetGraph;
 import com.facebook.buck.core.model.targetgraph.TargetGraphFactory;
 import com.facebook.buck.core.model.targetgraph.TargetNode;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.TestBuildRuleParams;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -73,8 +72,7 @@ public class JavaBinaryTest {
 
     TargetGraph targetGraph = TargetGraphFactory.newInstance(guavaNode, libraryNode);
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder(targetGraph);
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder));
+    SourcePathResolver pathResolver = graphBuilder.getSourcePathResolver();
 
     BuildRule libraryRule = graphBuilder.requireRule(libraryNode.getBuildTarget());
 
@@ -88,7 +86,8 @@ public class JavaBinaryTest {
                 target,
                 new FakeProjectFilesystem(),
                 params,
-                JavaCompilationConstants.DEFAULT_JAVA_OPTIONS.getJavaRuntimeLauncher(graphBuilder),
+                JavaCompilationConstants.DEFAULT_JAVA_OPTIONS.getJavaRuntimeLauncher(
+                    graphBuilder, EmptyTargetConfiguration.INSTANCE),
                 "com.facebook.base.Main",
                 null,
                 /* merge manifests */ true,

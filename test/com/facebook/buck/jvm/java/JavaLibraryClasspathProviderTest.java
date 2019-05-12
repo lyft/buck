@@ -26,11 +26,9 @@ import com.facebook.buck.core.model.targetgraph.TargetGraphFactory;
 import com.facebook.buck.core.model.targetgraph.TargetNode;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.FakeSourcePath;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
 import com.facebook.buck.jvm.core.JavaLibrary;
@@ -64,7 +62,7 @@ public class JavaLibraryClasspathProviderTest extends AbiCompilationModeTest {
   private ProjectFilesystem filesystem;
 
   @Before
-  public void setUp() throws Exception {
+  public void setUp() {
     filesystem = new FakeProjectFilesystem();
 
     // Create our target graph. All nodes are JavaLibrary except b
@@ -108,7 +106,7 @@ public class JavaLibraryClasspathProviderTest extends AbiCompilationModeTest {
     TargetGraph targetGraph =
         TargetGraphFactory.newInstance(aNode, bNode, cNode, dNode, eNode, zNode);
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder(targetGraph);
-    resolver = DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder));
+    resolver = graphBuilder.getSourcePathResolver();
 
     a = graphBuilder.requireRule(aNode.getBuildTarget());
     b = graphBuilder.requireRule(bNode.getBuildTarget());
@@ -178,14 +176,13 @@ public class JavaLibraryClasspathProviderTest extends AbiCompilationModeTest {
             .add(getFullOutput(e)) // c exports e
             // b is non-java so b and d do not appear
             .build(),
-        aLib.getTransitiveClasspaths()
-            .stream()
+        aLib.getTransitiveClasspaths().stream()
             .map(resolver::getAbsolutePath)
             .collect(ImmutableSet.toImmutableSet()));
   }
 
   @Test
-  public void getTransitiveClasspathDeps() throws Exception {
+  public void getTransitiveClasspathDeps() {
     TargetNode<?> noOutputNode =
         makeRule("//no:output", ImmutableSet.of(), ImmutableSet.of(zNode), filesystem);
 

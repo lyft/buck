@@ -29,16 +29,14 @@ import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.Flavor;
 import com.facebook.buck.core.model.FlavorDomain;
 import com.facebook.buck.core.model.Flavored;
+import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.model.targetgraph.BuildRuleCreationContextWithTargetGraph;
 import com.facebook.buck.core.model.targetgraph.DescriptionWithTargetGraph;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.ToolchainProvider;
 import com.facebook.buck.core.util.graph.AbstractBreadthFirstTraversal;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
@@ -94,8 +92,6 @@ public class RustLibraryDescription
       ProjectFilesystem projectFilesystem,
       BuildRuleParams params,
       ActionGraphBuilder graphBuilder,
-      SourcePathResolver pathResolver,
-      SourcePathRuleFinder ruleFinder,
       RustPlatform rustPlatform,
       RustBuckConfig rustBuckConfig,
       ImmutableList<String> extraFlags,
@@ -111,8 +107,6 @@ public class RustLibraryDescription
         RustCompileUtils.getRootModuleAndSources(
             buildTarget,
             graphBuilder,
-            pathResolver,
-            ruleFinder,
             rustPlatform.getCxxPlatform(),
             crate,
             args.getCrateRoot(),
@@ -123,7 +117,6 @@ public class RustLibraryDescription
         projectFilesystem,
         params,
         graphBuilder,
-        ruleFinder,
         rustPlatform,
         rustBuckConfig,
         extraFlags,
@@ -148,8 +141,6 @@ public class RustLibraryDescription
       BuildRuleParams params,
       RustLibraryDescriptionArg args) {
     ActionGraphBuilder graphBuilder = context.getActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
     ProjectFilesystem projectFilesystem = context.getProjectFilesystem();
     CxxDeps allDeps =
         CxxDeps.builder().addDeps(args.getDeps()).addPlatformDeps(args.getPlatformDeps()).build();
@@ -196,14 +187,14 @@ public class RustLibraryDescription
         }
       }
 
-      RustPlatform platform = RustCompileUtils.getRustPlatform(rustToolchain, buildTarget, args);
+      RustPlatform platform =
+          RustCompileUtils.getRustPlatform(rustToolchain, buildTarget, args)
+              .resolve(graphBuilder, buildTarget.getTargetConfiguration());
       return requireBuild(
           buildTarget,
           projectFilesystem,
           params,
           graphBuilder,
-          pathResolver,
-          ruleFinder,
           platform,
           rustBuckConfig,
           getRustcArgs.apply(platform),
@@ -275,8 +266,6 @@ public class RustLibraryDescription
                 projectFilesystem,
                 params,
                 graphBuilder,
-                pathResolver,
-                ruleFinder,
                 rustPlatform,
                 rustBuckConfig,
                 getRustcArgs.apply(rustPlatform),
@@ -315,8 +304,6 @@ public class RustLibraryDescription
                 projectFilesystem,
                 params,
                 graphBuilder,
-                pathResolver,
-                ruleFinder,
                 rustPlatform,
                 rustBuckConfig,
                 getRustcArgs.apply(rustPlatform),
@@ -360,7 +347,10 @@ public class RustLibraryDescription
         ImmutableList.Builder<NativeLinkable> nativedeps = ImmutableList.builder();
 
         RustPlatform rustPlatform =
-            getRustToolchain().getRustPlatforms().getValue(cxxPlatform.getFlavor());
+            getRustToolchain()
+                .getRustPlatforms()
+                .getValue(cxxPlatform.getFlavor())
+                .resolve(graphBuilder, buildTarget.getTargetConfiguration());
         new AbstractBreadthFirstTraversal<BuildRule>(allDeps.get(graphBuilder, cxxPlatform)) {
           @Override
           public Iterable<BuildRule> visit(BuildRule rule) {
@@ -383,7 +373,8 @@ public class RustLibraryDescription
           CxxPlatform cxxPlatform,
           Linker.LinkableDepType depType,
           boolean forceLinkWhole,
-          ActionGraphBuilder graphBuilder) {
+          ActionGraphBuilder graphBuilder,
+          TargetConfiguration targetConfiguration) {
         CrateType crateType;
 
         switch (depType) {
@@ -402,15 +393,16 @@ public class RustLibraryDescription
         }
 
         RustPlatform rustPlatform =
-            getRustToolchain().getRustPlatforms().getValue(cxxPlatform.getFlavor());
+            getRustToolchain()
+                .getRustPlatforms()
+                .getValue(cxxPlatform.getFlavor())
+                .resolve(graphBuilder, buildTarget.getTargetConfiguration());
         BuildRule rule =
             requireBuild(
                 buildTarget,
                 projectFilesystem,
                 params,
                 graphBuilder,
-                pathResolver,
-                ruleFinder,
                 rustPlatform,
                 rustBuckConfig,
                 getRustcArgs.apply(rustPlatform),
@@ -441,15 +433,16 @@ public class RustLibraryDescription
         String sharedLibrarySoname =
             CrateType.DYLIB.filenameFor(getBuildTarget(), crate, cxxPlatform).get();
         RustPlatform rustPlatform =
-            getRustToolchain().getRustPlatforms().getValue(cxxPlatform.getFlavor());
+            getRustToolchain()
+                .getRustPlatforms()
+                .getValue(cxxPlatform.getFlavor())
+                .resolve(graphBuilder, buildTarget.getTargetConfiguration());
         BuildRule sharedLibraryBuildRule =
             requireBuild(
                 buildTarget,
                 projectFilesystem,
                 params,
                 graphBuilder,
-                pathResolver,
-                ruleFinder,
                 rustPlatform,
                 rustBuckConfig,
                 getRustcArgs.apply(rustPlatform),
@@ -477,11 +470,12 @@ public class RustLibraryDescription
     // Add parse-time deps for *all* platforms, as we don't know which platform will be
     // selected by a top-level binary rule (e.g. a Python binary transitively depending on
     // this library may choose platform "foo").
-    getRustToolchain()
-        .getRustPlatforms()
-        .getValues()
-        .stream()
-        .flatMap(p -> RichStream.from(RustCompileUtils.getPlatformParseTimeDeps(p)))
+    getRustToolchain().getRustPlatforms().getValues().stream()
+        .flatMap(
+            p ->
+                RichStream.from(
+                    RustCompileUtils.getPlatformParseTimeDeps(
+                        buildTarget.getTargetConfiguration(), p)))
         .forEach(targetGraphOnlyDepsBuilder::add);
   }
 

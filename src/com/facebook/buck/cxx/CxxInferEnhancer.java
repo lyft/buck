@@ -24,12 +24,9 @@ import com.facebook.buck.core.model.FlavorDomain;
 import com.facebook.buck.core.model.InternalFlavor;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.util.graph.AbstractBreadthFirstTraversal;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.HeaderSymlinkTree;
 import com.facebook.buck.cxx.toolchain.HeaderVisibility;
@@ -248,10 +245,7 @@ public final class CxxInferEnhancer {
   private ImmutableMap<String, CxxSource> collectSources(
       BuildTarget buildTarget, CxxConstructorArg args) {
     InferFlavors.checkNoInferFlavors(buildTarget.getFlavors());
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
-    return CxxDescriptionEnhancer.parseCxxSources(
-        buildTarget, graphBuilder, ruleFinder, pathResolver, cxxPlatform, args);
+    return CxxDescriptionEnhancer.parseCxxSources(buildTarget, graphBuilder, cxxPlatform, args);
   }
 
   private <T extends BuildRule> ImmutableSet<T> requireTransitiveDependentLibraries(
@@ -298,9 +292,9 @@ public final class CxxInferEnhancer {
                     args.getLangPreprocessorFlags(),
                     args.getLangPlatformPreprocessorFlags(),
                     cxxPlatform),
-                f ->
-                    CxxDescriptionEnhancer.toStringWithMacrosArgs(
-                        target, cellRoots, graphBuilder, cxxPlatform, f))),
+                CxxDescriptionEnhancer.getStringWithMacrosArgsConverter(
+                        target, cellRoots, graphBuilder, cxxPlatform)
+                    ::convert)),
         ImmutableList.of(headerSymlinkTree),
         args.getFrameworks(),
         CxxPreprocessables.getTransitiveCxxPreprocessorInput(
@@ -321,12 +315,8 @@ public final class CxxInferEnhancer {
 
     InferFlavors.checkNoInferFlavors(target.getFlavors());
 
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
-
     ImmutableMap<Path, SourcePath> headers =
-        CxxDescriptionEnhancer.parseHeaders(
-            target, graphBuilder, ruleFinder, pathResolver, Optional.of(cxxPlatform), args);
+        CxxDescriptionEnhancer.parseHeaders(target, graphBuilder, Optional.of(cxxPlatform), args);
 
     // Setup the header symlink tree and combine all the preprocessor input from this rule
     // and all dependencies.
@@ -342,7 +332,6 @@ public final class CxxInferEnhancer {
         CxxDescriptionEnhancer.requireHeaderSymlinkTree(
             target,
             filesystem,
-            ruleFinder,
             graphBuilder,
             cxxPlatform,
             headers,
@@ -382,8 +371,7 @@ public final class CxxInferEnhancer {
             filesystem,
             target,
             graphBuilder,
-            pathResolver,
-            ruleFinder,
+            graphBuilder.getSourcePathResolver(),
             cxxBuckConfig,
             cxxPlatform,
             preprocessorInputs,
@@ -394,9 +382,9 @@ public final class CxxInferEnhancer {
                     args.getLangCompilerFlags(),
                     args.getLangPlatformCompilerFlags(),
                     cxxPlatform),
-                f ->
-                    CxxDescriptionEnhancer.toStringWithMacrosArgs(
-                        target, cellRoots, graphBuilder, cxxPlatform, f)),
+                CxxDescriptionEnhancer.getStringWithMacrosArgsConverter(
+                        target, cellRoots, graphBuilder, cxxPlatform)
+                    ::convert),
             args.getPrefixHeader(),
             args.getPrecompiledHeader(),
             PicType.PDC);

@@ -22,11 +22,8 @@ import com.facebook.buck.core.model.BuildTargetFactory;
 import com.facebook.buck.core.rulekey.RuleKey;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.impl.FakeBuildRule;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
 import com.facebook.buck.rules.keys.config.TestRuleKeyConfigurationFactory;
@@ -67,8 +64,6 @@ public class ContentAgnosticRuleKeyFactoryTest {
     RuleKeyFieldLoader fieldLoader =
         new RuleKeyFieldLoader(TestRuleKeyConfigurationFactory.create());
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
 
     Path depOutput = Paths.get(filename);
     FakeBuildRule dep =
@@ -76,7 +71,8 @@ public class ContentAgnosticRuleKeyFactoryTest {
             new FakeBuildRule(BuildTargetFactory.newInstance("//:dep"), fileSystem));
     dep.setOutputFile(depOutput.toString());
     fileSystem.writeContentsToPath(
-        fileContents, pathResolver.getRelativePath(dep.getSourcePathToOutput()));
+        fileContents,
+        graphBuilder.getSourcePathResolver().getRelativePath(dep.getSourcePathToOutput()));
 
     BuildRule rule =
         GenruleBuilder.newGenruleBuilder(BuildTargetFactory.newInstance("//:rule"))
@@ -84,8 +80,7 @@ public class ContentAgnosticRuleKeyFactoryTest {
             .setSrcs(ImmutableList.of(dep.getSourcePathToOutput()))
             .build(graphBuilder, fileSystem);
 
-    return new ContentAgnosticRuleKeyFactory(
-            fieldLoader, pathResolver, ruleFinder, Optional.empty())
+    return new ContentAgnosticRuleKeyFactory(fieldLoader, graphBuilder, Optional.empty())
         .build(rule);
   }
 }

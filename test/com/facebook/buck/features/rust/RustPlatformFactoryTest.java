@@ -19,11 +19,10 @@ package com.facebook.buck.features.rust;
 import static org.junit.Assert.assertThat;
 
 import com.facebook.buck.core.config.FakeBuckConfig;
+import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.cxx.toolchain.CxxPlatformUtils;
 import com.facebook.buck.io.AlwaysFoundExecutableFinder;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
@@ -38,11 +37,10 @@ public class RustPlatformFactoryTest {
   @Test
   public void configuredPaths() {
     BuildRuleResolver resolver = new TestActionGraphBuilder();
-    SourcePathRuleFinder finder = new SourcePathRuleFinder(resolver);
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(finder);
+    SourcePathResolver pathResolver = resolver.getSourcePathResolver();
     ProjectFilesystem filesystem = new AllExistingProjectFilesystem();
     RustPlatformFactory factory =
-        RustPlatformFactory.of(
+        new ImmutableRustPlatformFactory(
             FakeBuckConfig.builder()
                 .setFilesystem(filesystem)
                 .setSections(
@@ -53,12 +51,21 @@ public class RustPlatformFactoryTest {
                             "linker", "linker")))
                 .build(),
             new AlwaysFoundExecutableFinder());
-    RustPlatform platform = factory.getPlatform("rust", CxxPlatformUtils.DEFAULT_PLATFORM);
+    RustPlatform platform =
+        factory
+            .getPlatform("rust", CxxPlatformUtils.DEFAULT_UNRESOLVED_PLATFORM)
+            .resolve(resolver, EmptyTargetConfiguration.INSTANCE);
     assertThat(
-        platform.getRustCompiler().resolve(resolver).getCommandPrefix(pathResolver),
+        platform
+            .getRustCompiler()
+            .resolve(resolver, EmptyTargetConfiguration.INSTANCE)
+            .getCommandPrefix(pathResolver),
         Matchers.equalTo(ImmutableList.of(filesystem.resolve("compiler").toString())));
     assertThat(
-        platform.getLinkerProvider().resolve(resolver).getCommandPrefix(pathResolver),
+        platform
+            .getLinkerProvider()
+            .resolve(resolver, EmptyTargetConfiguration.INSTANCE)
+            .getCommandPrefix(pathResolver),
         Matchers.equalTo(ImmutableList.of(filesystem.resolve("linker").toString())));
   }
 }

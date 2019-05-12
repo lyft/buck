@@ -5,11 +5,17 @@ kotlin_library(
         "//test/com/facebook/buck/multitenant/service:service",
     ],
     visibility = [
-        "//test/com/facebook/buck/multitenant/service:",
+        "//src/com/facebook/buck/multitenant/...",
+        "//test/com/facebook/buck/multitenant/...",
     ],
     deps = [
         "//src/com/facebook/buck/core/model:model",
-        "//src/com/facebook/buck/core/model/targetgraph:targetgraph",
+        "//src/com/facebook/buck/core/model/targetgraph/raw:raw",
+        "//src/com/facebook/buck/core/parser/buildtargetpattern:buildtargetpattern",
+        "//src/com/facebook/buck/io/pathformat:pathformat",
         "//src/com/facebook/buck/multitenant/collect:collect",
+        "//src/com/facebook/buck/multitenant/fs:fs",
+        "//third-party/java/guava:guava",
+        "//third-party/java/jsr:jsr305",
     ],
 )

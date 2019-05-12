@@ -16,21 +16,19 @@
 package com.facebook.buck.core.rules.analysis.impl;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertSame;
 
 import com.facebook.buck.core.cell.CellPathResolver;
 import com.facebook.buck.core.cell.TestCellPathResolver;
 import com.facebook.buck.core.description.RuleDescription;
-import com.facebook.buck.core.graph.transformation.FakeTransformationEnvironment;
+import com.facebook.buck.core.graph.transformation.impl.FakeComputationEnvironment;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
 import com.facebook.buck.core.model.targetgraph.TargetGraph;
 import com.facebook.buck.core.model.targetgraph.TargetNode;
 import com.facebook.buck.core.model.targetgraph.impl.TargetNodeFactory;
-import com.facebook.buck.core.rules.actions.ActionAnalysisData;
-import com.facebook.buck.core.rules.actions.ActionAnalysisData.ID;
-import com.facebook.buck.core.rules.actions.FakeActionAnalysisData;
+import com.facebook.buck.core.rules.actions.ActionCreationException;
+import com.facebook.buck.core.rules.analysis.ImmutableRuleAnalysisKey;
 import com.facebook.buck.core.rules.analysis.RuleAnalysisContext;
 import com.facebook.buck.core.rules.analysis.RuleAnalysisResult;
 import com.facebook.buck.core.rules.providers.ProviderInfoCollection;
@@ -83,10 +81,10 @@ public class RuleAnalysisTransformerTest {
         ImmutableMap.of(buildTarget, targetNode);
     TargetGraph targetGraph = new TargetGraph(graph, targetNodeIndex);
 
-    RuleAnalysisTransformer transformer = new RuleAnalysisTransformer(targetGraph);
+    RuleAnalysisComputation transformer = new RuleAnalysisComputation(targetGraph);
     assertEquals(
         ImmutableSet.of(),
-        transformer.discoverPreliminaryDeps(ImmutableRuleAnalysisKeyImpl.of(buildTarget)));
+        transformer.discoverPreliminaryDeps(ImmutableRuleAnalysisKey.of(buildTarget)));
   }
 
   @Test
@@ -147,23 +145,21 @@ public class RuleAnalysisTransformerTest {
             buildTarget1, targetNode1, buildTarget2, targetNode2, buildTarget3, targetNode3);
     TargetGraph targetGraph = new TargetGraph(graph, targetNodeIndex);
 
-    RuleAnalysisTransformer transformer = new RuleAnalysisTransformer(targetGraph);
+    RuleAnalysisComputation transformer = new RuleAnalysisComputation(targetGraph);
     assertEquals(
         ImmutableSet.of(
-            ImmutableRuleAnalysisKeyImpl.of(buildTarget2),
-            ImmutableRuleAnalysisKeyImpl.of(buildTarget3)),
-        transformer.discoverPreliminaryDeps(ImmutableRuleAnalysisKeyImpl.of(buildTarget1)));
+            ImmutableRuleAnalysisKey.of(buildTarget2), ImmutableRuleAnalysisKey.of(buildTarget3)),
+        transformer.discoverPreliminaryDeps(ImmutableRuleAnalysisKey.of(buildTarget1)));
   }
 
   @Test
-  public void transformNodeWithNoDepsCorrectly() {
+  public void transformNodeWithNoDepsCorrectly() throws ActionCreationException {
     BuildTarget buildTarget = BuildTargetFactory.newInstance("//my:target");
 
     ProviderInfoCollection expectedProviders =
         ProviderInfoCollectionImpl.builder()
             .put(new FakeInfo(new FakeBuiltInProvider("myprovider", FakeInfo.class)))
             .build();
-    ActionAnalysisData expectedActionAnalysisData = new FakeActionAnalysisData(buildTarget);
 
     RuleDescription<FakeRuleDescriptionArg> ruleDescription =
         new RuleDescription<FakeRuleDescriptionArg>() {
@@ -171,7 +167,6 @@ public class RuleAnalysisTransformerTest {
           public ProviderInfoCollection ruleImpl(
               RuleAnalysisContext context, BuildTarget target, FakeRuleDescriptionArg args) {
             assertEquals(buildTarget, target);
-            context.registerAction(expectedActionAnalysisData);
             return expectedProviders;
           }
 
@@ -197,27 +192,21 @@ public class RuleAnalysisTransformerTest {
         ImmutableMap.of(buildTarget, targetNode);
     TargetGraph targetGraph = new TargetGraph(graph, targetNodeIndex);
 
-    RuleAnalysisTransformer transformer = new RuleAnalysisTransformer(targetGraph);
+    RuleAnalysisComputation transformer = new RuleAnalysisComputation(targetGraph);
 
     RuleAnalysisResult ruleAnalysisResult =
         transformer.transform(
-            ImmutableRuleAnalysisKeyImpl.of(buildTarget),
-            new FakeTransformationEnvironment(ImmutableMap.of()));
+            ImmutableRuleAnalysisKey.of(buildTarget),
+            new FakeComputationEnvironment(ImmutableMap.of()));
 
     // We shouldn't be making copies of the providers or build target in our transformation. It
     // should be as given.
     assertSame(expectedProviders, ruleAnalysisResult.getProviderInfos());
     assertSame(buildTarget, ruleAnalysisResult.getBuildTarget());
-    assertSame(
-        expectedActionAnalysisData,
-        ruleAnalysisResult.getActionOptional(expectedActionAnalysisData.getKey().getID()).get());
-    assertEquals(1, ruleAnalysisResult.getRegisteredActions().size());
-
-    assertFalse(ruleAnalysisResult.actionExists(new ID() {}));
   }
 
   @Test
-  public void transformNodeWithDepsCorrectly() {
+  public void transformNodeWithDepsCorrectly() throws ActionCreationException {
     BuildTarget buildTarget = BuildTargetFactory.newInstance("//my:target");
     BuildTarget buildTarget2 = BuildTargetFactory.newInstance("//my:target2");
 
@@ -225,7 +214,6 @@ public class RuleAnalysisTransformerTest {
         ProviderInfoCollectionImpl.builder()
             .put(new FakeInfo(new FakeBuiltInProvider("myprovider", FakeInfo.class)))
             .build();
-    ActionAnalysisData expectedActionAnalysisData = new FakeActionAnalysisData(buildTarget);
 
     RuleDescription<FakeRuleDescriptionArg> ruleDescription =
         new RuleDescription<FakeRuleDescriptionArg>() {
@@ -234,8 +222,7 @@ public class RuleAnalysisTransformerTest {
               RuleAnalysisContext context, BuildTarget target, FakeRuleDescriptionArg args) {
             // here we use the deps
             assertEquals(buildTarget, target);
-            context.registerAction(expectedActionAnalysisData);
-            return context.deps().get(ImmutableRuleAnalysisKeyImpl.of(buildTarget2));
+            return context.deps().get(ImmutableRuleAnalysisKey.of(buildTarget2));
           }
 
           @Override
@@ -286,15 +273,15 @@ public class RuleAnalysisTransformerTest {
         ImmutableMap.of(buildTarget, targetNode, buildTarget2, targetNode2);
     TargetGraph targetGraph = new TargetGraph(graph, targetNodeIndex);
 
-    RuleAnalysisTransformer transformer = new RuleAnalysisTransformer(targetGraph);
+    RuleAnalysisComputation transformer = new RuleAnalysisComputation(targetGraph);
 
     RuleAnalysisResult ruleAnalysisResult =
         transformer.transform(
-            ImmutableRuleAnalysisKeyImpl.of(buildTarget),
+            ImmutableRuleAnalysisKey.of(buildTarget),
             // here we provide the deps via the TransformationEnvironment
-            new FakeTransformationEnvironment(
+            new FakeComputationEnvironment(
                 ImmutableMap.of(
-                    ImmutableRuleAnalysisKeyImpl.of(buildTarget2),
+                    ImmutableRuleAnalysisKey.of(buildTarget2),
                     ImmutableRuleAnalysisResultImpl.of(
                         buildTarget2, expectedProviders, ImmutableMap.of()))));
 
@@ -302,9 +289,5 @@ public class RuleAnalysisTransformerTest {
     // should be as given.
     assertSame(expectedProviders, ruleAnalysisResult.getProviderInfos());
     assertSame(buildTarget, ruleAnalysisResult.getBuildTarget());
-    assertSame(
-        expectedActionAnalysisData,
-        ruleAnalysisResult.getActionOptional(expectedActionAnalysisData.getKey().getID()).get());
-    assertEquals(1, ruleAnalysisResult.getRegisteredActions().size());
   }
 }

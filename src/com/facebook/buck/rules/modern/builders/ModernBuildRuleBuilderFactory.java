@@ -19,6 +19,7 @@ package com.facebook.buck.rules.modern.builders;
 import com.facebook.buck.core.build.engine.BuildStrategyContext;
 import com.facebook.buck.core.cell.Cell;
 import com.facebook.buck.core.cell.CellPathResolver;
+import com.facebook.buck.core.exceptions.BuckUncheckedExecutionException;
 import com.facebook.buck.core.exceptions.HumanReadableException;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleResolver;
@@ -30,7 +31,6 @@ import com.facebook.buck.remoteexecution.factory.RemoteExecutionClientsFactory;
 import com.facebook.buck.remoteexecution.interfaces.MetadataProvider;
 import com.facebook.buck.rules.modern.config.HybridLocalBuildStrategyConfig;
 import com.facebook.buck.rules.modern.config.ModernBuildRuleStrategyConfig;
-import com.facebook.buck.util.exceptions.BuckUncheckedExecutionException;
 import com.facebook.buck.util.hashing.FileHashLoader;
 import com.google.common.util.concurrent.Futures;
 import java.io.IOException;
@@ -58,8 +58,7 @@ public class ModernBuildRuleBuilderFactory {
         case NONE:
           return Optional.empty();
         case DEBUG_RECONSTRUCT:
-          return Optional.of(
-              createReconstructing(new SourcePathRuleFinder(resolver), cellResolver, rootCell));
+          return Optional.of(createReconstructing(resolver, cellResolver, rootCell));
         case DEBUG_PASSTHROUGH:
           return Optional.of(createPassthrough());
         case HYBRID_LOCAL:
@@ -82,10 +81,10 @@ public class ModernBuildRuleBuilderFactory {
                   eventBus,
                   remoteExecutionConfig.getStrategyConfig(),
                   remoteExecutionFactory.create(eventBus, metadataProvider),
-                  new SourcePathRuleFinder(resolver),
-                  cellResolver,
+                  resolver,
                   rootCell,
-                  hashLoader::get));
+                  hashLoader::get,
+                  metadataProvider));
       }
     } catch (IOException e) {
       throw new BuckUncheckedExecutionException(e, "When creating MBR build strategy.");

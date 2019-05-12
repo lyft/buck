@@ -20,14 +20,13 @@ import com.facebook.buck.query.QueryEnvironment.ArgumentType;
 import com.facebook.buck.query.QueryEnvironment.QueryFunction;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
-import java.util.Set;
 
 /**
  * A "buildfile" query expression, which computes the build files that define the given targets.
  *
  * <pre>expr ::= BUILDFILE '(' expr ')'</pre>
  */
-public class BuildFileFunction implements QueryFunction {
+public class BuildFileFunction implements QueryFunction<QueryFileTarget, QueryBuildTarget> {
 
   private static final ImmutableList<ArgumentType> ARGUMENT_TYPES =
       ImmutableList.of(ArgumentType.EXPRESSION);
@@ -50,10 +49,12 @@ public class BuildFileFunction implements QueryFunction {
   }
 
   @Override
-  public ImmutableSet<QueryTarget> eval(
-      QueryEvaluator evaluator, QueryEnvironment env, ImmutableList<Argument> args)
+  public ImmutableSet<QueryFileTarget> eval(
+      QueryEvaluator<QueryBuildTarget> evaluator,
+      QueryEnvironment<QueryBuildTarget> env,
+      ImmutableList<Argument<QueryBuildTarget>> args)
       throws QueryException {
-    Set<QueryTarget> argumentSet = evaluator.eval(args.get(0).getExpression(), env);
+    ImmutableSet<QueryBuildTarget> argumentSet = evaluator.eval(args.get(0).getExpression(), env);
     return env.getBuildFiles(argumentSet);
   }
 }

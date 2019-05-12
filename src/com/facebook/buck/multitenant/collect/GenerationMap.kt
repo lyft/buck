@@ -58,7 +58,7 @@ private class Bucket<INFO, VALUE : Any>(val info: INFO) {
  * GenerationList is a glorified append-only list-of-lists.
  * This class is not threadsafe: it must be synchronized externally.
  */
-private class GenerationList<INFO, VALUE : Any>() {
+private class GenerationList<INFO, VALUE : Any> {
     private val buckets: MutableList<Bucket<INFO, VALUE>> = mutableListOf()
 
     /**
@@ -94,39 +94,70 @@ private class GenerationList<INFO, VALUE : Any>() {
             }
         }.filterNotNull()
     }
+
+    fun filterEntriesByKeyInfo(generation: Int, filter: (keyInfo: INFO) -> Boolean): Sequence<Pair<INFO, VALUE>> {
+        return buckets.asSequence().map {
+            val value = it.getVersion(generation)
+            if (value != null && filter(it.info)) {
+                Pair(it.info, value)
+            } else {
+                null
+            }
+        }.filterNotNull()
+    }
 }
 
 /**
- * GenerationMap is a glorified append-only multimap.
- *
+ * [GenerationMap] provides a view over a glorified append-only multimap.
+ */
+interface GenerationMap<KEY : Any, VALUE : Any, KEY_INFO> {
+    fun getVersion(key: KEY, generation: Int): VALUE?
+    /**
+     * @param filter if null, all entries for the generation will be returned.
+     */
+    fun getEntries(generation: Int, filter: ((keyInfo: KEY_INFO) -> Boolean)? = null): Sequence<Pair<KEY_INFO, VALUE>>
+}
+
+/**
+ * [MutableGenerationMap] is a glorified append-only multimap.
+ */
+interface MutableGenerationMap<KEY : Any, VALUE : Any, KEY_INFO> : GenerationMap<KEY, VALUE, KEY_INFO> {
+    fun addVersion(key: KEY, value: VALUE?, generation: Int)
+}
+
+/**
  * For convenience, derived info about the key can be stored inline with its versioned values for
  * quick retrieval. This may turn out to be a poor API choice: I just happened to have one other
  * use case for multitenant stuff where this was convenient.
  *
  * This class is not threadsafe: it must be synchronized externally.
  */
-class GenerationMap<KEY : Any, VALUE : Any, KEY_INFO>(val keyInfoDeriver: (key: KEY) -> KEY_INFO) {
+class DefaultGenerationMap<KEY : Any, VALUE : Any, KEY_INFO>(val keyInfoDeriver: (key: KEY) -> KEY_INFO) : MutableGenerationMap<KEY, VALUE, KEY_INFO> {
     private val generationList = GenerationList<KEY_INFO, VALUE>()
     private val keyToBucketIndex = HashMap<KEY, Int>()
 
-    fun addVersion(key: KEY, value: VALUE?, generation: Int) {
+    override fun addVersion(key: KEY, value: VALUE?, generation: Int) {
         val bucketIndex = findOrCreateBucketIndex(key)
         generationList.addVersion(bucketIndex, value, generation)
     }
 
-    fun getVersion(key: KEY, generation: Int): VALUE? {
+    override fun getVersion(key: KEY, generation: Int): VALUE? {
         val bucketIndex = findOrCreateBucketIndex(key)
         return generationList.getVersion(bucketIndex, generation)
     }
 
-    fun getAllInfoValuePairsForGeneration(generation: Int): Sequence<Pair<KEY_INFO, VALUE>> {
+    override fun getEntries(generation: Int, filter: ((keyInfo: KEY_INFO) -> Boolean)?): Sequence<Pair<KEY_INFO, VALUE>> {
         // One thing that is special about iterating the generationList rather than the
         // keyToBucketIndex is that we can ensure we return a parallel Stream. Note that the
         // parallelStream() method defined on java.util.Collection (which includes the Set returned
         // by Map.entrySet()) is "possibly parallel," so true parallelism is not guaranteed. The
         // downside of iterating the generationList is that the key is not readily available, though
         // the keyInfo is.
-        return generationList.getAllInfoValuePairsForGeneration(generation)
+        return if (filter != null) {
+            generationList.filterEntriesByKeyInfo(generation, filter)
+        } else {
+            generationList.getAllInfoValuePairsForGeneration(generation)
+        }
     }
 
     private fun findOrCreateBucketIndex(key: KEY): Int {

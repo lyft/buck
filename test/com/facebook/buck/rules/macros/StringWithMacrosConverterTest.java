@@ -50,10 +50,10 @@ public class StringWithMacrosConverterTest {
   public void noMacros() {
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder();
     StringWithMacrosConverter converter =
-        StringWithMacrosConverter.of(TARGET, CELL_ROOTS, MACRO_EXPANDERS);
+        StringWithMacrosConverter.of(TARGET, CELL_ROOTS, graphBuilder, MACRO_EXPANDERS);
     assertThat(
-        converter.convert(StringWithMacrosUtils.format("something"), graphBuilder),
-        Matchers.equalTo(CompositeArg.of(ImmutableList.of(StringArg.of("something")))));
+        converter.convert(StringWithMacrosUtils.format("something")),
+        Matchers.equalTo(StringArg.of("something")));
   }
 
   @Test
@@ -64,14 +64,30 @@ public class StringWithMacrosConverterTest {
             .setOut("out")
             .build(graphBuilder);
     StringWithMacrosConverter converter =
-        StringWithMacrosConverter.of(TARGET, CELL_ROOTS, MACRO_EXPANDERS);
+        StringWithMacrosConverter.of(TARGET, CELL_ROOTS, graphBuilder, MACRO_EXPANDERS);
     assertThat(
         converter.convert(
-            StringWithMacrosUtils.format("%s", LocationMacro.of(genrule.getBuildTarget())),
-            graphBuilder),
+            StringWithMacrosUtils.format("%s", LocationMacro.of(genrule.getBuildTarget()))),
+        Matchers.equalTo(
+            SourcePathArg.of(Preconditions.checkNotNull(genrule.getSourcePathToOutput()))));
+  }
+
+  @Test
+  public void macroAndString() {
+    ActionGraphBuilder graphBuilder = new TestActionGraphBuilder();
+    Genrule genrule =
+        GenruleBuilder.newGenruleBuilder(BuildTargetFactory.newInstance("//:dep"))
+            .setOut("out")
+            .build(graphBuilder);
+    StringWithMacrosConverter converter =
+        StringWithMacrosConverter.of(TARGET, CELL_ROOTS, graphBuilder, MACRO_EXPANDERS);
+    assertThat(
+        converter.convert(
+            StringWithMacrosUtils.format("--foo=%s", LocationMacro.of(genrule.getBuildTarget()))),
         Matchers.equalTo(
             CompositeArg.of(
                 ImmutableList.of(
+                    StringArg.of("--foo="),
                     SourcePathArg.of(
                         Preconditions.checkNotNull(genrule.getSourcePathToOutput()))))));
   }
@@ -83,14 +99,13 @@ public class StringWithMacrosConverterTest {
         StringWithMacrosConverter.builder()
             .setBuildTarget(TARGET)
             .setCellPathResolver(CELL_ROOTS)
+            .setActionGraphBuilder(graphBuilder)
             .setExpanders(MACRO_EXPANDERS)
             .setSanitizer(s -> "something else")
             .build();
     assertThat(
-        converter.convert(StringWithMacrosUtils.format("something"), graphBuilder),
-        Matchers.equalTo(
-            CompositeArg.of(
-                ImmutableList.of(SanitizedArg.create(s -> "something else", "something")))));
+        converter.convert(StringWithMacrosUtils.format("something")),
+        Matchers.equalTo(SanitizedArg.create(s -> "something else", "something")));
   }
 
   @Test
@@ -101,14 +116,11 @@ public class StringWithMacrosConverterTest {
             .setOut("out")
             .build(graphBuilder);
     StringWithMacrosConverter converter =
-        StringWithMacrosConverter.of(TARGET, CELL_ROOTS, MACRO_EXPANDERS);
+        StringWithMacrosConverter.of(TARGET, CELL_ROOTS, graphBuilder, MACRO_EXPANDERS);
     Arg result =
         converter.convert(
             StringWithMacrosUtils.format(
-                "%s", MacroContainer.of(LocationMacro.of(genrule.getBuildTarget()), true)),
-            graphBuilder);
-    assertThat(
-        ((CompositeArg) result).getArgs(),
-        Matchers.contains(Matchers.instanceOf(WriteToFileArg.class)));
+                "%s", MacroContainer.of(LocationMacro.of(genrule.getBuildTarget()), true)));
+    assertThat(result, Matchers.instanceOf(WriteToFileArg.class));
   }
 }

@@ -18,8 +18,8 @@ package com.facebook.buck.core.model;
 
 import static org.junit.Assert.assertEquals;
 
-import com.facebook.buck.core.model.impl.ImmutableUnconfiguredBuildTarget;
-import com.facebook.buck.core.model.impl.ImmutableUnflavoredBuildTarget;
+import com.facebook.buck.core.model.impl.ImmutableUnconfiguredBuildTargetView;
+import com.facebook.buck.core.model.impl.ImmutableUnflavoredBuildTargetView;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Optional;
@@ -62,8 +62,8 @@ public class BuildTargetFactoryTest {
   public void testTargetWithCell() {
     BuildTarget buildTarget = BuildTargetFactory.newInstance(ROOT, "xplat//example/base:one");
     assertEquals(
-        ImmutableUnconfiguredBuildTarget.of(
-                ImmutableUnflavoredBuildTarget.of(
+        ImmutableUnconfiguredBuildTargetView.of(
+                ImmutableUnflavoredBuildTargetView.of(
                     ROOT, Optional.of("xplat"), "//example/base", "one"))
             .configure(EmptyTargetConfiguration.INSTANCE),
         buildTarget);

@@ -40,7 +40,7 @@ import com.facebook.buck.core.rules.BuildRuleParams;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.toolchain.ToolchainProvider;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.jvm.core.JavaLibrary;
 import com.facebook.buck.jvm.java.JavaBuckConfig;
@@ -238,13 +238,17 @@ public class AndroidBinaryDescription
       ImmutableCollection.Builder<BuildTarget> extraDepsBuilder,
       ImmutableCollection.Builder<BuildTarget> targetGraphOnlyDepsBuilder) {
     javacFactory.addParseTimeDeps(targetGraphOnlyDepsBuilder, null);
-    javaOptions.get().addParseTimeDeps(targetGraphOnlyDepsBuilder);
+    javaOptions
+        .get()
+        .addParseTimeDeps(targetGraphOnlyDepsBuilder, buildTarget.getTargetConfiguration());
 
-    Optionals.addIfPresent(proGuardConfig.getProguardTarget(), extraDepsBuilder);
+    Optionals.addIfPresent(
+        proGuardConfig.getProguardTarget(buildTarget.getTargetConfiguration()), extraDepsBuilder);
 
     if (constructorArg.getRedex()) {
       // If specified, this option may point to either a BuildTarget or a file.
-      Optional<BuildTarget> redexTarget = androidBuckConfig.getRedexTarget();
+      Optional<BuildTarget> redexTarget =
+          androidBuckConfig.getRedexTarget(buildTarget.getTargetConfiguration());
       redexTarget.ifPresent(extraDepsBuilder::add);
     }
     // TODO(cjhopman): we could filter this by the abis that this binary supports.
@@ -255,7 +259,10 @@ public class AndroidBinaryDescription
                 ndkCxxPlatformsProvider
                     .getNdkCxxPlatforms()
                     .values()
-                    .forEach(platform -> extraDepsBuilder.addAll(platform.getParseTimeDeps())));
+                    .forEach(
+                        platform ->
+                            extraDepsBuilder.addAll(
+                                platform.getParseTimeDeps(buildTarget.getTargetConfiguration()))));
   }
 
   @BuckStyleImmutable

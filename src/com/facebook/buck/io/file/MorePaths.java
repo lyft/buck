@@ -16,8 +16,9 @@
 
 package com.facebook.buck.io.file;
 
-import com.facebook.buck.cli.bootstrapper.filesystem.BuckUnixPath;
 import com.facebook.buck.core.exceptions.HumanReadableException;
+import com.facebook.buck.core.filesystems.BuckUnixPath;
+import com.facebook.buck.io.pathformat.PathFormatter;
 import com.facebook.buck.io.windowsfs.WindowsFS;
 import com.facebook.buck.util.RichStream;
 import com.facebook.buck.util.environment.Platform;
@@ -49,40 +50,22 @@ public class MorePaths {
   /** Utility class: do not instantiate. */
   private MorePaths() {}
 
-  public static final Path EMPTY_PATH = Paths.get("");
-
-  public static String pathWithUnixSeparators(String path) {
-    return pathWithUnixSeparators(Paths.get(path));
-  }
-
-  public static String pathWithUnixSeparators(Path path) {
-    return path.toString().replace('\\', '/');
-  }
-
-  public static String pathWithWindowsSeparators(Path path) {
-    return path.toString().replace('/', '\\');
-  }
-
   public static String pathWithPlatformSeparators(String path) {
     return pathWithPlatformSeparators(Paths.get(path));
   }
 
   public static String pathWithPlatformSeparators(Path path) {
     if (Platform.detect() == Platform.WINDOWS) {
-      return pathWithWindowsSeparators(path);
+      return PathFormatter.pathWithWindowsSeparators(path);
     } else {
-      return pathWithUnixSeparators(path);
+      return PathFormatter.pathWithUnixSeparators(path);
     }
-  }
-
-  public static String pathWithUnixSeparatorsAndTrailingSlash(Path path) {
-    return pathWithUnixSeparators(path) + "/";
   }
 
   public static Path getParentOrEmpty(Path path) {
     Path parent = path.getParent();
     if (parent == null) {
-      parent = EMPTY_PATH;
+      parent = emptyOf(path);
     }
     return parent;
   }
@@ -99,7 +82,7 @@ public class MorePaths {
     if (baseDir == null) {
       // This allows callers to use this method with "file.parent()" for files from the project
       // root dir.
-      baseDir = EMPTY_PATH;
+      baseDir = emptyOf(path);
     }
     Preconditions.checkArgument(!path.isAbsolute(), "Path must be relative: %s.", path);
     Preconditions.checkArgument(!baseDir.isAbsolute(), "Path must be relative: %s.", baseDir);
@@ -125,7 +108,7 @@ public class MorePaths {
     path2 = normalize(path2);
 
     // On Windows, if path1 is "" then Path.relativize returns ../path2 instead of path2 or ./path2
-    if (EMPTY_PATH.equals(path1)) {
+    if (isEmpty(path1)) {
       return path2;
     }
     return path1.relativize(path2);
@@ -138,10 +121,26 @@ public class MorePaths {
    * ArrayIndexOutOfBoundsException).
    */
   public static Path normalize(Path path) {
-    if (!EMPTY_PATH.equals(path)) {
+    if (!isEmpty(path)) {
       path = path.normalize();
     }
     return path;
+  }
+
+  /** Return empty path with the same filesystem as provided path */
+  public static Path emptyOf(Path path) {
+    if (path instanceof BuckUnixPath) {
+      return ((BuckUnixPath) path).emptyPath();
+    }
+    return path.getFileSystem().getPath("");
+  }
+
+  /** Return true if provided path is empty path ("") */
+  public static boolean isEmpty(Path path) {
+    if (path instanceof BuckUnixPath) {
+      return ((BuckUnixPath) path).isEmpty();
+    }
+    return emptyOf(path).equals(path);
   }
 
   /**
@@ -301,12 +300,8 @@ public class MorePaths {
   public static Pair<Path, Path> stripCommonSuffix(Path a, Path b) {
     int count = commonSuffixLength(a, b);
     return new Pair<>(
-        count == a.getNameCount()
-            ? a.getFileSystem().getPath("")
-            : a.subpath(0, a.getNameCount() - count),
-        count == b.getNameCount()
-            ? b.getFileSystem().getPath("")
-            : b.subpath(0, b.getNameCount() - count));
+        count == a.getNameCount() ? emptyOf(a) : a.subpath(0, a.getNameCount() - count),
+        count == b.getNameCount() ? emptyOf(b) : b.subpath(0, b.getNameCount() - count));
   }
 
   private static int getCommonPrefixLength(Iterable<Path> paths) {
@@ -341,7 +336,7 @@ public class MorePaths {
               if (commonPrefix == 0 && root == null) {
                 // TODO(cjhopman): This is odd. I think it should return Optional.empty() when
                 // there's no common prefix, but this matches previous behavior.
-                root = firstPath.getFileSystem().getPath("");
+                root = emptyOf(firstPath);
               }
               Path prefixPath =
                   commonPrefix == 0
@@ -360,7 +355,7 @@ public class MorePaths {
         .map(
             p ->
                 commonPrefix == p.getNameCount()
-                    ? p.getFileSystem().getPath("")
+                    ? emptyOf(p)
                     : p.subpath(commonPrefix, p.getNameCount()))
         .toImmutableList();
   }

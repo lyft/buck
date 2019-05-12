@@ -152,15 +152,18 @@ class SchemeGenerator {
             .orElse(Optional.empty());
     if (commands.isPresent()) {
       ImmutableList<XCScheme.SchemePrePostAction> actions =
-          commands
-              .get()
-              .stream()
+          commands.get().stream()
               .map(command -> new XCScheme.SchemePrePostAction(primaryTarget, command))
               .collect(ImmutableList.toImmutableList());
       return Optional.of(actions);
     } else {
       return Optional.empty();
     }
+  }
+
+  @VisibleForTesting
+  Path getOutputDirectory() {
+    return outputDirectory;
   }
 
   @VisibleForTesting

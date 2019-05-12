@@ -38,11 +38,10 @@ import com.facebook.buck.core.model.targetgraph.DescriptionWithTargetGraph;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.toolchain.ToolchainProvider;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.nativelink.NativeLinkable;
 import com.facebook.buck.jvm.core.JavaLibrary;
 import com.facebook.buck.jvm.java.JavaBuckConfig;
@@ -158,7 +157,8 @@ public class AndroidInstrumentationApkDescription
     NonPredexedDexBuildableArgs nonPreDexedDexBuildableArgs =
         NonPredexedDexBuildableArgs.builder()
             .setProguardAgentPath(proGuardConfig.getProguardAgentPath())
-            .setProguardJarOverride(proGuardConfig.getProguardJarOverride())
+            .setProguardJarOverride(
+                proGuardConfig.getProguardJarOverride(buildTarget.getTargetConfiguration()))
             .setProguardMaxHeapSize(proGuardConfig.getProguardMaxHeapSize())
             .setSdkProguardConfig(apkUnderTest.getSdkProguardConfig())
             .setPreprocessJavaClassesBash(Optional.empty())
@@ -174,8 +174,6 @@ public class AndroidInstrumentationApkDescription
             .setProguardConfigPath(apkUnderTest.getProguardConfig())
             .setShouldProguard(shouldProguard)
             .build();
-
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
 
     AndroidPlatformTarget androidPlatformTarget =
         toolchainProvider.getByName(
@@ -206,8 +204,7 @@ public class AndroidInstrumentationApkDescription
             /* shouldBuildStringSourceMap */ false,
             /* shouldPreDex */ false,
             DexSplitMode.NO_SPLIT,
-            rulesToExcludeFromDex
-                .stream()
+            rulesToExcludeFromDex.stream()
                 .map(BuildRule::getBuildTarget)
                 .collect(ImmutableSet.toImmutableSet()),
             resourcesToExclude,
@@ -259,7 +256,7 @@ public class AndroidInstrumentationApkDescription
         toolchainProvider.getByName(AndroidSdkLocation.DEFAULT_NAME, AndroidSdkLocation.class),
         androidPlatformTarget,
         params,
-        ruleFinder,
+        graphBuilder,
         apkUnderTest,
         rulesToExcludeFromDex,
         enhancementResult,

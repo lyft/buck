@@ -27,19 +27,17 @@ import com.facebook.buck.core.build.buildable.context.FakeBuildableContext;
 import com.facebook.buck.core.build.context.FakeBuildContext;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
+import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.model.targetgraph.TargetGraph;
 import com.facebook.buck.core.model.targetgraph.TargetGraphFactory;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.common.BuildableSupport;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.ExplicitBuildTargetSourcePath;
 import com.facebook.buck.core.sourcepath.FakeSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.SourceWithFlags;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.cxx.Archive;
 import com.facebook.buck.cxx.CxxPreprocessables;
 import com.facebook.buck.cxx.CxxSymlinkTreeHeaders;
@@ -106,12 +104,14 @@ public class HalideLibraryDescriptionTest {
 
     // Check that the library rule has the correct native linkable input.
     NativeLinkableInput input =
-        lib.getNativeLinkableInput(cxxPlatform, Linker.LinkableDepType.STATIC, graphBuilder);
+        lib.getNativeLinkableInput(
+            cxxPlatform,
+            Linker.LinkableDepType.STATIC,
+            graphBuilder,
+            EmptyTargetConfiguration.INSTANCE);
     BuildRule buildRule =
         FluentIterable.from(input.getArgs())
-            .transformAndConcat(
-                arg ->
-                    BuildableSupport.getDepsCollection(arg, new SourcePathRuleFinder(graphBuilder)))
+            .transformAndConcat(arg -> BuildableSupport.getDepsCollection(arg, graphBuilder))
             .get(0);
     assertThat(buildRule, is(instanceOf(Archive.class)));
   }
@@ -131,7 +131,10 @@ public class HalideLibraryDescriptionTest {
     assertThat(
         halideLibrary
             .getNativeLinkableInput(
-                CxxPlatformUtils.DEFAULT_PLATFORM, Linker.LinkableDepType.STATIC, graphBuilder1)
+                CxxPlatformUtils.DEFAULT_PLATFORM,
+                Linker.LinkableDepType.STATIC,
+                graphBuilder1,
+                EmptyTargetConfiguration.INSTANCE)
             .getArgs(),
         not(Matchers.empty()));
 
@@ -144,7 +147,10 @@ public class HalideLibraryDescriptionTest {
     assertThat(
         halideLibrary
             .getNativeLinkableInput(
-                CxxPlatformUtils.DEFAULT_PLATFORM, Linker.LinkableDepType.STATIC, graphBuilder2)
+                CxxPlatformUtils.DEFAULT_PLATFORM,
+                Linker.LinkableDepType.STATIC,
+                graphBuilder2,
+                EmptyTargetConfiguration.INSTANCE)
             .getArgs(),
         Matchers.empty());
   }
@@ -170,14 +176,13 @@ public class HalideLibraryDescriptionTest {
     // First, make sure the compile step doesn't include the extra flags.
     TargetGraph targetGraph = TargetGraphFactory.newInstance(compileBuilder.build());
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder(targetGraph);
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder));
     HalideCompile compile =
         (HalideCompile) compileBuilder.build(graphBuilder, filesystem, targetGraph);
 
     ImmutableList<Step> buildSteps =
         compile.getBuildSteps(
-            FakeBuildContext.withSourcePathResolver(pathResolver), new FakeBuildableContext());
+            FakeBuildContext.withSourcePathResolver(graphBuilder.getSourcePathResolver()),
+            new FakeBuildableContext());
     HalideCompilerStep compilerStep = (HalideCompilerStep) buildSteps.get(2);
     ImmutableList<String> shellCommand =
         compilerStep.getShellCommandInternal(TestExecutionContext.newInstance());
@@ -191,7 +196,8 @@ public class HalideLibraryDescriptionTest {
 
     buildSteps =
         compile.getBuildSteps(
-            FakeBuildContext.withSourcePathResolver(pathResolver), new FakeBuildableContext());
+            FakeBuildContext.withSourcePathResolver(graphBuilder.getSourcePathResolver()),
+            new FakeBuildableContext());
     compilerStep = (HalideCompilerStep) buildSteps.get(2);
     shellCommand = compilerStep.getShellCommandInternal(TestExecutionContext.newInstance());
     assertThat(shellCommand, hasItems("--test-flag", "test-value", "test_macro_expansion"));
@@ -214,14 +220,13 @@ public class HalideLibraryDescriptionTest {
     // for the function output name.
     TargetGraph targetGraph = TargetGraphFactory.newInstance(compileBuilder.build());
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder(targetGraph);
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder));
     HalideCompile compile =
         (HalideCompile) compileBuilder.build(graphBuilder, filesystem, targetGraph);
 
     ImmutableList<Step> buildSteps =
         compile.getBuildSteps(
-            FakeBuildContext.withSourcePathResolver(pathResolver), new FakeBuildableContext());
+            FakeBuildContext.withSourcePathResolver(graphBuilder.getSourcePathResolver()),
+            new FakeBuildableContext());
     HalideCompilerStep compilerStep = (HalideCompilerStep) buildSteps.get(2);
     ImmutableList<String> shellCommand =
         compilerStep.getShellCommandInternal(TestExecutionContext.newInstance());
@@ -236,7 +241,8 @@ public class HalideLibraryDescriptionTest {
 
     buildSteps =
         compile.getBuildSteps(
-            FakeBuildContext.withSourcePathResolver(pathResolver), new FakeBuildableContext());
+            FakeBuildContext.withSourcePathResolver(graphBuilder.getSourcePathResolver()),
+            new FakeBuildableContext());
     compilerStep = (HalideCompilerStep) buildSteps.get(2);
     shellCommand = compilerStep.getShellCommandInternal(TestExecutionContext.newInstance());
     assertThat(shellCommand, hasItem(overrideName));

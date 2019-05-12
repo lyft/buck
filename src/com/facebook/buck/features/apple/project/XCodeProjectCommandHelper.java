@@ -32,8 +32,8 @@ import com.facebook.buck.core.exceptions.HumanReadableException;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.Flavor;
 import com.facebook.buck.core.model.TargetConfiguration;
-import com.facebook.buck.core.model.UnflavoredBuildTarget;
-import com.facebook.buck.core.model.impl.ImmutableUnflavoredBuildTarget;
+import com.facebook.buck.core.model.UnflavoredBuildTargetView;
+import com.facebook.buck.core.model.impl.ImmutableUnflavoredBuildTargetView;
 import com.facebook.buck.core.model.targetgraph.NoSuchTargetException;
 import com.facebook.buck.core.model.targetgraph.TargetGraph;
 import com.facebook.buck.core.model.targetgraph.TargetNode;
@@ -45,9 +45,10 @@ import com.facebook.buck.core.rules.transformer.impl.DefaultTargetNodeToBuildRul
 import com.facebook.buck.core.util.graph.AcyclicDepthFirstPostOrderTraversal;
 import com.facebook.buck.core.util.graph.AcyclicDepthFirstPostOrderTraversal.CycleException;
 import com.facebook.buck.core.util.log.Logger;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.CxxPlatformsProvider;
+import com.facebook.buck.cxx.toolchain.impl.LegacyToolchainProvider;
 import com.facebook.buck.event.BuckEventBus;
 import com.facebook.buck.event.ConsoleEvent;
 import com.facebook.buck.features.halide.HalideBuckConfig;
@@ -403,7 +404,7 @@ public class XCodeProjectCommandHelper {
                           cellPathToCellName.get(target.getCellPath()).stream().findAny();
                       if (cellName.isPresent()) {
                         return target.withUnflavoredBuildTarget(
-                            ImmutableUnflavoredBuildTarget.of(
+                            ImmutableUnflavoredBuildTargetView.of(
                                 target.getCellPath(),
                                 cellName,
                                 target.getBaseName(),
@@ -449,9 +450,7 @@ public class XCodeProjectCommandHelper {
     ImmutableSet<BuildTarget> targets;
     if (passedInTargetsSet.isEmpty()) {
       targets =
-          targetGraphAndTargets
-              .getProjectRoots()
-              .stream()
+          targetGraphAndTargets.getProjectRoots().stream()
               .map(TargetNode::getBuildTarget)
               .collect(ImmutableSet.toImmutableSet());
     } else {
@@ -490,7 +489,8 @@ public class XCodeProjectCommandHelper {
               .getByName(CxxPlatformsProvider.DEFAULT_NAME, CxxPlatformsProvider.class);
 
       CxxPlatform defaultCxxPlatform =
-          cxxPlatformsProvider.getDefaultUnresolvedCxxPlatform().getLegacyTotallyUnsafe();
+          LegacyToolchainProvider.getLegacyTotallyUnsafe(
+              cxxPlatformsProvider.getDefaultUnresolvedCxxPlatform());
       Cell workspaceCell = cell.getCell(inputTarget);
       WorkspaceAndProjectGenerator generator =
           new WorkspaceAndProjectGenerator(
@@ -534,7 +534,7 @@ public class XCodeProjectCommandHelper {
     return requiredBuildTargetsBuilder.build();
   }
 
-  private FocusedModuleTargetMatcher getFocusModules() throws IOException, InterruptedException {
+  private FocusedModuleTargetMatcher getFocusModules() throws InterruptedException {
     if (modulesToFocusOn == null) {
       return FocusedModuleTargetMatcher.noFocus();
     }
@@ -562,7 +562,7 @@ public class XCodeProjectCommandHelper {
     }
     LOG.debug("Selected targets: %s", passedInTargetsSet.toString());
 
-    ImmutableSet<UnflavoredBuildTarget> passedInUnflavoredTargetsSet =
+    ImmutableSet<UnflavoredBuildTargetView> passedInUnflavoredTargetsSet =
         RichStream.from(passedInTargetsSet)
             .map(BuildTarget::getUnflavoredBuildTarget)
             .toImmutableSet();
@@ -679,9 +679,7 @@ public class XCodeProjectCommandHelper {
   @VisibleForTesting
   static ImmutableSet<BuildTarget> getRootsFromPredicate(
       TargetGraph projectGraph, Predicate<TargetNode<?>> rootsPredicate) {
-    return projectGraph
-        .getNodes()
-        .stream()
+    return projectGraph.getNodes().stream()
         .filter(rootsPredicate)
         .map(TargetNode::getBuildTarget)
         .collect(ImmutableSet.toImmutableSet());
@@ -730,9 +728,7 @@ public class XCodeProjectCommandHelper {
             parser.buildTargetGraph(
                 parsingContext,
                 Sets.union(
-                    projectGraph
-                        .getNodes()
-                        .stream()
+                    projectGraph.getNodes().stream()
                         .map(TargetNode::getBuildTarget)
                         .collect(ImmutableSet.toImmutableSet()),
                     explicitTestTargets));
@@ -750,7 +746,8 @@ public class XCodeProjectCommandHelper {
               buckConfig,
               typeCoercerFactory,
               unconfiguredBuildTargetFactory,
-              explicitTestTargets);
+              explicitTestTargets,
+              targetConfiguration);
     }
     return targetGraphAndTargets;
   }

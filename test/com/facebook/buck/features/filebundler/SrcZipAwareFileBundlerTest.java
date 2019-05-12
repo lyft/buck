@@ -21,11 +21,9 @@ import static org.junit.Assert.assertTrue;
 
 import com.facebook.buck.core.cell.TestCellPathResolver;
 import com.facebook.buck.core.exceptions.HumanReadableException;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.PathSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.TestProjectFilesystems;
 import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
@@ -69,8 +67,6 @@ public class SrcZipAwareFileBundlerTest {
     Files.createFile(subDirectoryFile3);
 
     SrcZipAwareFileBundler bundler = new SrcZipAwareFileBundler(basePath, PatternsMatcher.EMPTY);
-    DefaultSourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(new TestActionGraphBuilder()));
     bundler.copy(
         filesystem,
         new DefaultBuildCellRelativePathFactory(
@@ -78,7 +74,7 @@ public class SrcZipAwareFileBundlerTest {
         immutableStepList,
         dest,
         immutableSortedSet,
-        pathResolver);
+        new TestActionGraphBuilder().getSourcePathResolver());
 
     ImmutableList<Step> builtStepList = immutableStepList.build();
 

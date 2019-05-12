@@ -30,11 +30,8 @@ import com.facebook.buck.core.model.targetgraph.DescriptionWithTargetGraph;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.sourcepath.ExplicitBuildTargetSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.ToolchainProvider;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
@@ -103,7 +100,6 @@ public class AndroidPrebuiltAarDescription
       BuildRuleParams params,
       AndroidPrebuiltAarDescriptionArg args) {
     ActionGraphBuilder graphBuilder = context.getActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
     ProjectFilesystem projectFilesystem = context.getProjectFilesystem();
 
     ImmutableSet<Flavor> flavors = buildTarget.getFlavors();
@@ -113,7 +109,7 @@ public class AndroidPrebuiltAarDescription
           params
               .withoutDeclaredDeps()
               .withExtraDeps(
-                  ImmutableSortedSet.copyOf(ruleFinder.filterBuildRuleInputs(args.getAar())));
+                  ImmutableSortedSet.copyOf(graphBuilder.filterBuildRuleInputs(args.getAar())));
       return new UnzipAar(buildTarget, projectFilesystem, unzipAarParams, args.getAar());
     }
 
@@ -128,14 +124,12 @@ public class AndroidPrebuiltAarDescription
     if (JavaAbis.isClassAbiTarget(buildTarget)) {
       return CalculateClassAbi.of(
           buildTarget,
-          ruleFinder,
+          graphBuilder,
           projectFilesystem,
           params,
           ExplicitBuildTargetSourcePath.of(
               unzipAar.getBuildTarget(), unzipAar.getPathToClassesJar()));
     }
-
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
 
     Iterable<PrebuiltJar> javaDeps =
         Iterables.concat(
@@ -159,7 +153,7 @@ public class AndroidPrebuiltAarDescription
           buildTarget,
           projectFilesystem,
           /* params */ buildRuleParams,
-          pathResolver,
+          graphBuilder.getSourcePathResolver(),
           /* binaryJar */ ExplicitBuildTargetSourcePath.of(
               unzipAar.getBuildTarget(), unzipAar.getPathToClassesJar()),
           /* sourceJar */ Optional.empty(),
@@ -207,7 +201,7 @@ public class AndroidPrebuiltAarDescription
         buildTarget,
         projectFilesystem,
         androidLibraryParams,
-        ruleFinder,
+        graphBuilder,
         /* proguardConfig */ ExplicitBuildTargetSourcePath.of(
             unzipAar.getBuildTarget(), unzipAar.getProguardConfig()),
         /* nativeLibsDirectory */ ExplicitBuildTargetSourcePath.of(
@@ -215,7 +209,7 @@ public class AndroidPrebuiltAarDescription
         /* prebuiltJar */ prebuiltJar,
         /* unzipRule */ unzipAar,
         new JavacToJarStepFactory(
-            javacFactory.create(ruleFinder, null),
+            javacFactory.create(graphBuilder, null),
             toolchainProvider
                 .getByName(JavacOptionsProvider.DEFAULT_NAME, JavacOptionsProvider.class)
                 .getJavacOptions(),

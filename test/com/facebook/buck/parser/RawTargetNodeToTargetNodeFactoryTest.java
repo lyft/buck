@@ -23,12 +23,11 @@ import com.facebook.buck.core.cell.TestCellBuilder;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
 import com.facebook.buck.core.model.RuleType;
-import com.facebook.buck.core.model.platform.ConstraintBasedPlatform;
-import com.facebook.buck.core.model.targetgraph.RawAttributes;
-import com.facebook.buck.core.model.targetgraph.RawTargetNode;
+import com.facebook.buck.core.model.platform.impl.ConstraintBasedPlatform;
 import com.facebook.buck.core.model.targetgraph.TargetNode;
 import com.facebook.buck.core.model.targetgraph.impl.ImmutableRawTargetNode;
 import com.facebook.buck.core.model.targetgraph.impl.TargetNodeFactory;
+import com.facebook.buck.core.model.targetgraph.raw.RawTargetNode;
 import com.facebook.buck.core.plugin.impl.BuckPluginManagerFactory;
 import com.facebook.buck.core.rules.knowntypes.TestKnownRuleTypesProvider;
 import com.facebook.buck.core.rules.platform.ThrowingConstraintResolver;
@@ -67,15 +66,14 @@ public class RawTargetNodeToTargetNodeFactoryTest {
                         basepath.resolve("src2"),
                         basepath.resolve("BUCK"))))
             .build();
-    RawAttributes attributes =
-        new RawAttributes(
-            ImmutableMap.<String, Object>builder()
-                .put("name", "c")
-                .put("srcs", ImmutableList.of("src1", "src2"))
-                .build());
+    ImmutableMap<String, Object> attributes =
+        ImmutableMap.<String, Object>builder()
+            .put("name", "c")
+            .put("srcs", ImmutableList.of("src1", "src2"))
+            .build();
     RawTargetNode node =
         ImmutableRawTargetNode.of(
-            buildTarget.getUnconfiguredBuildTarget(),
+            buildTarget.getUnconfiguredBuildTargetView().getData(),
             RuleType.of("java_library", RuleType.Kind.BUILD),
             attributes,
             ImmutableSet.of(),
@@ -90,7 +88,7 @@ public class RawTargetNodeToTargetNodeFactoryTest {
             (file, targetNode) -> {},
             new DefaultSelectorListResolver(new TestSelectableResolver()),
             new ThrowingConstraintResolver(),
-            () -> new ConstraintBasedPlatform("", ImmutableSet.of()));
+            configuration -> new ConstraintBasedPlatform("", ImmutableSet.of()));
 
     TargetNode<?> targetNode =
         factory.createTargetNode(

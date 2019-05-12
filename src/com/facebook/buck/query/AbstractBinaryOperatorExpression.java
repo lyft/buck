@@ -31,6 +31,7 @@ package com.facebook.buck.query;
 
 import static com.facebook.buck.query.Lexer.TokenKind;
 
+import com.facebook.buck.core.model.QueryTarget;
 import com.facebook.buck.core.util.immutables.BuckStyleTuple;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
@@ -54,7 +55,7 @@ import org.immutables.value.Value;
  */
 @Value.Immutable(prehash = true)
 @BuckStyleTuple
-abstract class AbstractBinaryOperatorExpression extends QueryExpression {
+abstract class AbstractBinaryOperatorExpression<NODE_TYPE> extends QueryExpression<NODE_TYPE> {
   enum Operator {
     INTERSECT("^"),
     UNION("+"),
@@ -91,10 +92,11 @@ abstract class AbstractBinaryOperatorExpression extends QueryExpression {
 
   abstract Operator getOperator();
 
-  abstract ImmutableList<QueryExpression> getOperands();
+  abstract ImmutableList<QueryExpression<NODE_TYPE>> getOperands();
 
-  protected static BinaryOperatorExpression of(TokenKind operator, List<QueryExpression> operands) {
-    return BinaryOperatorExpression.of(Operator.from(operator), operands);
+  protected static <T> BinaryOperatorExpression<T> of(
+      TokenKind operator, List<QueryExpression<T>> operands) {
+    return BinaryOperatorExpression.<T>of(Operator.from(operator), operands);
   }
 
   @Value.Check
@@ -103,9 +105,10 @@ abstract class AbstractBinaryOperatorExpression extends QueryExpression {
   }
 
   @Override
-  ImmutableSet<QueryTarget> eval(QueryEvaluator evaluator, QueryEnvironment env)
-      throws QueryException {
-    ImmutableList<QueryExpression> operands = getOperands();
+  @SuppressWarnings("unchecked")
+  <OUTPUT_TYPE extends QueryTarget> ImmutableSet<OUTPUT_TYPE> eval(
+      QueryEvaluator<NODE_TYPE> evaluator, QueryEnvironment<NODE_TYPE> env) throws QueryException {
+    ImmutableList<QueryExpression<NODE_TYPE>> operands = getOperands();
     Set<QueryTarget> lhsValue = new LinkedHashSet<>(evaluator.eval(operands.get(0), env));
 
     for (int i = 1; i < operands.size(); i++) {
@@ -124,13 +127,13 @@ abstract class AbstractBinaryOperatorExpression extends QueryExpression {
           throw new IllegalStateException("operator=" + getOperator());
       }
     }
-    return ImmutableSet.copyOf(lhsValue);
+    return (ImmutableSet<OUTPUT_TYPE>) ImmutableSet.copyOf(lhsValue);
   }
 
   @Override
-  public void traverse(QueryExpression.Visitor visitor) {
+  public void traverse(QueryExpression.Visitor<NODE_TYPE> visitor) {
     if (visitor.visit(this) == VisitResult.CONTINUE) {
-      for (QueryExpression subExpression : getOperands()) {
+      for (QueryExpression<NODE_TYPE> subExpression : getOperands()) {
         subExpression.traverse(visitor);
       }
     }
@@ -138,7 +141,7 @@ abstract class AbstractBinaryOperatorExpression extends QueryExpression {
 
   @Override
   public String toString() {
-    ImmutableList<QueryExpression> operands = getOperands();
+    ImmutableList<QueryExpression<NODE_TYPE>> operands = getOperands();
     StringBuilder result = new StringBuilder();
     for (int i = 1; i < operands.size(); i++) {
       result.append("(");

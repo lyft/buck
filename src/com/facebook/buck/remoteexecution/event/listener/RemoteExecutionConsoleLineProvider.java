@@ -17,8 +17,10 @@
 package com.facebook.buck.remoteexecution.event.listener;
 
 import com.facebook.buck.event.listener.interfaces.AdditionalConsoleLineProvider;
+import com.facebook.buck.remoteexecution.event.LocalFallbackStats;
 import com.facebook.buck.remoteexecution.event.RemoteExecutionActionEvent;
 import com.facebook.buck.remoteexecution.event.RemoteExecutionActionEvent.State;
+import com.facebook.buck.remoteexecution.event.RemoteExecutionStatsProvider;
 import com.facebook.buck.util.unit.SizeUnit;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
@@ -26,6 +28,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.TimeUnit;
 
 /** Provides output lines to the console about the current state of Remote Execution. */
 public class RemoteExecutionConsoleLineProvider implements AdditionalConsoleLineProvider {
@@ -68,26 +71,39 @@ public class RemoteExecutionConsoleLineProvider implements AdditionalConsoleLine
               statsProvider.getCasDownloads(),
               prettyPrintSize(statsProvider.getCasDownloadSizeBytes()));
       lines.add(casLine);
-
-      LocalFallbackStats localFallbackStats = statsProvider.getLocalFallbackStats();
-      if (localFallbackStats.getLocallyExecutedRules() > 0) {
-        float percentageRetry =
-            (100f * localFallbackStats.getLocallyExecutedRules())
-                / localFallbackStats.getTotalExecutedRules();
-        lines.add(
-            String.format(
-                "[RE] LocalFallback: [fallback_rate=%.2f%% remote=%d local=%d]",
-                percentageRetry,
-                localFallbackStats.getTotalExecutedRules()
-                    - localFallbackStats.getLocallyExecutedRules(),
-                localFallbackStats.getLocallySuccessfulRules()));
-      }
-    } else if (statsProvider.getRemoteCpuTime() > 0) {
+    } else if (statsProvider.getRemoteCpuTimeMs() > 0) {
+      long remoteMs = statsProvider.getRemoteCpuTimeMs();
+      long minutes = TimeUnit.MILLISECONDS.toMinutes(remoteMs);
       lines.add(
           String.format(
-              "Building with Remote Execution: %d:%02d minutes spent building remotely",
-              statsProvider.getRemoteCpuTime() / 60, statsProvider.getRemoteCpuTime() % 60));
+              "Building with Remote Execution [RE]. Used %d:%02d minutes of distributed CPU time.",
+              minutes,
+              TimeUnit.MILLISECONDS.toSeconds(remoteMs) - TimeUnit.MINUTES.toSeconds(minutes)));
+      int waitingActions = 0;
+      for (State state : RemoteExecutionActionEvent.State.values()) {
+        if (!RemoteExecutionActionEvent.isTerminalState(state)) {
+          waitingActions += actionsPerState.getOrDefault(state, 0);
+        }
+      }
+      lines.add(
+          String.format(
+              "[RE] Waiting on %d remote actions. Completed %d actions remotely.",
+              waitingActions, actionsPerState.getOrDefault(State.ACTION_SUCCEEDED, 0)));
     }
+    LocalFallbackStats localFallbackStats = statsProvider.getLocalFallbackStats();
+    if (localFallbackStats.getLocallyExecutedRules() > 0) {
+      float percentageRetry =
+          (100f * localFallbackStats.getLocallyExecutedRules())
+              / localFallbackStats.getTotalExecutedRules();
+      lines.add(
+          String.format(
+              "[RE] Some actions failed remotely, retrying locally. LocalFallback: [fallback_rate=%.2f%% remote=%d local=%d]",
+              percentageRetry,
+              localFallbackStats.getTotalExecutedRules()
+                  - localFallbackStats.getLocallyExecutedRules(),
+              localFallbackStats.getLocallySuccessfulRules()));
+    }
+
     return lines.build();
   }
 

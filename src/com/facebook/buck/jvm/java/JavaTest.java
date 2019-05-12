@@ -20,6 +20,7 @@ import com.facebook.buck.android.device.TargetDevice;
 import com.facebook.buck.core.build.buildable.context.BuildableContext;
 import com.facebook.buck.core.build.context.BuildContext;
 import com.facebook.buck.core.build.execution.context.ExecutionContext;
+import com.facebook.buck.core.exceptions.BuckUncheckedExecutionException;
 import com.facebook.buck.core.model.BuildId;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.Flavor;
@@ -27,7 +28,7 @@ import com.facebook.buck.core.model.InternalFlavor;
 import com.facebook.buck.core.model.impl.BuildTargetPaths;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
+import com.facebook.buck.core.rules.BuildRuleResolver;
 import com.facebook.buck.core.rules.attr.ExportDependencies;
 import com.facebook.buck.core.rules.attr.HasPostBuildSteps;
 import com.facebook.buck.core.rules.attr.HasRuntimeDeps;
@@ -61,7 +62,6 @@ import com.facebook.buck.test.XmlTestResultParser;
 import com.facebook.buck.test.result.type.ResultType;
 import com.facebook.buck.test.selectors.TestSelectorList;
 import com.facebook.buck.util.ZipFileTraversal;
-import com.facebook.buck.util.exceptions.BuckUncheckedExecutionException;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -558,8 +558,7 @@ public class JavaTest extends AbstractBuildRuleWithDeclaredAndExtraDeps
       Set<String> sourceClassNames = Sets.newHashSetWithExpectedSize(sources.size());
       try {
         JavaPaths.getExpandedSourcePaths(
-                sources
-                    .stream()
+                sources.stream()
                     .map(resolver::getAbsolutePath)
                     .collect(ImmutableList.toImmutableList()))
             .stream()
@@ -624,7 +623,7 @@ public class JavaTest extends AbstractBuildRuleWithDeclaredAndExtraDeps
   }
 
   @Override
-  public Stream<BuildTarget> getRuntimeDeps(SourcePathRuleFinder ruleFinder) {
+  public Stream<BuildTarget> getRuntimeDeps(BuildRuleResolver buildRuleResolver) {
     return Stream.concat(
             // By the end of the build, all the transitive Java library dependencies *must* be
             // available on disk, so signal this requirement via the {@link HasRuntimeDeps}
@@ -654,6 +653,7 @@ public class JavaTest extends AbstractBuildRuleWithDeclaredAndExtraDeps
             Optional.empty(),
             getClassNamesForSources(buildContext.getSourcePathResolver()));
     return ExternalTestRunnerTestSpec.builder()
+        .setCwd(getProjectFilesystem().getRootPath())
         .setTarget(getBuildTarget())
         .setType("junit")
         .setCommand(jUnitStep.getShellCommandInternal(executionContext))
@@ -699,9 +699,7 @@ public class JavaTest extends AbstractBuildRuleWithDeclaredAndExtraDeps
             builder.add(buildContext.getSourcePathResolver().getAbsolutePath(sourcePath)));
     return builder
         .addAll(
-            compiledTestsLibrary
-                .getTransitiveClasspaths()
-                .stream()
+            compiledTestsLibrary.getTransitiveClasspaths().stream()
                 .map(buildContext.getSourcePathResolver()::getAbsolutePath)
                 .collect(ImmutableSet.toImmutableSet()))
         .addAll(

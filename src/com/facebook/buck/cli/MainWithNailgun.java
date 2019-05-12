@@ -17,13 +17,18 @@ package com.facebook.buck.cli;
 
 import com.facebook.buck.cli.BuckDaemon.DaemonCommandExecutionScope;
 import com.facebook.buck.core.util.log.Logger;
+import com.facebook.buck.support.bgtasks.AsyncBackgroundTaskManager;
+import com.facebook.buck.support.bgtasks.BackgroundTaskManager;
+import com.facebook.buck.util.environment.Platform;
 import com.facebook.nailgun.NGContext;
+import com.google.common.collect.ImmutableMap;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.Map;
 import java.util.Optional;
 import javax.annotation.Nullable;
 
@@ -33,11 +38,28 @@ import javax.annotation.Nullable;
  * <p>This class maintains the state for statically storing daemon fields
  */
 @SuppressWarnings("unused")
-public class MainWithNailgun {
+public class MainWithNailgun extends AbstractMain {
 
   private static final Logger LOG = Logger.get(MainWithNailgun.class);
 
   @Nullable private static FileLock resourcesFileLock = null;
+
+  private static final Platform running_platform = Platform.detect();
+
+  private static final BackgroundTaskManager bgTaskMananger = AsyncBackgroundTaskManager.of();
+
+  private final NGContext ngContext;
+
+  public MainWithNailgun(NGContext ngContext) {
+    super(
+        ngContext.out,
+        ngContext.err,
+        ngContext.in,
+        getClientEnvironment(ngContext),
+        running_platform,
+        Optional.of(ngContext));
+    this.ngContext = ngContext;
+  }
 
   /**
    * When running as a daemon in the NailGun server, {@link #nailMain(NGContext)} is called instead
@@ -49,8 +71,10 @@ public class MainWithNailgun {
     obtainResourceFileLock();
     try (DaemonCommandExecutionScope ignored =
         BuckDaemon.getInstance().getDaemonCommandExecutionScope()) {
-      new MainRunner(context.out, context.err, context.in, Optional.of(context))
-          .runMainThenExit(context.getArgs(), System.nanoTime());
+
+      MainWithNailgun mainWithNailgun = new MainWithNailgun(context);
+      MainRunner mainRunner = mainWithNailgun.prepareMainRunner(bgTaskMananger);
+      mainRunner.runMainThenExit(context.getArgs(), System.nanoTime());
     }
   }
 
@@ -82,5 +106,10 @@ public class MainWithNailgun {
     } catch (IOException | OverlappingFileLockException e) {
       LOG.warn(e, "Error when attempting to acquire resources file lock.");
     }
+  }
+
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  private static ImmutableMap<String, String> getClientEnvironment(NGContext context) {
+    return ImmutableMap.copyOf((Map) context.getEnv());
   }
 }

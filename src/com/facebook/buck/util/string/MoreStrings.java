@@ -154,17 +154,11 @@ public final class MoreStrings {
    */
   public static List<String> getSpellingSuggestions(
       String input, Collection<String> options, int maxDistance) {
-    return options
-        .stream()
+    return options.stream()
         .map(option -> new Pair<>(option, MoreStrings.getLevenshteinDistance(input, option)))
         .filter(pair -> pair.getSecond() <= maxDistance)
         .sorted(Comparator.comparing(Pair::getSecond))
         .map(Pair::getFirst)
         .collect(ImmutableList.toImmutableList());
-  }
-
-  /** Removes carriage return characters from the string with preserving new line characters. */
-  public static String replaceCR(String text) {
-    return text.replace("\r\n", "\n").replace('\r', '\n');
   }
 }

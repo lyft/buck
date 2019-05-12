@@ -30,9 +30,10 @@ import static org.junit.Assume.assumeTrue;
 
 import com.facebook.buck.core.config.BuckConfig;
 import com.facebook.buck.core.config.FakeBuckConfig;
+import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.rules.BuildRuleResolver;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatformUtils;
 import com.facebook.buck.cxx.toolchain.nativelink.NativeLinkStrategy;
 import com.facebook.buck.features.python.PythonBuckConfig.PackageStyle;
@@ -160,13 +161,13 @@ public class PythonBinaryIntegrationTest {
   }
 
   @Test
-  public void commandLineArgs() throws IOException {
+  public void commandLineArgs() {
     ProcessResult result = workspace.runBuckCommand("run", ":bin", "HELLO WORLD").assertSuccess();
     assertThat(result.getStdout(), containsString("HELLO WORLD"));
   }
 
   @Test
-  public void testOutput() throws IOException {
+  public void testOutput() {
     workspace.runBuckBuild("//:bin").assertSuccess();
 
     File output = workspace.getPath("buck-out/gen/bin.pex").toFile();
@@ -186,7 +187,7 @@ public class PythonBinaryIntegrationTest {
   }
 
   @Test
-  public void nativeLibraries() throws IOException {
+  public void nativeLibraries() {
     assumeThat(packageStyle, equalTo(PythonBuckConfig.PackageStyle.INPLACE));
     assumeThatNativeLibsAreSupported();
     ProcessResult result = workspace.runBuckCommand("run", ":bin-with-native-libs").assertSuccess();
@@ -194,7 +195,7 @@ public class PythonBinaryIntegrationTest {
   }
 
   @Test
-  public void runFromGenrule() throws IOException {
+  public void runFromGenrule() {
     workspace.runBuckBuild(":gen").assertSuccess();
   }
 
@@ -220,7 +221,7 @@ public class PythonBinaryIntegrationTest {
     String nativeLibsEnvVarName =
         CxxPlatformUtils.build(new CxxBuckConfig(FakeBuckConfig.builder().build()))
             .getLd()
-            .resolve(resolver)
+            .resolve(resolver, EmptyTargetConfiguration.INSTANCE)
             .searchPathEnvVar();
     String originalNativeLibsEnvVar = "something";
     workspace.writeContentsToPath(
@@ -295,7 +296,7 @@ public class PythonBinaryIntegrationTest {
   }
 
   @Test
-  public void multiplePythonHomes() throws Exception {
+  public void multiplePythonHomes() {
     assumeThat(Platform.detect(), not(Matchers.is(Platform.WINDOWS)));
     ProcessResult result =
         workspace.runBuckBuild(
@@ -309,7 +310,7 @@ public class PythonBinaryIntegrationTest {
   }
 
   @Test
-  public void mainModuleNameIsSetProperly() throws Exception {
+  public void mainModuleNameIsSetProperly() {
     assumeThat(packageStyle, not(Matchers.is(PythonBuckConfig.PackageStyle.STANDALONE)));
     workspace.runBuckCommand("run", "//:main_module_bin").assertSuccess();
   }
@@ -325,8 +326,7 @@ public class PythonBinaryIntegrationTest {
   }
 
   @Test
-  public void standalonePackagePrebuiltLibrariesProperly()
-      throws IOException, InterruptedException {
+  public void standalonePackagePrebuiltLibrariesProperly() throws IOException {
     assumeThat(packageStyle, Matchers.is(PythonBuckConfig.PackageStyle.STANDALONE));
 
     workspace.runBuckCommand("run", "//:main_module_with_prebuilt_dep_bin").assertSuccess();
@@ -374,7 +374,7 @@ public class PythonBinaryIntegrationTest {
   }
 
   @Test
-  public void inplacePackagePrebuiltLibrariesProperly() throws IOException, InterruptedException {
+  public void inplacePackagePrebuiltLibrariesProperly() throws IOException {
     assumeThat(packageStyle, Matchers.is(PackageStyle.INPLACE));
 
     workspace.runBuckCommand("run", "//:main_module_with_prebuilt_dep_bin").assertSuccess();
@@ -422,7 +422,7 @@ public class PythonBinaryIntegrationTest {
    * both a linkable root and an excluded rule, causing an internal omnibus failure.
    */
   @Test
-  public void omnibusExcludedNativeLinkableRoot() throws IOException {
+  public void omnibusExcludedNativeLinkableRoot() {
     assumeThat(nativeLinkStrategy, Matchers.is(NativeLinkStrategy.MERGED));
     workspace
         .runBuckCommand("targets", "--show-output", "//omnibus_excluded_root:bin")
@@ -430,7 +430,7 @@ public class PythonBinaryIntegrationTest {
   }
 
   @Test
-  public void depOntoCxxLibrary() throws IOException {
+  public void depOntoCxxLibrary() {
     workspace
         .runBuckCommand(
             "build",

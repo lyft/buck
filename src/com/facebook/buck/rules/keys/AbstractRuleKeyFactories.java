@@ -18,10 +18,7 @@ package com.facebook.buck.rules.keys;
 
 import com.facebook.buck.core.rulekey.RuleKey;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.attr.SupportsDependencyFileRuleKey;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.util.immutables.BuckStyleTuple;
 import com.facebook.buck.event.BuckEventBus;
 import com.facebook.buck.event.RuleKeyCalculationEvent;
@@ -72,25 +69,13 @@ abstract class AbstractRuleKeyFactories {
       TrackedRuleKeyCache<RuleKey> defaultRuleKeyFactoryCache,
       Optional<ThriftRuleKeyLogger> ruleKeyLogger) {
     RuleKeyFieldLoader fieldLoader = new RuleKeyFieldLoader(ruleKeyConfiguration);
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(resolver);
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
     return RuleKeyFactories.of(
         new DefaultRuleKeyFactory(
-            fieldLoader,
-            fileHashCache,
-            pathResolver,
-            ruleFinder,
-            defaultRuleKeyFactoryCache,
-            ruleKeyLogger),
+            fieldLoader, fileHashCache, resolver, defaultRuleKeyFactoryCache, ruleKeyLogger),
         new InputBasedRuleKeyFactory(
-            fieldLoader,
-            fileHashCache,
-            pathResolver,
-            ruleFinder,
-            inputRuleKeyFileSizeLimit,
-            ruleKeyLogger),
+            fieldLoader, fileHashCache, resolver, inputRuleKeyFileSizeLimit, ruleKeyLogger),
         new DefaultDependencyFileRuleKeyFactory(
-            fieldLoader, fileHashCache, pathResolver, ruleFinder, ruleKeyLogger));
+            fieldLoader, fileHashCache, resolver, ruleKeyLogger));
   }
 
   public Optional<RuleKeyAndInputs> calculateManifestKey(

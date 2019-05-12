@@ -24,14 +24,13 @@ import static org.junit.Assume.assumeTrue;
 
 import com.facebook.buck.core.config.BuckConfig;
 import com.facebook.buck.core.config.FakeBuckConfig;
+import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.CxxPlatformUtils;
-import com.facebook.buck.cxx.toolchain.DefaultCxxPlatforms;
+import com.facebook.buck.cxx.toolchain.impl.DefaultCxxPlatforms;
 import com.facebook.buck.cxx.toolchain.nativelink.NativeLinkStrategy;
 import com.facebook.buck.io.ExecutableFinder;
 import com.facebook.buck.io.FakeExecutableFinder;
@@ -116,9 +115,8 @@ public class LuaBinaryIntegrationTest {
                     .addAll(
                         cxxPlatform
                             .getCc()
-                            .resolve(resolver)
-                            .getCommandPrefix(
-                                DefaultSourcePathResolver.from(new SourcePathRuleFinder(resolver))))
+                            .resolve(resolver, EmptyTargetConfiguration.INSTANCE)
+                            .getCommandPrefix(resolver.getSourcePathResolver()))
                     .add("-includelua.h", "-E", "-")
                     .build())
             .setRedirectInput(ProcessBuilder.Redirect.PIPE)
@@ -145,7 +143,9 @@ public class LuaBinaryIntegrationTest {
         ".buckconfig");
     LuaPlatform platform =
         getLuaBuckConfig()
-            .getPlatform(CxxPlatformUtils.DEFAULT_PLATFORM.withFlavor(DefaultCxxPlatforms.FLAVOR));
+            .getPlatform(
+                EmptyTargetConfiguration.INSTANCE,
+                CxxPlatformUtils.DEFAULT_PLATFORM.withFlavor(DefaultCxxPlatforms.FLAVOR));
     assertThat(platform.getStarterType(), Matchers.equalTo(Optional.of(starterType)));
     assertThat(platform.getNativeLinkStrategy(), Matchers.equalTo(nativeLinkStrategy));
   }
@@ -215,7 +215,7 @@ public class LuaBinaryIntegrationTest {
   }
 
   @Test
-  public void nativeExtension() throws Exception {
+  public void nativeExtension() {
     assumeTrue(luaDevel);
     ProcessResult result = workspace.runBuckCommand("run", "//:native").assertSuccess();
     assertThat(
@@ -225,7 +225,7 @@ public class LuaBinaryIntegrationTest {
   }
 
   @Test
-  public void nativeExtensionWithDep() throws Exception {
+  public void nativeExtensionWithDep() {
     assumeThat(starterType, Matchers.not(Matchers.equalTo(LuaBinaryDescription.StarterType.PURE)));
     assumeTrue(luaDevel);
     ProcessResult result = workspace.runBuckCommand("run", "//:native_with_dep").assertSuccess();

@@ -22,11 +22,9 @@ import static org.junit.Assume.assumeTrue;
 
 import com.facebook.buck.core.config.FakeBuckConfig;
 import com.facebook.buck.core.exceptions.HumanReadableException;
+import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.cxx.toolchain.CxxPlatformUtils;
 import com.facebook.buck.io.ExecutableFinder;
 import com.facebook.buck.testutil.integration.ProjectWorkspace;
@@ -40,14 +38,16 @@ abstract class RustAssumptions {
     assumeFalse(Platform.detect() == Platform.WINDOWS);
 
     BuildRuleResolver resolver = new TestActionGraphBuilder();
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(resolver));
     RustPlatform rustPlatform =
-        RustPlatformFactory.of(FakeBuckConfig.builder().build(), new ExecutableFinder())
-            .getPlatform("rust", CxxPlatformUtils.DEFAULT_PLATFORM);
+        new ImmutableRustPlatformFactory(FakeBuckConfig.builder().build(), new ExecutableFinder())
+            .getPlatform("rust", CxxPlatformUtils.DEFAULT_UNRESOLVED_PLATFORM)
+            .resolve(new TestActionGraphBuilder(), EmptyTargetConfiguration.INSTANCE);
     Throwable exception = null;
     try {
-      rustPlatform.getRustCompiler().resolve(resolver).getCommandPrefix(pathResolver);
+      rustPlatform
+          .getRustCompiler()
+          .resolve(resolver, EmptyTargetConfiguration.INSTANCE)
+          .getCommandPrefix(resolver.getSourcePathResolver());
     } catch (HumanReadableException e) {
       exception = e;
     }
@@ -57,13 +57,15 @@ abstract class RustAssumptions {
   public static void assumeNightly(ProjectWorkspace workspace)
       throws IOException, InterruptedException {
     BuildRuleResolver resolver = new TestActionGraphBuilder();
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(resolver));
     RustPlatform rustPlatform =
-        RustPlatformFactory.of(FakeBuckConfig.builder().build(), new ExecutableFinder())
-            .getPlatform("rust", CxxPlatformUtils.DEFAULT_PLATFORM);
+        new ImmutableRustPlatformFactory(FakeBuckConfig.builder().build(), new ExecutableFinder())
+            .getPlatform("rust", CxxPlatformUtils.DEFAULT_UNRESOLVED_PLATFORM)
+            .resolve(new TestActionGraphBuilder(), EmptyTargetConfiguration.INSTANCE);
     ImmutableList<String> rustc =
-        rustPlatform.getRustCompiler().resolve(resolver).getCommandPrefix(pathResolver);
+        rustPlatform
+            .getRustCompiler()
+            .resolve(resolver, EmptyTargetConfiguration.INSTANCE)
+            .getCommandPrefix(resolver.getSourcePathResolver());
 
     Result res = workspace.runCommand(rustc.get(0), "-Zhelp");
     assumeTrue("Requires nightly Rust", res.getExitCode() == 0);
@@ -72,13 +74,15 @@ abstract class RustAssumptions {
   public static void assumeVersion(ProjectWorkspace workspace, String version)
       throws IOException, InterruptedException {
     BuildRuleResolver resolver = new TestActionGraphBuilder();
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(resolver));
     RustPlatform rustPlatform =
-        RustPlatformFactory.of(FakeBuckConfig.builder().build(), new ExecutableFinder())
-            .getPlatform("rust", CxxPlatformUtils.DEFAULT_PLATFORM);
+        new ImmutableRustPlatformFactory(FakeBuckConfig.builder().build(), new ExecutableFinder())
+            .getPlatform("rust", CxxPlatformUtils.DEFAULT_UNRESOLVED_PLATFORM)
+            .resolve(new TestActionGraphBuilder(), EmptyTargetConfiguration.INSTANCE);
     ImmutableList<String> rustc =
-        rustPlatform.getRustCompiler().resolve(resolver).getCommandPrefix(pathResolver);
+        rustPlatform
+            .getRustCompiler()
+            .resolve(resolver, EmptyTargetConfiguration.INSTANCE)
+            .getCommandPrefix(resolver.getSourcePathResolver());
 
     String[] versionParts = version.split("\\.");
 

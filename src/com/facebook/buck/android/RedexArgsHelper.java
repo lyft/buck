@@ -44,19 +44,18 @@ public class RedexArgsHelper {
       return Optional.empty();
     }
 
-    Tool redexBinary = androidBuckConfig.getRedexTool(graphBuilder);
+    Tool redexBinary =
+        androidBuckConfig.getRedexTool(graphBuilder, buildTarget.getTargetConfiguration());
 
     StringWithMacrosConverter macrosConverter =
         StringWithMacrosConverter.builder()
             .setBuildTarget(buildTarget)
             .setCellPathResolver(cellRoots)
+            .setActionGraphBuilder(graphBuilder)
             .setExpanders(MacroExpandersForAndroidRules.MACRO_EXPANDERS)
             .build();
     List<Arg> redexExtraArgsList =
-        redexExtraArgs
-            .stream()
-            .map(x -> macrosConverter.convert(x, graphBuilder))
-            .collect(Collectors.toList());
+        redexExtraArgs.stream().map(macrosConverter::convert).collect(Collectors.toList());
 
     return Optional.of(
         RedexOptions.builder()

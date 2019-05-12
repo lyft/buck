@@ -53,8 +53,7 @@ public class MultiArtifactCache implements ArtifactCache {
   public MultiArtifactCache(ImmutableList<ArtifactCache> artifactCaches) {
     this.artifactCaches = artifactCaches;
     this.writableArtifactCaches =
-        artifactCaches
-            .stream()
+        artifactCaches.stream()
             .filter(c -> c.getCacheReadMode().equals(CacheReadMode.READWRITE))
             .collect(ImmutableList.toImmutableList());
     this.isStoreSupported = this.writableArtifactCaches.size() > 0;
@@ -96,7 +95,11 @@ public class MultiArtifactCache implements ArtifactCache {
           }
           storeToCaches(
               cachesToFill.build(),
-              ArtifactInfo.builder().addRuleKeys(ruleKey).setMetadata(result.getMetadata()).build(),
+              ArtifactInfo.builder()
+                  .addRuleKeys(ruleKey)
+                  .setMetadata(result.getMetadata())
+                  .setBuildTarget(Optional.ofNullable(target))
+                  .build(),
               BorrowablePath.notBorrowablePath(output.getUnchecked()));
           return result;
         },
@@ -174,9 +177,7 @@ public class MultiArtifactCache implements ArtifactCache {
               cacheResultFuture,
               mergedResults -> {
                 ImmutableSet<RuleKey> missingKeys =
-                    mergedResults
-                        .entrySet()
-                        .stream()
+                    mergedResults.entrySet().stream()
                         .filter(e -> !e.getValue().getType().isSuccess())
                         .map(Map.Entry::getKey)
                         .collect(ImmutableSet.toImmutableSet());

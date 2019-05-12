@@ -1,38 +1,58 @@
-constraint_setting(
-    name = "os",
-)
-
-constraint_value(
-    name = "linux",
-    constraint_setting = ":os",
-)
-
-constraint_value(
-    name = "osx",
-    constraint_setting = ":os",
-)
-
-constraint_setting(
-    name = "cpu",
-)
-
-constraint_value(
-    name = "x86-64",
-    constraint_setting = ":cpu",
+platform(
+    name = "x86_64-platform",
+    constraint_values = [
+        "buck//config/constraints:x86_64",
+    ],
 )
 
 platform(
     name = "osx_x86-64",
     constraint_values = [
-        ":osx",
-        ":x86-64",
+        "buck//config/constraints:osx",
+    ],
+    deps = [
+        ":x86_64-platform",
     ],
 )
 
 platform(
     name = "linux_x86-64",
     constraint_values = [
-        ":linux",
-        ":x86-64",
+        "buck//config/constraints:linux",
+    ],
+    deps = [
+        ":x86_64-platform",
+    ],
+)
+
+config_setting(
+    name = "osx_config",
+    constraint_values = [
+        "buck//config/constraints:osx",
+    ],
+)
+
+config_setting(
+    name = "linux_config",
+    constraint_values = [
+        "buck//config/constraints:linux",
+    ],
+)
+
+config_setting(
+    name = "x86_64_config",
+    constraint_values = [
+        "buck//config/constraints:x86_64",
+    ],
+)
+
+platform(
+    name = "platform-with-circular-dep",
+    constraint_values = [
+        "buck//config/constraints:osx",
+    ],
+    deps = [
+        ":platform-with-circular-dep",
+        ":x86_64-platform",
     ],
 )

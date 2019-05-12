@@ -23,7 +23,6 @@ import static org.junit.Assert.assertThat;
 import com.facebook.buck.android.device.TargetDevice;
 import com.facebook.buck.core.model.BuildTargetFactory;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
 import com.facebook.buck.parser.exceptions.NoSuchBuildTargetException;
@@ -112,7 +111,6 @@ public class JavaTestRuleTest {
   @Test
   public void transitiveLibraryDependenciesAreRuntimeDeps() {
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
 
     FakeJavaLibrary transitiveDep =
         graphBuilder.addToIndex(
@@ -131,7 +129,7 @@ public class JavaTestRuleTest {
             .build(graphBuilder);
 
     assertThat(
-        rule.getRuntimeDeps(ruleFinder).collect(ImmutableSet.toImmutableSet()),
+        rule.getRuntimeDeps(graphBuilder).collect(ImmutableSet.toImmutableSet()),
         Matchers.hasItems(
             rule.getCompiledTestsLibrary().getBuildTarget(),
             firstOrderDep.getBuildTarget(),
@@ -140,8 +138,7 @@ public class JavaTestRuleTest {
 
   private JavaTest newRule(ImmutableList<String> vmArgs) throws NoSuchBuildTargetException {
     ImmutableList<StringWithMacros> vmArgMacros =
-        vmArgs
-            .stream()
+        vmArgs.stream()
             .map(arg -> StringWithMacros.of(ImmutableList.of(Either.ofLeft(arg))))
             .collect(ImmutableList.toImmutableList());
     return JavaTestBuilder.createBuilder(BuildTargetFactory.newInstance("//example:test"))

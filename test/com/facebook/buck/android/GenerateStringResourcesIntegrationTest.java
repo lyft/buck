@@ -57,7 +57,7 @@ public class GenerateStringResourcesIntegrationTest {
   }
 
   @Test
-  public void testExpectedOutputsAreAllAvailable() throws InterruptedException, IOException {
+  public void testExpectedOutputsAreAllAvailable() throws IOException {
     String buildTarget =
         String.format(
             "%s#%s",
@@ -76,8 +76,7 @@ public class GenerateStringResourcesIntegrationTest {
   }
 
   @Test
-  public void testExpectedOutputsAreAllAvailableWithAapt2()
-      throws InterruptedException, IOException {
+  public void testExpectedOutputsAreAllAvailableWithAapt2() throws IOException {
     // TODO(dreiss): Remove this when aapt2 is everywhere.
     AssumeAndroidPlatform.assumeSdkIsAvailable();
     ProcessResult foundAapt2 = workspace.runBuckBuild("//apps/sample:check_for_aapt2");
@@ -97,9 +96,7 @@ public class GenerateStringResourcesIntegrationTest {
     // verify <output_dir>/<hex_res_dir>/values/strings.xml files
     assertTrue(filesystem.exists(output));
     assertThat(
-        filesystem
-            .getFilesUnderPath(filesystem.relativize(output))
-            .stream()
+        filesystem.getFilesUnderPath(filesystem.relativize(output)).stream()
             .map(path -> MorePaths.relativize(filesystem.relativize(output), path).toString())
             .collect(ImmutableSortedSet.toImmutableSortedSet(Ordering.natural())),
         is(expectedFilePaths));

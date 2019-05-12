@@ -17,7 +17,6 @@
 package com.facebook.buck.core.rules.common;
 
 import com.facebook.buck.core.rulekey.AddsToRuleKey;
-import com.facebook.buck.core.rulekey.RuleKeyObjectSink;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.attr.HasCustomDepsLogic;
@@ -25,15 +24,12 @@ import com.facebook.buck.core.rules.modern.HasCustomInputsLogic;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.rules.keys.AbstractRuleKeyBuilder;
 import com.facebook.buck.rules.keys.AlterRuleKeys;
-import com.facebook.buck.rules.keys.RuleKeyScopedHasher;
-import com.facebook.buck.rules.keys.hasher.RuleKeyHasher;
+import com.facebook.buck.rules.keys.NoopRuleKeyScopedHasher;
 import com.facebook.buck.util.Memoizer;
-import com.facebook.buck.util.Scope;
 import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.collect.Ordering;
-import java.nio.file.Path;
 import java.util.SortedSet;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -112,38 +108,9 @@ public final class BuildableSupport {
     private final SourcePathRuleFinder ruleFinder;
 
     public DepsBuilder(SourcePathRuleFinder ruleFinder) {
-      super(
-          new RuleKeyScopedHasher() {
-            @Override
-            public Scope keyScope(String key) {
-              return () -> {};
-            }
-
-            @Override
-            public Scope wrapperScope(RuleKeyHasher.Wrapper wrapper) {
-              return () -> {};
-            }
-
-            @Override
-            public ContainerScope containerScope(RuleKeyHasher.Container container) {
-              return new ContainerScope() {
-                @Override
-                public void close() {}
-
-                @Override
-                public Scope elementScope() {
-                  return () -> {};
-                }
-              };
-            }
-          });
+      super(NoopRuleKeyScopedHasher.INSTANCE);
       this.ruleFinder = ruleFinder;
       this.streamBuilder = Stream.builder();
-    }
-
-    @Override
-    public RuleKeyObjectSink setPath(Path absolutePath, Path ideallyRelative) {
-      return this;
     }
 
     @Override
@@ -190,37 +157,8 @@ public final class BuildableSupport {
     private final Stream.Builder<SourcePath> streamBuilder;
 
     public InputsBuilder() {
-      super(
-          new RuleKeyScopedHasher() {
-            @Override
-            public Scope keyScope(String key) {
-              return () -> {};
-            }
-
-            @Override
-            public Scope wrapperScope(RuleKeyHasher.Wrapper wrapper) {
-              return () -> {};
-            }
-
-            @Override
-            public ContainerScope containerScope(RuleKeyHasher.Container container) {
-              return new ContainerScope() {
-                @Override
-                public void close() {}
-
-                @Override
-                public Scope elementScope() {
-                  return () -> {};
-                }
-              };
-            }
-          });
+      super(NoopRuleKeyScopedHasher.INSTANCE);
       this.streamBuilder = Stream.builder();
-    }
-
-    @Override
-    public RuleKeyObjectSink setPath(Path absolutePath, Path ideallyRelative) {
-      return this;
     }
 
     @Override

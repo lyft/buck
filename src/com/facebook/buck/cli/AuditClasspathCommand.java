@@ -26,9 +26,6 @@ import com.facebook.buck.core.model.targetgraph.TargetGraph;
 import com.facebook.buck.core.model.targetgraph.TargetGraphAndBuildTargets;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.event.ConsoleEvent;
 import com.facebook.buck.jvm.core.HasClasspathEntries;
 import com.facebook.buck.parser.SpeculativeParsing;
@@ -163,7 +160,8 @@ public class AuditClasspathCommand extends AbstractCommand {
                         ActionGraphFactory.create(
                             params.getBuckEventBus(),
                             params.getCell().getCellProvider(),
-                            params.getPoolSupplier(),
+                            params.getExecutors(),
+                            params.getDepsAwareExecutorSupplier(),
                             params.getBuckConfig()),
                         new ActionGraphCache(
                             params
@@ -174,8 +172,6 @@ public class AuditClasspathCommand extends AbstractCommand {
                         params.getBuckConfig())
                     .getFreshActionGraph(targetGraph))
             .getActionGraphBuilder();
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder));
     SortedSet<Path> classpathEntries = new TreeSet<>();
 
     for (BuildTarget target : targets) {
@@ -183,7 +179,9 @@ public class AuditClasspathCommand extends AbstractCommand {
       HasClasspathEntries hasClasspathEntries = getHasClasspathEntriesFrom(rule);
       if (hasClasspathEntries != null) {
         classpathEntries.addAll(
-            pathResolver.getAllAbsolutePaths(hasClasspathEntries.getTransitiveClasspaths()));
+            graphBuilder
+                .getSourcePathResolver()
+                .getAllAbsolutePaths(hasClasspathEntries.getTransitiveClasspaths()));
       } else {
         throw new HumanReadableException(
             rule.getFullyQualifiedName() + " is not a java-based" + " build target");
@@ -215,7 +213,8 @@ public class AuditClasspathCommand extends AbstractCommand {
                         ActionGraphFactory.create(
                             params.getBuckEventBus(),
                             params.getCell().getCellProvider(),
-                            params.getPoolSupplier(),
+                            params.getExecutors(),
+                            params.getDepsAwareExecutorSupplier(),
                             params.getBuckConfig()),
                         new ActionGraphCache(
                             params
@@ -226,8 +225,6 @@ public class AuditClasspathCommand extends AbstractCommand {
                         params.getBuckConfig())
                     .getFreshActionGraph(targetGraph))
             .getActionGraphBuilder();
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder));
     Multimap<String, String> targetClasspaths = LinkedHashMultimap.create();
 
     for (BuildTarget target : targets) {
@@ -238,10 +235,8 @@ public class AuditClasspathCommand extends AbstractCommand {
       }
       targetClasspaths.putAll(
           target.getFullyQualifiedName(),
-          hasClasspathEntries
-              .getTransitiveClasspaths()
-              .stream()
-              .map(pathResolver::getAbsolutePath)
+          hasClasspathEntries.getTransitiveClasspaths().stream()
+              .map(graphBuilder.getSourcePathResolver()::getAbsolutePath)
               .map(Object::toString)
               .collect(ImmutableList.toImmutableList()));
     }

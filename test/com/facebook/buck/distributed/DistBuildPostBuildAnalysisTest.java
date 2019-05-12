@@ -122,6 +122,7 @@ public class DistBuildPostBuildAnalysisTest {
             Optional.empty(),
             Optional.empty(),
             Optional.empty(),
+            Optional.empty(),
             Optional.empty());
 
     finishedEvent.configure(durationMs, 0, 0, 0, buildId);
@@ -155,8 +156,7 @@ public class DistBuildPostBuildAnalysisTest {
 
     Map<String, BuildRuleMachineLogEntry> resultMap =
         DistBuildPostBuildAnalysis.extractBuildRules(
-            ruleEvents
-                .stream()
+            ruleEvents.stream()
                 .map(event -> buildRuleFinishedAsMachineReadable(event))
                 .collect(Collectors.toList()));
 
@@ -165,8 +165,7 @@ public class DistBuildPostBuildAnalysisTest {
         resultMap
             .keySet()
             .containsAll(
-                ruleEvents
-                    .stream()
+                ruleEvents.stream()
                     .map(rule -> rule.getBuildRule().getFullyQualifiedName())
                     .collect(Collectors.toList())));
 

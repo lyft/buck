@@ -23,7 +23,6 @@ import com.facebook.buck.core.model.BuildTargetFactory;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.TestBuildRuleParams;
 import com.facebook.buck.core.rules.attr.HasRuntimeDeps;
 import com.facebook.buck.core.sourcepath.ExplicitBuildTargetSourcePath;
@@ -117,13 +116,12 @@ public class FakeBuildRule extends AbstractBuildRuleWithDeclaredAndExtraDeps
   }
 
   @Override
-  public Stream<BuildTarget> getRuntimeDeps(SourcePathRuleFinder ruleFinder) {
+  public Stream<BuildTarget> getRuntimeDeps(BuildRuleResolver buildRuleResolver) {
     return runtimeDeps.stream().map(x -> x.getBuildTarget());
   }
 
   @Override
-  public void updateBuildRuleResolver(
-      BuildRuleResolver ruleResolver, SourcePathRuleFinder ruleFinder) {
+  public void updateBuildRuleResolver(BuildRuleResolver ruleResolver) {
     this.ruleResolver = ruleResolver;
   }
 }

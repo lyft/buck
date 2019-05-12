@@ -17,13 +17,12 @@
 package com.facebook.buck.core.cell;
 
 import com.facebook.buck.core.config.BuckConfig;
+import com.facebook.buck.core.config.ConfigView;
 import com.facebook.buck.core.model.BuildTarget;
-import com.facebook.buck.core.model.UnconfiguredBuildTarget;
+import com.facebook.buck.core.model.UnconfiguredBuildTargetView;
 import com.facebook.buck.core.toolchain.ToolchainProvider;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.ProjectFilesystemView;
-import com.facebook.buck.parser.exceptions.MissingBuildFileException;
-import com.facebook.buck.rules.keys.config.RuleKeyConfiguration;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSortedSet;
@@ -53,34 +52,26 @@ public interface Cell {
 
   BuckConfig getBuckConfig();
 
+  /** See {@link BuckConfig#getView(Class)} */
+  <T extends ConfigView<BuckConfig>> T getBuckConfigView(Class<T> cls);
+
   CellProvider getCellProvider();
 
   ToolchainProvider getToolchainProvider();
 
   Path getRoot();
 
-  RuleKeyConfiguration getRuleKeyConfiguration();
-
-  String getBuildFileName();
-
-  /**
-   * Whether the cell is enforcing buck package boundaries for the package at the passed path.
-   *
-   * @param path Path of package (or file in a package) relative to the cell root.
-   */
-  boolean isEnforcingBuckPackageBoundaries(Path path);
-
   Cell getCellIgnoringVisibilityCheck(Path cellPath);
 
   Cell getCell(Path cellPath);
 
-  Cell getCell(UnconfiguredBuildTarget target);
+  Cell getCell(UnconfiguredBuildTargetView target);
 
   Cell getCell(BuildTarget target);
 
   Optional<Cell> getCellIfKnown(BuildTarget target);
 
-  Optional<Cell> getCellIfKnown(UnconfiguredBuildTarget target);
+  Optional<Cell> getCellIfKnown(UnconfiguredBuildTargetView target);
 
   /**
    * Returns a list of all cells, including this cell. If this cell is the root, getAllCells will
@@ -91,21 +82,6 @@ public interface Cell {
 
   /** @return all loaded {@link Cell}s that are children of this {@link Cell}. */
   ImmutableMap<Path, Cell> getLoadedCells();
-
-  Path getAbsolutePathToBuildFileUnsafe(UnconfiguredBuildTarget target);
-
-  /**
-   * For use in performance-sensitive code or if you don't care if the build file actually exists,
-   * otherwise prefer {@link #getAbsolutePathToBuildFile(BuildTarget)}.
-   *
-   * @param target target to look up
-   * @return path which may or may not exist.
-   */
-  Path getAbsolutePathToBuildFileUnsafe(BuildTarget target);
-
-  Path getAbsolutePathToBuildFile(UnconfiguredBuildTarget target) throws MissingBuildFileException;
-
-  Path getAbsolutePathToBuildFile(BuildTarget target) throws MissingBuildFileException;
 
   CellPathResolver getCellPathResolver();
 

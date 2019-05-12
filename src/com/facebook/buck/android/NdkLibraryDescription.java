@@ -26,18 +26,16 @@ import com.facebook.buck.core.description.arg.HasDeclaredDeps;
 import com.facebook.buck.core.description.arg.HasSrcs;
 import com.facebook.buck.core.description.attr.ImplicitDepsInferringDescription;
 import com.facebook.buck.core.model.BuildTarget;
+import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.model.impl.BuildTargetPaths;
 import com.facebook.buck.core.model.targetgraph.BuildRuleCreationContextWithTargetGraph;
 import com.facebook.buck.core.model.targetgraph.DescriptionWithTargetGraph;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.common.BuildableSupport;
 import com.facebook.buck.core.sourcepath.PathSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.ToolchainProvider;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
 import com.facebook.buck.cxx.CxxHeaders;
@@ -181,10 +179,8 @@ public class NdkLibraryDescription
       ToolchainProvider toolchainProvider,
       ProjectFilesystem projectFilesystem,
       BuildRuleParams params,
-      ActionGraphBuilder graphBuilder) {
-
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
+      ActionGraphBuilder graphBuilder,
+      TargetConfiguration targetConfiguration) {
 
     ImmutableList.Builder<String> outputLinesBuilder = ImmutableList.builder();
     ImmutableSortedSet.Builder<BuildRule> deps = ImmutableSortedSet.naturalOrder();
@@ -196,7 +192,8 @@ public class NdkLibraryDescription
 
     for (Map.Entry<TargetCpuType, UnresolvedNdkCxxPlatform> entry :
         ndkCxxPlatformsProvider.getNdkCxxPlatforms().entrySet()) {
-      CxxPlatform cxxPlatform = entry.getValue().getCxxPlatform().resolve(graphBuilder);
+      CxxPlatform cxxPlatform =
+          entry.getValue().getCxxPlatform().resolve(graphBuilder, targetConfiguration);
 
       // Collect the preprocessor input for all C/C++ library deps.  We search *through* other
       // NDK library rules.
@@ -207,19 +204,24 @@ public class NdkLibraryDescription
 
       // We add any dependencies from the C/C++ preprocessor input to this rule, even though
       // it technically should be added to the top-level rule.
-      deps.addAll(cxxPreprocessorInput.getDeps(graphBuilder, ruleFinder));
+      deps.addAll(cxxPreprocessorInput.getDeps(graphBuilder));
 
       // Add in the transitive preprocessor flags contributed by C/C++ library rules into the
       // NDK build.
       ImmutableList.Builder<String> ppFlags = ImmutableList.builder();
       ppFlags.addAll(
           Arg.stringify(
-              cxxPreprocessorInput.getPreprocessorFlags().get(CxxSource.Type.C), pathResolver));
+              cxxPreprocessorInput.getPreprocessorFlags().get(CxxSource.Type.C),
+              graphBuilder.getSourcePathResolver()));
       Preprocessor preprocessor =
-          CxxSourceTypes.getPreprocessor(cxxPlatform, CxxSource.Type.C).resolve(graphBuilder);
+          CxxSourceTypes.getPreprocessor(cxxPlatform, CxxSource.Type.C)
+              .resolve(graphBuilder, targetConfiguration);
       ppFlags.addAll(
           CxxHeaders.getArgs(
-              cxxPreprocessorInput.getIncludes(), pathResolver, Optional.empty(), preprocessor));
+              cxxPreprocessorInput.getIncludes(),
+              graphBuilder.getSourcePathResolver(),
+              Optional.empty(),
+              preprocessor));
       String localCflags =
           Joiner.on(' ')
               .join(
@@ -234,6 +236,7 @@ public class NdkLibraryDescription
           NativeLinkables.getTransitiveNativeLinkableInput(
               cxxPlatform,
               graphBuilder,
+              targetConfiguration,
               params.getBuildDeps(),
               Linker.LinkableDepType.SHARED,
               r -> r instanceof NdkLibrary ? Optional.of(r.getBuildDeps()) : Optional.empty());
@@ -241,10 +244,8 @@ public class NdkLibraryDescription
       // We add any dependencies from the native linkable input to this rule, even though
       // it technically should be added to the top-level rule.
       deps.addAll(
-          nativeLinkableInput
-              .getArgs()
-              .stream()
-              .flatMap(arg -> BuildableSupport.getDeps(arg, ruleFinder))
+          nativeLinkableInput.getArgs().stream()
+              .flatMap(arg -> BuildableSupport.getDeps(arg, graphBuilder))
               .iterator());
 
       // Add in the transitive native linkable flags contributed by C/C++ library rules into the
@@ -258,7 +259,8 @@ public class NdkLibraryDescription
                   escapeForMakefile(
                       projectFilesystem,
                       shouldEscapeLdFlags,
-                      Arg.stringify(nativeLinkableInput.getArgs(), pathResolver)));
+                      Arg.stringify(
+                          nativeLinkableInput.getArgs(), graphBuilder.getSourcePathResolver())));
 
       // Write the relevant lines to the generated makefile.
       if (!localCflags.isEmpty() || !localLdflags.isEmpty()) {
@@ -375,7 +377,12 @@ public class NdkLibraryDescription
     ProjectFilesystem projectFilesystem = context.getProjectFilesystem();
     ActionGraphBuilder graphBuilder = context.getActionGraphBuilder();
     Pair<String, Iterable<BuildRule>> makefilePair =
-        generateMakefile(toolchainProvider, projectFilesystem, params, graphBuilder);
+        generateMakefile(
+            toolchainProvider,
+            projectFilesystem,
+            params,
+            graphBuilder,
+            buildTarget.getTargetConfiguration());
 
     ImmutableSortedSet<SourcePath> sources;
     if (!args.getSrcs().isEmpty()) {
@@ -388,13 +395,13 @@ public class NdkLibraryDescription
         StringWithMacrosConverter.builder()
             .setBuildTarget(buildTarget)
             .setCellPathResolver(context.getCellPathResolver())
+            .setActionGraphBuilder(graphBuilder)
             .setExpanders(MACRO_EXPANDERS)
             .build();
 
     ImmutableList<Arg> flags =
-        args.getFlags()
-            .stream()
-            .map(flag -> macrosConverter.convert(flag, graphBuilder))
+        args.getFlags().stream()
+            .map(macrosConverter::convert)
             .collect(ImmutableList.toImmutableList());
 
     AndroidNdk androidNdk = toolchainProvider.getByName(AndroidNdk.DEFAULT_NAME, AndroidNdk.class);
@@ -426,7 +433,10 @@ public class NdkLibraryDescription
                 ndkCxxPlatformsProvider
                     .getNdkCxxPlatforms()
                     .values()
-                    .forEach(platform -> extraDepsBuilder.addAll(platform.getParseTimeDeps())));
+                    .forEach(
+                        platform ->
+                            extraDepsBuilder.addAll(
+                                platform.getParseTimeDeps(buildTarget.getTargetConfiguration()))));
   }
 
   @BuckStyleImmutable

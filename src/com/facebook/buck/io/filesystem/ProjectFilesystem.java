@@ -156,19 +156,6 @@ public interface ProjectFilesystem {
   void walkRelativeFileTree(
       Path pathRelativeToProjectRoot,
       EnumSet<FileVisitOption> visitOptions,
-      FileVisitor<Path> fileVisitor)
-      throws IOException;
-
-  /**
-   * Walks a project-root relative file tree with a visitor and visit options.
-   *
-   * <p>This is deprecated. Please use {@link ProjectFilesystemView#walkRelativeFileTree(Path,
-   * EnumSet, FileVisitor)} instead.
-   */
-  @Deprecated
-  void walkRelativeFileTree(
-      Path pathRelativeToProjectRoot,
-      EnumSet<FileVisitOption> visitOptions,
       FileVisitor<Path> fileVisitor,
       boolean skipIgnored)
       throws IOException;
@@ -184,12 +171,6 @@ public interface ProjectFilesystem {
   /** Use {@link ProjectFilesystemView#walkFileTree(Path, Set, FileVisitor)} instead */
   @Deprecated
   void walkFileTree(Path root, Set<FileVisitOption> options, FileVisitor<Path> fileVisitor)
-      throws IOException;
-
-  /** Use {@link ProjectFilesystemView#walkFileTree(Path, Set, FileVisitor)} instead */
-  @Deprecated
-  void walkFileTree(
-      Path root, Set<FileVisitOption> options, FileVisitor<Path> fileVisitor, boolean skipIgnored)
       throws IOException;
 
   /** Use {@link ProjectFilesystemView#getFilesUnderPath(Path, EnumSet)} instead */

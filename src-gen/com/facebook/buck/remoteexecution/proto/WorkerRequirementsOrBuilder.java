@@ -10,11 +10,29 @@ public interface WorkerRequirementsOrBuilder extends
     com.google.protobuf.MessageOrBuilder {
 
   /**
-   * <code>.facebook.remote_execution.WorkerRequirements.WorkerHardwareType hardware_type = 1;</code>
+   * <code>.facebook.remote_execution.WorkerRequirements.WorkerSize worker_size = 1;</code>
    */
-  int getHardwareTypeValue();
+  int getWorkerSizeValue();
   /**
-   * <code>.facebook.remote_execution.WorkerRequirements.WorkerHardwareType hardware_type = 1;</code>
+   * <code>.facebook.remote_execution.WorkerRequirements.WorkerSize worker_size = 1;</code>
    */
-  com.facebook.buck.remoteexecution.proto.WorkerRequirements.WorkerHardwareType getHardwareType();
+  com.facebook.buck.remoteexecution.proto.WorkerRequirements.WorkerSize getWorkerSize();
+
+  /**
+   * <code>.facebook.remote_execution.WorkerRequirements.WorkerPlatformType platform_type = 2;</code>
+   */
+  int getPlatformTypeValue();
+  /**
+   * <code>.facebook.remote_execution.WorkerRequirements.WorkerPlatformType platform_type = 2;</code>
+   */
+  com.facebook.buck.remoteexecution.proto.WorkerRequirements.WorkerPlatformType getPlatformType();
+
+  /**
+   * <pre>
+   * Indicates if execution engine should try to execute current action with more powerful requirements
+   * </pre>
+   *
+   * <code>bool should_try_larger_worker_on_oom = 3;</code>
+   */
+  boolean getShouldTryLargerWorkerOnOom();
 }

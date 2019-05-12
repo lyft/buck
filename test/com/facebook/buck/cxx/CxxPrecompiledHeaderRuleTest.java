@@ -33,12 +33,12 @@ import com.facebook.buck.core.cell.TestCellPathResolver;
 import com.facebook.buck.core.config.FakeBuckConfig;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
+import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.model.Flavor;
 import com.facebook.buck.core.model.impl.BuildTargetPaths;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.TestBuildRuleParams;
 import com.facebook.buck.core.rules.impl.FakeBuildRule;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
@@ -49,17 +49,17 @@ import com.facebook.buck.core.sourcepath.FakeSourcePath;
 import com.facebook.buck.core.sourcepath.PathSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.tool.impl.HashedFileTool;
 import com.facebook.buck.core.toolchain.toolprovider.impl.ConstantToolProvider;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.Compiler;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.CxxPlatformUtils;
 import com.facebook.buck.cxx.toolchain.CxxToolProvider.Type;
 import com.facebook.buck.cxx.toolchain.LinkerMapMode;
 import com.facebook.buck.cxx.toolchain.PicType;
 import com.facebook.buck.cxx.toolchain.PreprocessorProvider;
+import com.facebook.buck.cxx.toolchain.ToolType;
 import com.facebook.buck.cxx.toolchain.linker.Linker;
 import com.facebook.buck.cxx.toolchain.nativelink.NativeLinkable;
 import com.facebook.buck.cxx.toolchain.nativelink.NativeLinkableInput;
@@ -119,7 +119,8 @@ public class CxxPrecompiledHeaderRuleTest {
         new PreprocessorProvider(
             new ConstantToolProvider(
                 new HashedFileTool(PathSourcePath.of(filesystem, Paths.get("foopp")))),
-            Type.CLANG);
+            Type.CLANG,
+            ToolType.CPP);
 
     platformSupportingPch =
         CxxPlatformUtils.build(CXX_CONFIG_PCH_ENABLED).withCpp(preprocessorSupportingPch);
@@ -136,11 +137,13 @@ public class CxxPrecompiledHeaderRuleTest {
       new DefaultTargetNodeToBuildRuleTransformer();
 
   public final ActionGraphBuilder graphBuilder = new TestActionGraphBuilder(transformer);
-  public final SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-  public final SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
+  public final SourcePathResolver pathResolver = graphBuilder.getSourcePathResolver();
   public final BuildContext context = FakeBuildContext.withSourcePathResolver(pathResolver);
 
-  public final Compiler compiler = CxxPlatformUtils.DEFAULT_PLATFORM.getCxx().resolve(graphBuilder);
+  public final Compiler compiler =
+      CxxPlatformUtils.DEFAULT_PLATFORM
+          .getCxx()
+          .resolve(graphBuilder, EmptyTargetConfiguration.INSTANCE);
 
   public BuildTarget newTarget(String fullyQualifiedName) {
     return BuildTargetFactory.newInstance(fullyQualifiedName);
@@ -175,13 +178,11 @@ public class CxxPrecompiledHeaderRuleTest {
 
   public CxxSourceRuleFactory.Builder newFactoryBuilder(
       BuildTarget buildTarget, ProjectFilesystem projectFilesystem) {
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
     return CxxSourceRuleFactory.builder()
         .setBaseBuildTarget(buildTarget)
         .setProjectFilesystem(projectFilesystem)
         .setActionGraphBuilder(graphBuilder)
-        .setRuleFinder(ruleFinder)
-        .setPathResolver(DefaultSourcePathResolver.from(ruleFinder))
+        .setPathResolver(graphBuilder.getSourcePathResolver())
         .setCxxPlatform(platformSupportingPch)
         .setPicType(PicType.PIC)
         .setCxxBuckConfig(CXX_CONFIG_PCH_ENABLED);
@@ -434,8 +435,6 @@ public class CxxPrecompiledHeaderRuleTest {
             platformSupportingPch,
             filesystem,
             graphBuilder,
-            pathResolver,
-            ruleFinder,
             CxxDescriptionEnhancer.createCxxLinkTarget(
                 binTarget, Optional.of(LinkerMapMode.NO_LINKER_MAP)),
             Linker.LinkType.EXECUTABLE,
@@ -567,12 +566,12 @@ public class CxxPrecompiledHeaderRuleTest {
   }
 
   @Test
-  public void successfulBuildWithPchHavingNoDeps() throws Exception {
+  public void successfulBuildWithPchHavingNoDeps() {
     workspace.runBuckBuild("//basic_tests:main").assertSuccess();
   }
 
   @Test
-  public void successfulBuildWithPchHavingDeps() throws Exception {
+  public void successfulBuildWithPchHavingDeps() {
     workspace.runBuckBuild("//deps_test:bin").assertSuccess();
   }
 

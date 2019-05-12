@@ -59,9 +59,11 @@ import com.facebook.buck.io.filesystem.TestProjectFilesystems;
 import com.facebook.buck.jvm.java.AnnotationProcessingEvent;
 import com.facebook.buck.jvm.java.tracing.JavacPhaseEvent;
 import com.facebook.buck.log.InvocationInfo;
+import com.facebook.buck.remoteexecution.event.RemoteExecutionSessionEvent;
+import com.facebook.buck.remoteexecution.event.RemoteExecutionStatsProvider;
+import com.facebook.buck.remoteexecution.event.listener.TestRemoteExecutionStatsProvider;
 import com.facebook.buck.step.StepEvent;
-import com.facebook.buck.support.bgtasks.BackgroundTask;
-import com.facebook.buck.support.bgtasks.TaskManagerScope;
+import com.facebook.buck.support.bgtasks.TaskManagerCommandScope;
 import com.facebook.buck.support.bgtasks.TestBackgroundTaskManager;
 import com.facebook.buck.test.external.ExternalTestRunEvent;
 import com.facebook.buck.test.external.ExternalTestSpecCalculationEvent;
@@ -92,12 +94,14 @@ import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.TimeZone;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.zip.GZIPInputStream;
 import org.hamcrest.Matchers;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 import org.junit.rules.TemporaryFolder;
 
 public class ChromeTraceBuildListenerTest {
@@ -110,11 +114,12 @@ public class ChromeTraceBuildListenerTest {
       "buck-out/log/2014-09-02_23h55m51s_no_sub_command_BUILD_ID/";
 
   @Rule public TemporaryFolder tmpDir = new TemporaryFolder();
+  @Rule public ExpectedException expectedException = ExpectedException.none();
 
   private InvocationInfo invocationInfo;
   private BuildRuleDurationTracker durationTracker;
   private BuckEventBus eventBus;
-  private TaskManagerScope managerScope;
+  private TaskManagerCommandScope managerScope;
 
   @Before
   public void setUp() {
@@ -132,7 +137,7 @@ public class ChromeTraceBuildListenerTest {
             .build();
     durationTracker = new BuildRuleDurationTracker();
     eventBus = new DefaultBuckEventBus(FAKE_CLOCK, BUILD_ID);
-    managerScope = new TestBackgroundTaskManager().getNewScope(invocationInfo.getBuildId());
+    managerScope = TestBackgroundTaskManager.of().getNewScope(invocationInfo.getBuildId());
   }
 
   @Test
@@ -146,7 +151,8 @@ public class ChromeTraceBuildListenerTest {
             invocationInfo,
             FAKE_CLOCK,
             chromeTraceConfig(1, false),
-            managerScope);
+            managerScope,
+            Optional.empty());
     FakeBuckEvent event = new FakeBuckEvent();
     eventBus.post(event); // Populates it with a timestamp
 
@@ -184,7 +190,8 @@ public class ChromeTraceBuildListenerTest {
             invocationInfo,
             FAKE_CLOCK,
             chromeTraceConfig(1, false),
-            managerScope);
+            managerScope,
+            Optional.empty());
     listener.writeChromeTraceMetadataEvent("test", ImmutableMap.of());
     listener.close();
     managerScope.close();
@@ -221,7 +228,8 @@ public class ChromeTraceBuildListenerTest {
             TimeZone.getTimeZone("America/Los_Angeles"),
             ManagementFactory.getThreadMXBean(),
             chromeTraceConfig(42, false),
-            managerScope);
+            managerScope,
+            Optional.empty());
     eventBus.register(listener);
 
     LeafEvents.scope(eventBus, "testing_scope", false).close();
@@ -253,7 +261,8 @@ public class ChromeTraceBuildListenerTest {
             TimeZone.getTimeZone("America/Los_Angeles"),
             threadMXBean,
             chromeTraceConfig(3, false),
-            managerScope);
+            managerScope,
+            Optional.empty());
 
     FakeBuckEvent event = new FakeBuckEvent();
     int threadId = 1;
@@ -307,15 +316,14 @@ public class ChromeTraceBuildListenerTest {
             TimeZone.getTimeZone("America/Los_Angeles"),
             ManagementFactory.getThreadMXBean(),
             chromeTraceConfig(3, false),
-            managerScope);
+            managerScope,
+            Optional.empty());
 
     listener.close();
     managerScope.close();
 
     ImmutableList<String> files =
-        projectFilesystem
-            .getDirectoryContents(invocationInfo.getLogDirectoryPath())
-            .stream()
+        projectFilesystem.getDirectoryContents(invocationInfo.getLogDirectoryPath()).stream()
             .filter(i -> i.toString().endsWith(".trace"))
             .map(path -> path.getFileName().toString())
             .collect(ImmutableList.toImmutableList());
@@ -328,6 +336,82 @@ public class ChromeTraceBuildListenerTest {
             "build.1008.trace",
             "build.2014-09-02.16-55-51.BUILD_ID.trace"),
         ImmutableSortedSet.copyOf(files));
+  }
+
+  @Test
+  public void testBuildWithRemoteExecution() throws IOException {
+    ProjectFilesystem projectFilesystem =
+        TestProjectFilesystems.createProjectFilesystem(tmpDir.getRoot().toPath());
+
+    BuildId buildId = new BuildId("ChromeTraceBuildListenerTestBuildId");
+    RemoteExecutionStatsProvider reStats = new TestRemoteExecutionStatsProvider();
+    ChromeTraceBuildListener listener =
+        new ChromeTraceBuildListener(
+            projectFilesystem,
+            invocationInfo,
+            FAKE_CLOCK,
+            Locale.US,
+            TimeZone.getTimeZone("America/Los_Angeles"),
+            ManagementFactory.getThreadMXBean(),
+            chromeTraceConfig(42, false),
+            managerScope,
+            Optional.of(reStats));
+
+    Clock fakeClock = new IncrementingFakeClock(TimeUnit.MILLISECONDS.toNanos(1));
+    BuckEventBus eventBus = BuckEventBusForTests.newInstance(fakeClock, buildId);
+
+    eventBus.register(listener);
+
+    CommandEvent.Started commandEventStarted =
+        CommandEvent.started("party", ImmutableList.of("arg1", "arg2"), OptionalLong.of(100), 23L);
+    eventBus.post(commandEventStarted);
+
+    RemoteExecutionSessionEvent.Started reEventStarted = RemoteExecutionSessionEvent.started();
+    eventBus.post(reEventStarted);
+
+    RemoteExecutionSessionEvent.Finished reEventFinished =
+        RemoteExecutionSessionEvent.finished(reEventStarted);
+    eventBus.post(reEventFinished);
+
+    eventBus.post(CommandEvent.finished(commandEventStarted, /* exitCode */ ExitCode.SUCCESS));
+    listener.close();
+    managerScope.close();
+
+    List<ChromeTraceEvent> originalResultList =
+        ObjectMappers.readValue(
+            tmpDir.getRoot().toPath().resolve("buck-out").resolve("log").resolve("build.trace"),
+            new TypeReference<List<ChromeTraceEvent>>() {});
+    List<ChromeTraceEvent> resultListCopy = new ArrayList<>(originalResultList);
+    ImmutableMap<String, String> emptyArgs = ImmutableMap.of();
+
+    assertPreambleEvents(resultListCopy, projectFilesystem);
+
+    assertNextResult(
+        resultListCopy,
+        "party",
+        ChromeTraceEvent.Phase.BEGIN,
+        ImmutableMap.of("command_args", "arg1 arg2"));
+
+    assertNextResult(
+        resultListCopy,
+        "thread_name",
+        ChromeTraceEvent.Phase.METADATA,
+        ImmutableMap.of("name", Thread.currentThread().getName()));
+
+    assertNextResult(
+        resultListCopy,
+        "thread_sort_index",
+        ChromeTraceEvent.Phase.METADATA,
+        ImmutableMap.of("sort_index", (int) Thread.currentThread().getId()));
+
+    assertNextResult(
+        resultListCopy, "remote_execution_session", ChromeTraceEvent.Phase.BEGIN, emptyArgs);
+
+    assertNextResult(
+        resultListCopy,
+        "remote_execution_session",
+        ChromeTraceEvent.Phase.END,
+        reStats.exportFieldsToMap());
   }
 
   @Test
@@ -345,7 +429,8 @@ public class ChromeTraceBuildListenerTest {
             TimeZone.getTimeZone("America/Los_Angeles"),
             ManagementFactory.getThreadMXBean(),
             chromeTraceConfig(42, false),
-            managerScope);
+            managerScope,
+            Optional.empty());
 
     BuildTarget target = BuildTargetFactory.newInstance("//fake:rule");
 
@@ -441,6 +526,7 @@ public class ChromeTraceBuildListenerTest {
             Optional.empty(),
             Optional.of(BuildRuleSuccessType.BUILT_LOCALLY),
             UploadToCacheResultType.UNCACHEABLE,
+            Optional.empty(),
             Optional.empty(),
             Optional.empty(),
             Optional.empty(),
@@ -714,7 +800,7 @@ public class ChromeTraceBuildListenerTest {
   }
 
   @Test
-  public void testOutputFailed() throws IOException {
+  public void testOutputFailed() throws IOException, ExecutionException, InterruptedException {
     File folder = tmpDir.newFolder();
     ProjectFilesystem projectFilesystem =
         TestProjectFilesystems.createProjectFilesystem(folder.toPath());
@@ -730,15 +816,15 @@ public class ChromeTraceBuildListenerTest {
             TimeZone.getTimeZone("America/Los_Angeles"),
             ManagementFactory.getThreadMXBean(),
             chromeTraceConfig(3, false),
-            managerScope);
+            managerScope,
+            Optional.empty());
     listener.close();
     TestBackgroundTaskManager manager = (TestBackgroundTaskManager) managerScope.getManager();
-    BackgroundTask<?> closeTask = manager.getScheduledTasksToTest().get(0);
     managerScope.close();
 
-    Optional<Exception> exc = manager.getTaskErrors().get(closeTask);
-    assertTrue(exc.isPresent());
-    assertTrue(exc.get() instanceof IOException);
+    expectedException.expect(ExecutionException.class);
+    expectedException.expectCause(Matchers.instanceOf(IOException.class));
+    Iterables.getOnlyElement(manager.getScheduledTasksToTest().values()).get();
   }
 
   @Test
@@ -755,7 +841,8 @@ public class ChromeTraceBuildListenerTest {
             TimeZone.getTimeZone("America/Los_Angeles"),
             ManagementFactory.getThreadMXBean(),
             chromeTraceConfig(1, false),
-            managerScope);
+            managerScope,
+            Optional.empty());
     listener.close();
     managerScope.close();
     assertTrue(
@@ -777,7 +864,8 @@ public class ChromeTraceBuildListenerTest {
             TimeZone.getTimeZone("America/Los_Angeles"),
             ManagementFactory.getThreadMXBean(),
             chromeTraceConfig(1, true),
-            managerScope);
+            managerScope,
+            Optional.empty());
     listener.close();
     managerScope.close();
 

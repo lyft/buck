@@ -35,11 +35,13 @@ import com.facebook.buck.log.thrift.rulekeys.FullRuleKey;
 import com.facebook.buck.testutil.ProcessResult;
 import com.facebook.buck.testutil.TemporaryPaths;
 import com.facebook.buck.testutil.integration.ProjectWorkspace;
+import com.facebook.buck.testutil.integration.TestContext;
 import com.facebook.buck.testutil.integration.TestDataHelper;
 import com.facebook.buck.testutil.integration.ZipInspector;
 import com.facebook.buck.util.ExitCode;
 import com.facebook.buck.util.MoreStringsForTests;
 import com.facebook.buck.util.ThriftRuleKeyDeserializer;
+import com.facebook.buck.util.environment.Architecture;
 import com.facebook.buck.util.environment.Platform;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
@@ -48,6 +50,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.thrift.TException;
@@ -217,7 +220,7 @@ public class BuildCommandIntegrationTest {
   }
 
   @Test
-  public void lastOutputDir() throws InterruptedException, IOException {
+  public void lastOutputDir() throws IOException {
     ProjectWorkspace workspace =
         TestDataHelper.createProjectWorkspaceForScenario(this, "just_build", tmp);
     workspace.setUp();
@@ -229,7 +232,7 @@ public class BuildCommandIntegrationTest {
   }
 
   @Test
-  public void lastOutputDirForAppleBundle() throws InterruptedException, IOException {
+  public void lastOutputDirForAppleBundle() throws IOException {
     assumeTrue(AppleNativeIntegrationTestUtils.isApplePlatformAvailable(ApplePlatform.MACOSX));
     ProjectWorkspace workspace =
         TestDataHelper.createProjectWorkspaceForScenario(this, "apple_app_bundle", tmp);
@@ -337,7 +340,7 @@ public class BuildCommandIntegrationTest {
         .runBuckCommand(
             "build",
             "--target-platforms",
-            "//config:osx_x86-64",
+            "//config:osx_x86_64",
             "--exclude-incompatible-targets",
             "//:")
         .assertSuccess();
@@ -349,7 +352,7 @@ public class BuildCommandIntegrationTest {
         .runBuckCommand(
             "build",
             "--target-platforms",
-            "//config:linux_x86-64",
+            "//config:linux_x86_64",
             "--exclude-incompatible-targets",
             "//:")
         .assertSuccess();
@@ -402,9 +405,172 @@ public class BuildCommandIntegrationTest {
     MatcherAssert.assertThat(
         result.getStderr(),
         MoreStringsForTests.containsIgnoringPlatformNewlines(
-            "Build target //:dep is restricted to constraints in \"target_compatible_with\" "
+            "Build target //:dep is restricted to constraints "
+                + "in \"target_compatible_with\" and \"target_compatible_platforms\" "
                 + "that do not match the target platform //config:osx_x86-64.\n"
-                + "Target constraints:\n//config:linux"));
+                + "Target constraints:\nbuck//config/constraints:linux"));
+  }
+
+  @Test
+  public void testBuildFailsWhenDepCompatiblePlatformDoesNotMatchTargetPlatform()
+      throws IOException {
+    ProjectWorkspace workspace =
+        TestDataHelper.createProjectWorkspaceForScenario(this, "builds_with_constraints", tmp);
+    workspace.setUp();
+
+    ProcessResult result =
+        workspace.runBuckCommand(
+            "build",
+            "--target-platforms",
+            "//config:osx_x86-64",
+            "//:lib_with_compatible_platform");
+    result.assertFailure();
+    MatcherAssert.assertThat(
+        result.getStderr(),
+        MoreStringsForTests.containsIgnoringPlatformNewlines(
+            "Build target //:dep_with_compatible_platform is restricted to constraints "
+                + "in \"target_compatible_with\" and \"target_compatible_platforms\" "
+                + "that do not match the target platform //config:osx_x86-64.\n"
+                + "Target compatible with platforms:\n//config:linux_x86-64"));
+  }
+
+  @Test
+  public void testBuildFailsWhenNonConfigurableAttributeUsesSelect() throws IOException {
+    ProjectWorkspace workspace =
+        TestDataHelper.createProjectWorkspaceForScenario(this, "builds_with_constraints", tmp);
+    workspace.setUp();
+
+    ProcessResult result = workspace.runBuckCommand("build", "//invalid:lib");
+    result.assertFailure();
+    MatcherAssert.assertThat(
+        result.getStderr(),
+        Matchers.containsString(
+            "//invalid:lib: attribute 'targetCompatiblePlatforms' cannot be configured using select"));
+  }
+
+  @Test
+  public void changingTargetPlatformTriggersRebuild() throws IOException {
+    ProjectWorkspace workspace =
+        TestDataHelper.createProjectWorkspaceForScenario(this, "builds_with_constraints", tmp);
+    workspace.setUp();
+
+    try (TestContext context = new TestContext()) {
+      workspace.runBuckBuild(
+          Optional.of(context),
+          "--target-platforms",
+          "//config:osx_x86-64",
+          "//:platform_dependent_genrule");
+
+      workspace.getBuildLog().assertTargetBuiltLocally("//:platform_dependent_genrule");
+
+      workspace.runBuckBuild(
+          Optional.of(context),
+          "--target-platforms",
+          "//config:linux_x86-64",
+          "//:platform_dependent_genrule");
+
+      workspace.getBuildLog().assertTargetBuiltLocally("//:platform_dependent_genrule");
+    }
+  }
+
+  @Test
+  public void platformWithCircularDepTriggersFailure() throws IOException {
+    ProjectWorkspace workspace =
+        TestDataHelper.createProjectWorkspaceForScenario(this, "builds_with_constraints", tmp);
+    workspace.setUp();
+
+    ProcessResult result =
+        workspace.runBuckBuild(
+            "--target-platforms",
+            "//config:platform-with-circular-dep",
+            "//:platform_dependent_genrule");
+
+    result.assertFailure();
+    MatcherAssert.assertThat(
+        result.getStderr(),
+        MoreStringsForTests.containsIgnoringPlatformNewlines(
+            "Buck can't handle circular dependencies.\n"
+                + "The following circular dependency has been found:\n"
+                + "//config:platform-with-circular-dep -> //config:platform-with-circular-dep"));
+  }
+
+  @Test
+  public void hostOsConstraintsAreResolved() throws IOException {
+    ProjectWorkspace workspace =
+        TestDataHelper.createProjectWorkspaceForScenario(this, "builds_with_constraints", tmp);
+    workspace.setUp();
+
+    Path output = workspace.buildAndReturnOutput("//:platform_dependent_genrule");
+
+    workspace.getBuildLog().assertTargetBuiltLocally("//:platform_dependent_genrule");
+
+    String expected;
+    Platform platform = Platform.detect();
+    if (platform == Platform.LINUX) {
+      expected = "linux";
+    } else if (platform == Platform.MACOS) {
+      expected = "osx";
+    } else {
+      expected = "unknown";
+    }
+
+    assertEquals(expected, workspace.getFileContents(output).trim());
+  }
+
+  @Test
+  public void hostOsConstraintsAreResolvedWithCustomPlatform() throws IOException {
+    ProjectWorkspace workspace =
+        TestDataHelper.createProjectWorkspaceForScenario(this, "builds_with_constraints", tmp);
+    workspace.setUp();
+
+    Platform platform = Platform.detect();
+    String hostPlatform =
+        (platform == Platform.LINUX) ? "//config:osx_x86-64" : "//config:linux_x86-64";
+
+    Path output =
+        workspace.buildAndReturnOutput(
+            "//:platform_dependent_genrule", "-c", "build.host_platform=" + hostPlatform);
+
+    workspace.getBuildLog().assertTargetBuiltLocally("//:platform_dependent_genrule");
+
+    String expected = (platform == Platform.LINUX) ? "osx" : "linux";
+    assertEquals(expected, workspace.getFileContents(output).trim());
+  }
+
+  @Test
+  public void hostCpuConstraintsAreResolved() throws IOException {
+    ProjectWorkspace workspace =
+        TestDataHelper.createProjectWorkspaceForScenario(this, "builds_with_constraints", tmp);
+    workspace.setUp();
+
+    Path output = workspace.buildAndReturnOutput("//:cpu_dependent_genrule");
+
+    workspace.getBuildLog().assertTargetBuiltLocally("//:cpu_dependent_genrule");
+
+    String expected;
+    Architecture architecture = Architecture.detect();
+    if (architecture == Architecture.X86_64) {
+      expected = "x86_64";
+    } else {
+      expected = "unknown";
+    }
+
+    assertEquals(expected, workspace.getFileContents(output).trim());
+  }
+
+  @Test
+  public void hostCpuConstraintsAreResolvedWithCustomHostPlatforms() throws IOException {
+    ProjectWorkspace workspace =
+        TestDataHelper.createProjectWorkspaceForScenario(this, "builds_with_constraints", tmp);
+    workspace.setUp();
+
+    Path output =
+        workspace.buildAndReturnOutput(
+            "//:cpu_dependent_genrule", "--target-platforms", "//config:osx_x86-64");
+
+    workspace.getBuildLog().assertTargetBuiltLocally("//:cpu_dependent_genrule");
+
+    assertEquals("x86_64", workspace.getFileContents(output).trim());
   }
 
   @Test

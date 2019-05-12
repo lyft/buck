@@ -35,8 +35,6 @@ import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.FakeSourcePath;
 import com.facebook.buck.core.sourcepath.PathSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.tool.Tool;
 import com.facebook.buck.core.toolchain.tool.impl.HashedFileTool;
 import com.facebook.buck.cxx.toolchain.ArchiveContents;
@@ -77,8 +75,7 @@ public class ArchiveTest {
 
   @Test
   public void testThatInputChangesCauseRuleKeyChanges() {
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(new TestActionGraphBuilder());
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
+    SourcePathRuleFinder ruleFinder = new TestActionGraphBuilder();
     BuildTarget target = BuildTargetFactory.newInstance("//foo:bar");
     FakeFileHashCache hashCache =
         FakeFileHashCache.createFromStrings(
@@ -93,7 +90,7 @@ public class ArchiveTest {
 
     // Generate a rule key for the defaults.
     RuleKey defaultRuleKey =
-        new TestDefaultRuleKeyFactory(hashCache, pathResolver, ruleFinder)
+        new TestDefaultRuleKeyFactory(hashCache, ruleFinder)
             .build(
                 new Archive(
                     target,
@@ -110,7 +107,7 @@ public class ArchiveTest {
 
     // Verify that changing the archiver causes a rulekey change.
     RuleKey archiverChange =
-        new TestDefaultRuleKeyFactory(hashCache, pathResolver, ruleFinder)
+        new TestDefaultRuleKeyFactory(hashCache, ruleFinder)
             .build(
                 new Archive(
                     target,
@@ -130,7 +127,7 @@ public class ArchiveTest {
 
     // Verify that changing the output path causes a rulekey change.
     RuleKey outputChange =
-        new TestDefaultRuleKeyFactory(hashCache, pathResolver, ruleFinder)
+        new TestDefaultRuleKeyFactory(hashCache, ruleFinder)
             .build(
                 new Archive(
                     target,
@@ -148,7 +145,7 @@ public class ArchiveTest {
 
     // Verify that changing the inputs causes a rulekey change.
     RuleKey inputChange =
-        new TestDefaultRuleKeyFactory(hashCache, pathResolver, ruleFinder)
+        new TestDefaultRuleKeyFactory(hashCache, ruleFinder)
             .build(
                 new Archive(
                     target,
@@ -166,7 +163,7 @@ public class ArchiveTest {
 
     // Verify that changing the type of archiver causes a rulekey change.
     RuleKey archiverTypeChange =
-        new TestDefaultRuleKeyFactory(hashCache, pathResolver, ruleFinder)
+        new TestDefaultRuleKeyFactory(hashCache, ruleFinder)
             .build(
                 new Archive(
                     target,
@@ -188,13 +185,11 @@ public class ArchiveTest {
     BuildRuleResolver resolver = new TestActionGraphBuilder();
     BuildTarget target = BuildTargetFactory.newInstance("//foo:bar");
     ProjectFilesystem projectFilesystem = new FakeProjectFilesystem();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(resolver);
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
     Archive archive =
         new Archive(
             target,
             projectFilesystem,
-            ruleFinder,
+            resolver,
             DEFAULT_ARCHIVER,
             ImmutableList.of("-foo"),
             DEFAULT_RANLIB,
@@ -207,7 +202,7 @@ public class ArchiveTest {
     BuildContext buildContext =
         BuildContext.builder()
             .from(FakeBuildContext.NOOP_CONTEXT)
-            .setSourcePathResolver(pathResolver)
+            .setSourcePathResolver(resolver.getSourcePathResolver())
             .build();
 
     ImmutableList<Step> steps = archive.getBuildSteps(buildContext, new FakeBuildableContext());
@@ -237,12 +232,11 @@ public class ArchiveTest {
             .build(graphBuilder);
 
     // Build the archive using a normal input the outputs of the genrules above.
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
     Archive archive =
         new Archive(
             target,
             projectFilesystem,
-            ruleFinder,
+            graphBuilder,
             DEFAULT_ARCHIVER,
             ImmutableList.of(),
             DEFAULT_RANLIB,

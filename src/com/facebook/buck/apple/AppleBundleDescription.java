@@ -34,6 +34,7 @@ import com.facebook.buck.core.model.Flavor;
 import com.facebook.buck.core.model.FlavorDomain;
 import com.facebook.buck.core.model.Flavored;
 import com.facebook.buck.core.model.InternalFlavor;
+import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.model.targetgraph.BuildRuleCreationContextWithTargetGraph;
 import com.facebook.buck.core.model.targetgraph.DescriptionWithTargetGraph;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
@@ -42,12 +43,12 @@ import com.facebook.buck.core.toolchain.ToolchainProvider;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
 import com.facebook.buck.cxx.CxxDescriptionEnhancer;
 import com.facebook.buck.cxx.FrameworkDependencies;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatformsProvider;
 import com.facebook.buck.cxx.toolchain.LinkerMapMode;
-import com.facebook.buck.cxx.toolchain.StaticUnresolvedCxxPlatform;
 import com.facebook.buck.cxx.toolchain.StripStyle;
 import com.facebook.buck.cxx.toolchain.UnresolvedCxxPlatform;
+import com.facebook.buck.cxx.toolchain.impl.StaticUnresolvedCxxPlatform;
 import com.facebook.buck.rules.coercer.PatternMatchedCollection;
 import com.facebook.buck.swift.SwiftBuckConfig;
 import com.facebook.buck.versions.Version;
@@ -295,13 +296,16 @@ public class AppleBundleDescription
                   .get()
                   .getRepresentativePlatform()
                   .getCodesignProvider()
-                  .getParseTimeDeps());
+                  .getParseTimeDeps(buildTarget.getTargetConfiguration()));
     } else {
+      TargetConfiguration targetConfiguration = buildTarget.getTargetConfiguration();
       depsExcludingBinary =
           depsExcludingBinary.append(
               appleCxxPlatformsFlavorDomain
                   .getValue(buildTarget)
-                  .map(platform -> platform.getCodesignProvider().getParseTimeDeps())
+                  .map(
+                      platform ->
+                          platform.getCodesignProvider().getParseTimeDeps(targetConfiguration))
                   .orElse(ImmutableSet.of()));
     }
 

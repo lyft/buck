@@ -19,9 +19,9 @@ package com.facebook.buck.jvm.java;
 import static org.junit.Assert.assertEquals;
 
 import com.facebook.buck.core.build.execution.context.ExecutionContext;
-import com.facebook.buck.io.file.MorePaths;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.TestProjectFilesystems;
+import com.facebook.buck.io.pathformat.PathFormatter;
 import com.facebook.buck.step.TestExecutionContext;
 import com.google.common.base.Charsets;
 import com.google.common.base.Joiner;
@@ -45,8 +45,7 @@ public class AccumulateClassNamesStepTest {
   @Rule public TemporaryFolder tmp = new TemporaryFolder();
 
   @Test
-  public void testExecuteAccumulateClassNamesStepOnJarFile()
-      throws InterruptedException, IOException {
+  public void testExecuteAccumulateClassNamesStepOnJarFile() throws IOException {
     // Create a JAR file.
     String name = "example.jar";
     File jarFile = tmp.newFile(name);
@@ -85,8 +84,7 @@ public class AccumulateClassNamesStepTest {
   }
 
   @Test
-  public void testExecuteAccumulateClassNamesStepOnDirectory()
-      throws InterruptedException, IOException {
+  public void testExecuteAccumulateClassNamesStepOnDirectory() throws IOException {
     // Create a directory.
     String name = "dir";
     tmp.newFolder(name);
@@ -115,13 +113,13 @@ public class AccumulateClassNamesStepTest {
         "Verify that the contents are sorted alphabetically and ignore non-.class files.",
         Joiner.on('\n')
                 .join(
-                    MorePaths.pathWithUnixSeparators(Paths.get("com/example/Bar"))
+                    PathFormatter.pathWithUnixSeparators(Paths.get("com/example/Bar"))
                         + separator
                         + SHA1_FOR_EMPTY_STRING,
-                    MorePaths.pathWithUnixSeparators(Paths.get("com/example/Foo"))
+                    PathFormatter.pathWithUnixSeparators(Paths.get("com/example/Foo"))
                         + separator
                         + SHA1_FOR_EMPTY_STRING,
-                    MorePaths.pathWithUnixSeparators(Paths.get("com/example/subpackage/Baz"))
+                    PathFormatter.pathWithUnixSeparators(Paths.get("com/example/subpackage/Baz"))
                         + separator
                         + SHA1_FOR_EMPTY_STRING)
             + '\n',

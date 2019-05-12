@@ -330,8 +330,12 @@ public class BuildPhase {
               ruleKeyCalculator ->
                   RuleKeyUtils.calculateDefaultRuleKeys(
                       buildGraphs.getActionGraphAndBuilder().getActionGraphBuilder(),
-                          ruleKeyCalculator,
-                      buildExecutorArgs.getBuckEventBus(), topLevelTargets),
+                      buildGraphs
+                          .getActionGraphAndBuilder()
+                          .getBuildEngineActionToBuildRuleResolver(),
+                      buildExecutorArgs.getBuckEventBus(),
+                      topLevelTargets,
+                      ruleKeyCalculator),
               Objects.requireNonNull(buildExecutorArgs.getExecutors().get(ExecutorPool.CPU)));
     }
 
@@ -541,8 +545,7 @@ public class BuildPhase {
               // might
               // be an ImmutableList, hence we make it a stream.
               events =
-                  events
-                      .stream()
+                  events.stream()
                       .sorted(
                           (w1, w2) -> {
                             BuildSlaveRunId runId1 = w1.getBuildSlaveRunId();
@@ -748,8 +751,7 @@ public class BuildPhase {
     return Futures.transform(
         Futures.allAsList(slaveStatusFutures),
         slaveStatusList ->
-            slaveStatusList
-                .stream()
+            slaveStatusList.stream()
                 .filter(Optional::isPresent)
                 .map(Optional::get)
                 .collect(Collectors.toList()),

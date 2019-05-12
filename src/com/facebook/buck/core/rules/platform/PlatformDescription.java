@@ -17,12 +17,13 @@
 package com.facebook.buck.core.rules.platform;
 
 import com.facebook.buck.core.cell.Cell;
-import com.facebook.buck.core.model.UnconfiguredBuildTarget;
+import com.facebook.buck.core.model.UnconfiguredBuildTargetView;
 import com.facebook.buck.core.rules.config.ConfigurationRule;
 import com.facebook.buck.core.rules.config.ConfigurationRuleDescription;
 import com.facebook.buck.core.rules.config.ConfigurationRuleResolver;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSortedSet;
 import org.immutables.value.Value;
 
 /**
@@ -53,9 +54,9 @@ public class PlatformDescription implements ConfigurationRuleDescription<Platfor
   public ConfigurationRule createConfigurationRule(
       ConfigurationRuleResolver configurationRuleResolver,
       Cell cell,
-      UnconfiguredBuildTarget buildTarget,
+      UnconfiguredBuildTargetView buildTarget,
       PlatformArg arg) {
-    return PlatformRule.of(buildTarget, arg.getName(), arg.getConstraintValues());
+    return PlatformRule.of(buildTarget, arg.getName(), arg.getConstraintValues(), arg.getDeps());
   }
 
   @BuckStyleImmutable
@@ -63,7 +64,10 @@ public class PlatformDescription implements ConfigurationRuleDescription<Platfor
   interface AbstractPlatformArg {
     String getName();
 
-    ImmutableList<UnconfiguredBuildTarget> getConstraintValues();
+    ImmutableList<UnconfiguredBuildTargetView> getConstraintValues();
+
+    @Value.NaturalOrder
+    ImmutableSortedSet<UnconfiguredBuildTargetView> getDeps();
   }
 
   /** {@code platform} rule. */
@@ -72,12 +76,16 @@ public class PlatformDescription implements ConfigurationRuleDescription<Platfor
   interface AbstractPlatformRule extends ConfigurationRule {
     @Value.Parameter
     @Override
-    UnconfiguredBuildTarget getBuildTarget();
+    UnconfiguredBuildTargetView getBuildTarget();
 
     @Value.Parameter
     String getName();
 
     @Value.Parameter
-    ImmutableList<UnconfiguredBuildTarget> getConstrainValues();
+    ImmutableList<UnconfiguredBuildTargetView> getConstrainValues();
+
+    @Value.Parameter
+    @Value.NaturalOrder
+    ImmutableSortedSet<UnconfiguredBuildTargetView> getDeps();
   }
 }

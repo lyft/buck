@@ -27,18 +27,15 @@ import static org.junit.Assert.assertTrue;
 import com.facebook.buck.core.config.BuckConfig;
 import com.facebook.buck.core.config.FakeBuckConfig;
 import com.facebook.buck.core.model.targetgraph.DescriptionWithTargetGraph;
-import com.facebook.buck.core.toolchain.ToolchainProvider;
-import com.facebook.buck.core.toolchain.impl.ToolchainProviderBuilder;
 import com.facebook.buck.event.BuckEventBusForTests;
 import com.facebook.buck.features.python.PythonBuckConfig;
 import com.facebook.buck.features.python.toolchain.impl.PythonInterpreterFromConfig;
 import com.facebook.buck.file.RemoteFileDescription;
-import com.facebook.buck.file.downloader.Downloader;
-import com.facebook.buck.file.downloader.impl.ExplodingDownloader;
 import com.facebook.buck.io.ExecutableFinder;
 import com.facebook.buck.io.file.MorePaths;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
+import com.facebook.buck.io.pathformat.PathFormatter;
 import com.facebook.buck.jvm.java.PrebuiltJarDescription;
 import com.facebook.buck.maven.aether.Repository;
 import com.facebook.buck.parser.ParserConfig;
@@ -108,12 +105,8 @@ public class ResolverIntegrationTest {
     ParserConfig parserConfig = buckConfig.getView(ParserConfig.class);
     PythonBuckConfig pythonBuckConfig = new PythonBuckConfig(buckConfig);
 
-    ToolchainProvider toolchainProvider =
-        new ToolchainProviderBuilder()
-            .withToolchain(Downloader.DEFAULT_NAME, new ExplodingDownloader())
-            .build();
     ImmutableSet<DescriptionWithTargetGraph<?>> descriptions =
-        ImmutableSet.of(new RemoteFileDescription(toolchainProvider), new PrebuiltJarDescription());
+        ImmutableSet.of(new RemoteFileDescription(), new PrebuiltJarDescription());
 
     buildFileParser =
         new PythonDslProjectBuildFileParser(
@@ -259,7 +252,7 @@ public class ResolverIntegrationTest {
     assertEquals(1, visibility.size());
     assertEquals(
         ImmutableList.of(
-            String.format("//%s:with-deps", MorePaths.pathWithUnixSeparators(exampleDir))),
+            String.format("//%s:with-deps", PathFormatter.pathWithUnixSeparators(exampleDir))),
         visibility);
     assertNull(noDeps.get("deps"));
 
@@ -268,7 +261,8 @@ public class ResolverIntegrationTest {
     List<String> deps = (List<String>) withDeps.get("deps");
     assertEquals(1, deps.size());
     assertEquals(
-        ImmutableList.of(String.format("//%s:no-deps", MorePaths.pathWithUnixSeparators(otherDir))),
+        ImmutableList.of(
+            String.format("//%s:no-deps", PathFormatter.pathWithUnixSeparators(otherDir))),
         deps);
   }
 

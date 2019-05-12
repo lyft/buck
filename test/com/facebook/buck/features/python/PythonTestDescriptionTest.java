@@ -25,23 +25,21 @@ import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
 import com.facebook.buck.core.model.FlavorDomain;
 import com.facebook.buck.core.model.InternalFlavor;
+import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.model.targetgraph.TargetGraph;
 import com.facebook.buck.core.model.targetgraph.TargetGraphFactory;
 import com.facebook.buck.core.rulekey.RuleKey;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.common.BuildRules;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.FakeSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.cxx.CxxBinaryBuilder;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.CxxPlatformUtils;
-import com.facebook.buck.cxx.toolchain.StaticUnresolvedCxxPlatform;
+import com.facebook.buck.cxx.toolchain.impl.StaticUnresolvedCxxPlatform;
 import com.facebook.buck.features.python.toolchain.PythonEnvironment;
 import com.facebook.buck.features.python.toolchain.PythonPlatform;
 import com.facebook.buck.features.python.toolchain.PythonVersion;
@@ -148,13 +146,12 @@ public class PythonTestDescriptionTest {
     PythonTestBuilder builder = PythonTestBuilder.create(target).setBuildArgs(buildArgs);
     TargetGraph targetGraph = TargetGraphFactory.newInstance(builder.build());
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder(targetGraph);
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder));
     PythonTest test = builder.build(graphBuilder, filesystem, targetGraph);
     PythonBinary binary = test.getBinary();
     ImmutableList<? extends Step> buildSteps =
         binary.getBuildSteps(
-            FakeBuildContext.withSourcePathResolver(pathResolver), new FakeBuildableContext());
+            FakeBuildContext.withSourcePathResolver(graphBuilder.getSourcePathResolver()),
+            new FakeBuildableContext());
     PexStep pexStep = RichStream.from(buildSteps).filter(PexStep.class).toImmutableList().get(0);
     assertThat(pexStep.getCommandPrefix(), Matchers.hasItems(buildArgs.toArray(new String[0])));
   }
@@ -318,9 +315,7 @@ public class PythonTestDescriptionTest {
     ShBinary pexExecutor = pexExecutorBuilder.build(graphBuilder);
     PythonTest binary = builder.build(graphBuilder, filesystem, targetGraph);
     assertThat(
-        binary
-            .getRuntimeDeps(new SourcePathRuleFinder(graphBuilder))
-            .collect(ImmutableSet.toImmutableSet()),
+        binary.getRuntimeDeps(graphBuilder).collect(ImmutableSet.toImmutableSet()),
         Matchers.hasItem(pexExecutor.getBuildTarget()));
   }
 
@@ -351,7 +346,8 @@ public class PythonTestDescriptionTest {
     PythonBuckConfig config =
         new PythonBuckConfig(FakeBuckConfig.builder().build()) {
           @Override
-          public Optional<BuildTarget> getPexExecutorTarget() {
+          public Optional<BuildTarget> getPexExecutorTarget(
+              TargetConfiguration targetConfiguration) {
             return Optional.of(pexBuilder);
           }
         };
@@ -550,14 +546,12 @@ public class PythonTestDescriptionTest {
   }
 
   private RuleKey calculateRuleKey(BuildRuleResolver ruleResolver, BuildRule rule) {
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(ruleResolver);
     DefaultRuleKeyFactory ruleKeyFactory =
         new DefaultRuleKeyFactory(
             new RuleKeyFieldLoader(TestRuleKeyConfigurationFactory.create()),
             StackedFileHashCache.createDefaultHashCaches(
                 rule.getProjectFilesystem(), FileHashCacheMode.DEFAULT),
-            DefaultSourcePathResolver.from(ruleFinder),
-            ruleFinder);
+            ruleResolver);
     return ruleKeyFactory.build(rule);
   }
 }

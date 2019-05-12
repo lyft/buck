@@ -22,12 +22,9 @@ import static org.junit.Assert.assertThat;
 
 import com.facebook.buck.core.rulekey.RuleKey;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.FakeSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.rules.args.Arg;
 import com.facebook.buck.rules.args.SourcePathArg;
 import com.facebook.buck.rules.args.StringArg;
@@ -45,14 +42,10 @@ import org.junit.Test;
 public class CommandToolRuleKeyTest {
 
   private BuildRuleResolver resolver;
-  private SourcePathRuleFinder ruleFinder;
-  private SourcePathResolver pathResolver;
 
   @Before
   public void setUp() {
     resolver = new TestActionGraphBuilder();
-    ruleFinder = new SourcePathRuleFinder(resolver);
-    pathResolver = DefaultSourcePathResolver.from(ruleFinder);
   }
 
   @Test
@@ -126,14 +119,13 @@ public class CommandToolRuleKeyTest {
   }
 
   private RuleKey ruleKey(CommandTool tool, FileHashCache hashCache) {
-    return new UncachedRuleKeyBuilder(
-            ruleFinder, pathResolver, hashCache, ruleKeyFactory(hashCache))
+    return new UncachedRuleKeyBuilder(resolver, hashCache, ruleKeyFactory(hashCache))
         .setReflectively("key", tool)
         .build(RuleKey::new);
   }
 
   private DefaultRuleKeyFactory ruleKeyFactory(FileHashCache hashCache) {
-    return new TestDefaultRuleKeyFactory(hashCache, pathResolver, ruleFinder);
+    return new TestDefaultRuleKeyFactory(hashCache, resolver);
   }
 
   private static FakeFileHashCache fakeHashCache(String file, String hash) {

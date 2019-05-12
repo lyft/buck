@@ -23,7 +23,7 @@ import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.impl.BuildTargetPaths;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
+import com.facebook.buck.core.rules.BuildRuleResolver;
 import com.facebook.buck.core.rules.attr.HasRuntimeDeps;
 import com.facebook.buck.core.rules.impl.AbstractBuildRuleWithDeclaredAndExtraDeps;
 import com.facebook.buck.core.rules.tool.BinaryBuildRule;
@@ -332,8 +332,7 @@ public class GoTest extends AbstractBuildRuleWithDeclaredAndExtraDeps
         "go_test",
         getProjectFilesystem(),
         outputDirectory,
-        resources
-            .stream()
+        resources.stream()
             .collect(
                 ImmutableMap.toImmutableMap(
                     input ->
@@ -353,12 +352,11 @@ public class GoTest extends AbstractBuildRuleWithDeclaredAndExtraDeps
   }
 
   @Override
-  public Stream<BuildTarget> getRuntimeDeps(SourcePathRuleFinder ruleFinder) {
+  public Stream<BuildTarget> getRuntimeDeps(BuildRuleResolver buildRuleResolver) {
     return Stream.concat(
         Stream.of((testMain.getBuildTarget())),
-        resources
-            .stream()
-            .map(ruleFinder::filterBuildRuleInputs)
+        resources.stream()
+            .map(buildRuleResolver::filterBuildRuleInputs)
             .flatMap(ImmutableSet::stream)
             .map(BuildRule::getBuildTarget));
   }
@@ -369,6 +367,7 @@ public class GoTest extends AbstractBuildRuleWithDeclaredAndExtraDeps
       TestRunningOptions testRunningOptions,
       BuildContext buildContext) {
     return ExternalTestRunnerTestSpec.builder()
+        .setCwd(getProjectFilesystem().getRootPath())
         .setTarget(getBuildTarget())
         .setType("go")
         .putAllEnv(

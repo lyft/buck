@@ -17,9 +17,9 @@
 package com.facebook.buck.rules.args;
 
 import com.facebook.buck.core.rulekey.AddToRuleKey;
+import com.facebook.buck.core.rulekey.CustomFieldBehavior;
+import com.facebook.buck.core.rulekey.DefaultFieldSerialization;
 import com.facebook.buck.core.rulekey.RuleKey;
-import com.facebook.buck.core.rules.modern.annotations.CustomFieldBehavior;
-import com.facebook.buck.core.rules.modern.annotations.DefaultFieldSerialization;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Interner;
@@ -96,10 +96,17 @@ public class SanitizedArg implements Arg {
     return INTERNER.intern(new SanitizedArg(unsanitized, sanitizer.apply(unsanitized)));
   }
 
-  public static ImmutableList<Arg> from(Function<String, String> sanitizer, Iterable<String> args) {
+  /**
+   * Create a list of SanitizedArgs by applying the given sanitizer function to a list of arg
+   * strings and filtering empty args
+   */
+  public static ImmutableList<Arg> from(
+      Function<? super String, String> sanitizer, Iterable<String> args) {
     ImmutableList.Builder<Arg> converted = ImmutableList.builder();
     for (String arg : args) {
-      converted.add(create(sanitizer, arg));
+      if (!arg.isEmpty()) {
+        converted.add(create(sanitizer, arg));
+      }
     }
     return converted.build();
   }

@@ -16,6 +16,7 @@
 
 package com.facebook.buck.android;
 
+import com.facebook.buck.android.AndroidNativeLibsPackageableGraphEnhancer.AndroidNativeLibsGraphEnhancementResult;
 import com.facebook.buck.android.FilterResourcesSteps.ResourceFilter;
 import com.facebook.buck.android.ResourcesFilter.ResourceCompressionMode;
 import com.facebook.buck.android.aapt.RDotTxtEntry.RType;
@@ -33,12 +34,10 @@ import com.facebook.buck.core.model.InternalFlavor;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.sourcepath.BuildTargetSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.ToolchainProvider;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.nativelink.NativeLinkable;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.jvm.core.JavaLibrary;
@@ -49,6 +48,7 @@ import com.facebook.buck.jvm.java.JavaLibraryClasspathProvider;
 import com.facebook.buck.jvm.java.JavaLibraryDeps;
 import com.facebook.buck.jvm.java.Javac;
 import com.facebook.buck.jvm.java.JavacFactory;
+import com.facebook.buck.jvm.java.JavacLanguageLevelOptions;
 import com.facebook.buck.jvm.java.JavacOptions;
 import com.facebook.buck.jvm.java.PrebuiltJar;
 import com.facebook.buck.rules.args.Arg;
@@ -118,7 +118,6 @@ public class AndroidBinaryGraphEnhancer {
   private final boolean ignoreAaptProguardConfig;
   private final Optional<BuildTarget> nativeLibraryMergeCodeGenerator;
   private final ActionGraphBuilder graphBuilder;
-  private final SourcePathRuleFinder ruleFinder;
   private final CellPathResolver cellPathResolver;
   private final PackageType packageType;
   private final boolean shouldPreDex;
@@ -218,7 +217,6 @@ public class AndroidBinaryGraphEnhancer {
     this.originalBuildTarget = originalBuildTarget;
     this.originalDeps = originalParams.getBuildDeps();
     this.graphBuilder = graphBuilder;
-    this.ruleFinder = new SourcePathRuleFinder(graphBuilder);
     this.cellPathResolver = cellPathResolver;
     this.packageType = packageType;
     this.shouldPreDex = shouldPreDex;
@@ -291,7 +289,7 @@ public class AndroidBinaryGraphEnhancer {
     this.rulesToExcludeFromDex = rulesToExcludeFromDex;
     this.dexTool = dexTool;
     this.javacFactory = javacFactory;
-    this.javac = javacFactory.create(ruleFinder, null);
+    this.javac = javacFactory.create(graphBuilder, null);
   }
 
   AndroidGraphEnhancementResult createAdditionalBuildables() {
@@ -325,10 +323,7 @@ public class AndroidBinaryGraphEnhancer {
     if (nativeLibraryProguardConfigGenerator.isPresent()) {
       NativeLibraryProguardGenerator nativeLibraryProguardGenerator =
           createNativeLibraryProguardGenerator(
-              copyNativeLibraries
-                  .get()
-                  .values()
-                  .stream()
+              copyNativeLibraries.get().values().stream()
                   .map(CopyNativeLibraries::getSourcePathToAllLibsDir)
                   .collect(ImmutableList.toImmutableList()));
 
@@ -342,7 +337,7 @@ public class AndroidBinaryGraphEnhancer {
               originalBuildTarget.withAppendedFlavors(UNSTRIPPED_NATIVE_LIBRARIES_FLAVOR),
               projectFilesystem,
               buildRuleParams.withoutDeclaredDeps(),
-              ruleFinder,
+              graphBuilder,
               nativeLibsEnhancementResult.getUnstrippedLibraries().get());
       graphBuilder.addToIndex(unstrippedNativeLibraries);
     }
@@ -380,17 +375,19 @@ public class AndroidBinaryGraphEnhancer {
               // Kind of a hack: override language level to 7 to allow string switch.
               // This can be removed once no one who uses this feature sets the level
               // to 6 in their .buckconfig.
-              .setJavacOptions(javacOptions.withSourceLevel("7").withTargetLevel("7"))
+              .setJavacOptions(
+                  javacOptions.withLanguageLevelOptions(
+                      JavacLanguageLevelOptions.builder()
+                          .setSourceLevel("7")
+                          .setTargetLevel("7")
+                          .build()))
               .setSrcs(
                   ImmutableSortedSet.of(generateCodeForMergedLibraryMap.getSourcePathToOutput()))
               .setSourceOnlyAbisAllowed(false)
               .setDeps(
                   new JavaLibraryDeps.Builder(graphBuilder)
                       .addAllDepTargets(
-                          paramsForCompileGenCode
-                              .getDeclaredDeps()
-                              .get()
-                              .stream()
+                          paramsForCompileGenCode.getDeclaredDeps().get().stream()
                               .map(BuildRule::getBuildTarget)
                               .collect(Collectors.toList()))
                       .build())
@@ -444,8 +441,7 @@ public class AndroidBinaryGraphEnhancer {
         ImmutableSet.<SourcePath>builder()
             .addAll(packageableCollection.getClasspathEntriesToDex())
             .addAll(
-                additionalJavaLibraries
-                    .stream()
+                additionalJavaLibraries.stream()
                     .map(BuildRule::getSourcePathToOutput)
                     .collect(ImmutableList.toImmutableList()))
             .build();
@@ -497,7 +493,7 @@ public class AndroidBinaryGraphEnhancer {
         buildRuleParams.withDeclaredDeps(
             ImmutableSortedSet.<BuildRule>naturalOrder()
                 .addAll(
-                    ruleFinder.filterBuildRuleInputs(
+                    graphBuilder.filterBuildRuleInputs(
                         resourcesEnhancementResult.getRDotJavaDir().orElse(null)))
                 .addAll(preDexedLibrariesForResourceIdFiltering)
                 .build());
@@ -525,16 +521,18 @@ public class AndroidBinaryGraphEnhancer {
                 new JavaConfiguredCompilerFactory(javaBuckConfig, javacFactory),
                 javaBuckConfig,
                 null)
-            .setJavacOptions(javacOptions.withSourceLevel("7").withTargetLevel("7"))
+            .setJavacOptions(
+                javacOptions.withLanguageLevelOptions(
+                    JavacLanguageLevelOptions.builder()
+                        .setSourceLevel("7")
+                        .setTargetLevel("7")
+                        .build()))
             .setSrcs(ImmutableSortedSet.of(trimUberRDotJava.getSourcePathToOutput()))
             .setSourceOnlyAbisAllowed(false)
             .setDeps(
                 new JavaLibraryDeps.Builder(graphBuilder)
                     .addAllDepTargets(
-                        paramsForCompileUberRDotJava
-                            .getDeclaredDeps()
-                            .get()
-                            .stream()
+                        paramsForCompileUberRDotJava.getDeclaredDeps().get().stream()
                             .map(BuildRule::getBuildTarget)
                             .collect(Collectors.toList()))
                     .build())
@@ -554,7 +552,7 @@ public class AndroidBinaryGraphEnhancer {
         new SplitUberRDotJavaJar(
             splitJarTarget,
             projectFilesystem,
-            ruleFinder,
+            graphBuilder,
             compileUberRDotJava.getSourcePathToOutput(),
             dexSplitMode);
     graphBuilder.addToIndex(splitJar);
@@ -571,8 +569,9 @@ public class AndroidBinaryGraphEnhancer {
           new PrebuiltJar(
               splitJarTarget.withAppendedFlavors(prebuiltJarFlavor, rtypeFlavor),
               projectFilesystem,
-              buildRuleParams.withDeclaredDeps(ImmutableSortedSet.of(ruleFinder.getRule(jarPath))),
-              DefaultSourcePathResolver.from(ruleFinder),
+              buildRuleParams.withDeclaredDeps(
+                  ImmutableSortedSet.of(graphBuilder.getRule(jarPath))),
+              graphBuilder.getSourcePathResolver(),
               jarPath,
               Optional.empty(),
               Optional.empty(),
@@ -612,7 +611,7 @@ public class AndroidBinaryGraphEnhancer {
         originalBuildTarget.withAppendedFlavors(NATIVE_LIBRARY_PROGUARD_FLAVOR),
         projectFilesystem,
         paramsForNativeLibraryProguardGenerator,
-        ruleFinder,
+        graphBuilder,
         nativeLibsDirs,
         graphBuilder.requireRule(nativeLibraryProguardConfigGenerator.get()));
   }
@@ -808,8 +807,7 @@ public class AndroidBinaryGraphEnhancer {
     APKModule rootAPKModule = apkModuleGraph.getRootAPKModule();
 
     ImmutableSortedSet<SourcePath> additionalJarsForProguardandDesugar =
-        rulesToExcludeFromDex
-            .stream()
+        rulesToExcludeFromDex.stream()
             .flatMap((javaLibrary) -> javaLibrary.getImmediateClasspaths().stream())
             .collect(ImmutableSortedSet.toImmutableSortedSet(Ordering.natural()));
 
@@ -826,7 +824,7 @@ public class AndroidBinaryGraphEnhancer {
     NonPreDexedDexBuildable nonPreDexedDexBuildable =
         new NonPreDexedDexBuildable(
             androidPlatformTarget,
-            ruleFinder,
+            graphBuilder,
             additionalJarsForProguardandDesugar,
             apkModuleMap,
             classpathEntriesToDexSourcePaths,
@@ -848,7 +846,7 @@ public class AndroidBinaryGraphEnhancer {
           new ProguardTextOutput(
               originalBuildTarget.withFlavors(PROGUARD_TEXT_OUTPUT_FLAVOR),
               nonPreDexedDexBuildable,
-              ruleFinder);
+              graphBuilder);
       graphBuilder.addToIndex(proguardTextOutput);
     }
 

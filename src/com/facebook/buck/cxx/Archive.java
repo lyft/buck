@@ -90,7 +90,6 @@ public class Archive extends ModernBuildRule<Archive.Impl> {
       BuildTarget target,
       ProjectFilesystem projectFilesystem,
       BuildRuleResolver resolver,
-      SourcePathRuleFinder ruleFinder,
       CxxPlatform platform,
       String outputFileName,
       ImmutableList<SourcePath> inputs,
@@ -98,10 +97,10 @@ public class Archive extends ModernBuildRule<Archive.Impl> {
     return new Archive(
         target,
         projectFilesystem,
-        ruleFinder,
-        platform.getAr().resolve(resolver),
+        resolver,
+        platform.getAr().resolve(resolver, target.getTargetConfiguration()),
         platform.getArflags(),
-        platform.getRanlib().map(r -> r.resolve(resolver)),
+        platform.getRanlib().map(r -> r.resolve(resolver, target.getTargetConfiguration())),
         platform.getRanlibflags(),
         platform.getArchiveContents(),
         outputFileName,
@@ -167,8 +166,7 @@ public class Archive extends ModernBuildRule<Archive.Impl> {
                   archiverFlags,
                   archiver.getArchiveOptions(contents == ArchiveContents.THIN),
                   outputPath,
-                  inputs
-                      .stream()
+                  inputs.stream()
                       .map(resolver::getRelativePath)
                       .collect(ImmutableList.toImmutableList()),
                   archiver,

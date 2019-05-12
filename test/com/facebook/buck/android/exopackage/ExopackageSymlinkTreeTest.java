@@ -20,12 +20,8 @@ import com.facebook.buck.android.AssumeAndroidPlatform;
 import com.facebook.buck.android.exopackage.ExopackageInfo.DexInfo;
 import com.facebook.buck.android.exopackage.ExopackageInfo.NativeLibsInfo;
 import com.facebook.buck.android.exopackage.ExopackageInfo.ResourcesInfo;
-import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.PathSourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.TestProjectFilesystems;
 import com.facebook.buck.testutil.TemporaryPaths;
@@ -48,20 +44,15 @@ public class ExopackageSymlinkTreeTest {
   public ProjectWorkspace workspace;
 
   public ProjectFilesystem filesystem;
-  private SourcePathResolver pathResolver;
 
   @Before
-  public void setUp() throws InterruptedException, IOException {
+  public void setUp() throws IOException {
     AssumeAndroidPlatform.assumeSdkIsAvailable();
     workspace =
         TestDataHelper.createProjectWorkspaceForScenario(
             new ModuleExoHelperTest(), "exo_symlink_tree", tmpFolder);
     workspace.setUp();
     filesystem = TestProjectFilesystems.createProjectFilesystem(workspace.getDestPath());
-
-    BuildRuleResolver resolver = new TestActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(resolver);
-    pathResolver = DefaultSourcePathResolver.from(ruleFinder);
   }
 
   @Test
@@ -71,7 +62,11 @@ public class ExopackageSymlinkTreeTest {
 
     ExopackageInfo exopackageInfo = buildExoInfo(tmpFolder.getRoot());
     ExopackageSymlinkTree.createSymlinkTree(
-        "com.example", exopackageInfo, pathResolver, filesystem, outputSymlinkRoot);
+        "com.example",
+        exopackageInfo,
+        new TestActionGraphBuilder().getSourcePathResolver(),
+        filesystem,
+        outputSymlinkRoot);
 
     verifyMetadataBasedOutput(
         outputSymlinkRoot.resolve("secondary-dex"), metadataLine -> metadataLine.split(" ")[0]);

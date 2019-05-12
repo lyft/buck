@@ -23,6 +23,9 @@ import static org.junit.Assert.assertTrue;
 import com.facebook.buck.core.cell.Cell;
 import com.facebook.buck.core.cell.TestCellBuilder;
 import com.facebook.buck.core.description.arg.CommonDescriptionArg;
+import com.facebook.buck.core.graph.transformation.executor.DepsAwareExecutor;
+import com.facebook.buck.core.graph.transformation.executor.impl.DefaultDepsAwareExecutor;
+import com.facebook.buck.core.graph.transformation.model.ComputeResult;
 import com.facebook.buck.core.model.BuildFileTree;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
@@ -40,10 +43,12 @@ import com.facebook.buck.io.file.MorePaths;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
 import com.facebook.buck.parser.Parser;
+import com.facebook.buck.parser.ParserConfig;
 import com.facebook.buck.parser.TestParserFactory;
 import com.facebook.buck.parser.TestPerBuildStateFactory;
 import com.facebook.buck.parser.exceptions.NoSuchBuildTargetException;
 import com.facebook.buck.rules.coercer.DefaultTypeCoercerFactory;
+import com.facebook.buck.testutil.CloseableResource;
 import com.facebook.buck.util.RichStream;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -53,10 +58,15 @@ import java.nio.file.Path;
 import java.util.function.Function;
 import org.immutables.value.Value;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 
 /** Reports targets that own a specified list of files. */
 public class OwnersReportTest {
+
+  @Rule
+  public CloseableResource<DepsAwareExecutor<? super ComputeResult, ?>> executor =
+      CloseableResource.of(() -> DefaultDepsAwareExecutor.of(4));
 
   public static class FakeRuleDescription
       implements DescriptionWithTargetGraph<FakeRuleDescriptionArg> {
@@ -255,11 +265,11 @@ public class OwnersReportTest {
     String input = "java/some_file";
 
     Cell cell = new TestCellBuilder().setFilesystem(filesystem).build();
-    Parser parser = TestParserFactory.create(cell);
+    Parser parser = TestParserFactory.create(executor.get(), cell);
     OwnersReport report =
         OwnersReport.builder(
                 cell,
-                TestParserFactory.create(cell),
+                TestParserFactory.create(executor.get(), cell),
                 TestPerBuildStateFactory.create(parser, cell),
                 EmptyTargetConfiguration.INSTANCE)
             .build(getBuildFileTrees(cell), ImmutableSet.of(input));
@@ -269,14 +279,13 @@ public class OwnersReportTest {
   }
 
   private ImmutableMap<Cell, BuildFileTree> getBuildFileTrees(Cell rootCell) {
-    return rootCell
-        .getAllCells()
-        .stream()
+    return rootCell.getAllCells().stream()
         .collect(
             ImmutableMap.toImmutableMap(
                 Function.identity(),
                 cell ->
                     new FilesystemBackedBuildFileTree(
-                        cell.getFilesystem(), cell.getBuildFileName())));
+                        cell.getFilesystem(),
+                        cell.getBuckConfigView(ParserConfig.class).getBuildFileName())));
   }
 }

@@ -18,8 +18,11 @@ package com.facebook.buck.parser;
 import com.facebook.buck.core.cell.Cell;
 import com.facebook.buck.core.cell.CellPathResolver;
 import com.facebook.buck.core.description.arg.HasTargetCompatibleWith;
+import com.facebook.buck.core.description.attr.ImplicitFlavorsInferringDescription;
 import com.facebook.buck.core.exceptions.HumanReadableException;
 import com.facebook.buck.core.model.BuildTarget;
+import com.facebook.buck.core.model.Flavor;
+import com.facebook.buck.core.model.HasDefaultFlavors;
 import com.facebook.buck.core.model.RuleType;
 import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.model.platform.Platform;
@@ -28,17 +31,21 @@ import com.facebook.buck.core.select.SelectableConfigurationContext;
 import com.facebook.buck.core.select.SelectorList;
 import com.facebook.buck.core.select.SelectorListResolver;
 import com.facebook.buck.core.select.impl.SelectorListFactory;
+import com.facebook.buck.core.util.log.Logger;
 import com.facebook.buck.event.BuckEventBus;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.parser.TargetSpecResolver.TargetNodeFilterForSpecResolver;
 import com.facebook.buck.parser.TargetSpecResolver.TargetNodeProviderForSpecResolver;
 import com.facebook.buck.parser.api.BuildFileManifest;
 import com.facebook.buck.parser.exceptions.BuildFileParseException;
+import com.facebook.buck.parser.exceptions.BuildTargetException;
 import com.facebook.buck.parser.syntax.ListWithSelects;
 import com.facebook.buck.rules.coercer.CoerceFailedException;
 import com.facebook.buck.rules.coercer.JsonTypeConcatenatingCoercerFactory;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.collect.Iterables;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -48,7 +55,6 @@ import java.util.Map;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.annotation.Nullable;
 
@@ -60,6 +66,8 @@ import javax.annotation.Nullable;
  * conditions in {@code select} statements.
  */
 class ParserWithConfigurableAttributes extends AbstractParser {
+
+  private static final Logger LOG = Logger.get(ParserWithConfigurableAttributes.class);
 
   private final TargetSpecResolver targetSpecResolver;
 
@@ -73,6 +81,53 @@ class ParserWithConfigurableAttributes extends AbstractParser {
     this.targetSpecResolver = targetSpecResolver;
   }
 
+  static TargetNodeProviderForSpecResolver<TargetNode<?>> createTargetNodeProviderForSpecResolver(
+      PerBuildState state) {
+    return new TargetNodeProviderForSpecResolver<TargetNode<?>>() {
+      @Override
+      public ListenableFuture<TargetNode<?>> getTargetNodeJob(BuildTarget target)
+          throws BuildTargetException {
+        return state.getTargetNodeJob(target);
+      }
+
+      @Override
+      public ListenableFuture<ImmutableList<TargetNode<?>>> getAllTargetNodesJob(
+          Cell cell, Path buildFile, TargetConfiguration targetConfiguration)
+          throws BuildTargetException {
+        return state.getAllTargetNodesJob(cell, buildFile, targetConfiguration);
+      }
+    };
+  }
+
+  @VisibleForTesting
+  static BuildTarget applyDefaultFlavors(
+      BuildTarget target,
+      TargetNode<?> targetNode,
+      TargetNodeSpec.TargetType targetType,
+      ParserConfig.ApplyDefaultFlavorsMode applyDefaultFlavorsMode) {
+    if (target.isFlavored()
+        || (targetType == TargetNodeSpec.TargetType.MULTIPLE_TARGETS
+            && applyDefaultFlavorsMode == ParserConfig.ApplyDefaultFlavorsMode.SINGLE)
+        || applyDefaultFlavorsMode == ParserConfig.ApplyDefaultFlavorsMode.DISABLED) {
+      return target;
+    }
+
+    ImmutableSortedSet<Flavor> defaultFlavors = ImmutableSortedSet.of();
+    if (targetNode.getConstructorArg() instanceof HasDefaultFlavors) {
+      defaultFlavors = ((HasDefaultFlavors) targetNode.getConstructorArg()).getDefaultFlavors();
+      LOG.debug("Got default flavors %s from args of %s", defaultFlavors, target);
+    }
+
+    if (targetNode.getDescription() instanceof ImplicitFlavorsInferringDescription) {
+      defaultFlavors =
+          ((ImplicitFlavorsInferringDescription) targetNode.getDescription())
+              .addImplicitFlavors(defaultFlavors);
+      LOG.debug("Got default flavors %s from description of %s", defaultFlavors, target);
+    }
+
+    return target.withFlavors(defaultFlavors);
+  }
+
   /**
    * This implementation collects raw attributes of a target node and resolves configurable
    * attributes.
@@ -84,7 +139,11 @@ class ParserWithConfigurableAttributes extends AbstractParser {
     BuildTarget buildTarget = targetNode.getBuildTarget();
     Cell owningCell = cell.getCell(buildTarget);
     BuildFileManifest buildFileManifest =
-        getTargetNodeRawAttributes(state, owningCell, cell.getAbsolutePathToBuildFile(buildTarget));
+        getTargetNodeRawAttributes(
+            state,
+            owningCell,
+            cell.getBuckConfigView(ParserConfig.class)
+                .getAbsolutePathToBuildFile(cell, buildTarget.getUnconfiguredBuildTargetView()));
     return getTargetFromManifest(state, cell, targetNode, buildFileManifest);
   }
 
@@ -94,7 +153,10 @@ class ParserWithConfigurableAttributes extends AbstractParser {
     Cell owningCell = cell.getCell(targetNode.getBuildTarget());
     ListenableFuture<BuildFileManifest> buildFileManifestFuture =
         state.getBuildFileManifestJob(
-            owningCell, cell.getAbsolutePathToBuildFile(targetNode.getBuildTarget()));
+            owningCell,
+            cell.getBuckConfigView(ParserConfig.class)
+                .getAbsolutePathToBuildFile(
+                    cell, targetNode.getBuildTarget().getUnconfiguredBuildTargetView()));
     return Futures.transform(
         buildFileManifestFuture,
         buildFileManifest -> getTargetFromManifest(state, cell, targetNode, buildFileManifest),
@@ -121,9 +183,7 @@ class ParserWithConfigurableAttributes extends AbstractParser {
 
     convertedAttributes.put(
         InternalTargetAttributeNames.DIRECT_DEPENDENCIES,
-        targetNode
-            .getParseDeps()
-            .stream()
+        targetNode.getParseDeps().stream()
             .map(Object::toString)
             .collect(ImmutableList.toImmutableList()));
     return convertedAttributes;
@@ -138,7 +198,8 @@ class ParserWithConfigurableAttributes extends AbstractParser {
         DefaultSelectableConfigurationContext.of(
             cell.getBuckConfig(),
             stateWithConfigurableAttributes.getConstraintResolver(),
-            stateWithConfigurableAttributes.getTargetPlatform().get());
+            buildTarget.getTargetConfiguration(),
+            stateWithConfigurableAttributes.getTargetPlatformResolver());
 
     SortedMap<String, Object> convertedAttributes = new TreeMap<>();
 
@@ -217,13 +278,15 @@ class ParserWithConfigurableAttributes extends AbstractParser {
   private Stream<TargetNode<?>> filterIncompatibleTargetNodes(
       PerBuildStateWithConfigurableAttributes stateWithConfigurableAttributes,
       Stream<TargetNode<?>> targetNodes) {
-    Platform targetPlatform = stateWithConfigurableAttributes.getTargetPlatform().get();
     return targetNodes.filter(
         targetNode ->
             TargetCompatibilityChecker.targetNodeArgMatchesPlatform(
                 stateWithConfigurableAttributes.getConstraintResolver(),
+                stateWithConfigurableAttributes.getPlatformResolver(),
                 targetNode.getConstructorArg(),
-                targetPlatform));
+                stateWithConfigurableAttributes
+                    .getTargetPlatformResolver()
+                    .getTargetPlatform(targetNode.getBuildTarget().getTargetConfiguration())));
   }
 
   @Override
@@ -240,7 +303,7 @@ class ParserWithConfigurableAttributes extends AbstractParser {
           (spec, nodes) -> spec.filter(nodes);
 
       TargetNodeProviderForSpecResolver<TargetNode<?>> targetNodeProvider =
-          DefaultParser.createTargetNodeProviderForSpecResolver(state);
+          createTargetNodeProviderForSpecResolver(state);
 
       ImmutableList<ImmutableSet<BuildTarget>> buildTargets =
           targetSpecResolver.resolveTargetSpecs(
@@ -248,7 +311,7 @@ class ParserWithConfigurableAttributes extends AbstractParser {
               specs,
               targetConfiguration,
               (buildTarget, targetNode, targetType) ->
-                  DefaultParser.applyDefaultFlavors(
+                  applyDefaultFlavors(
                       buildTarget,
                       targetNode,
                       targetType,
@@ -259,8 +322,7 @@ class ParserWithConfigurableAttributes extends AbstractParser {
       if (!state.getParsingContext().excludeUnsupportedTargets()) {
         return buildTargets;
       }
-      return buildTargets
-          .stream()
+      return buildTargets.stream()
           .map(
               targets ->
                   filterIncompatibleTargetNodes(state, targets.stream().map(state::getTargetNode))
@@ -282,7 +344,7 @@ class ParserWithConfigurableAttributes extends AbstractParser {
         (PerBuildStateWithConfigurableAttributes) state;
 
     TargetNodeProviderForSpecResolver<TargetNode<?>> targetNodeProvider =
-        DefaultParser.createTargetNodeProviderForSpecResolver(state);
+        createTargetNodeProviderForSpecResolver(state);
 
     TargetNodeFilterForSpecResolver<TargetNode<?>> targetNodeFilter =
         (spec, nodes) -> spec.filter(nodes);
@@ -299,7 +361,7 @@ class ParserWithConfigurableAttributes extends AbstractParser {
             targetNodeSpecs,
             targetConfiguration,
             (buildTarget, targetNode, targetType) ->
-                DefaultParser.applyDefaultFlavors(
+                applyDefaultFlavors(
                     buildTarget,
                     targetNode,
                     targetType,
@@ -329,25 +391,46 @@ class ParserWithConfigurableAttributes extends AbstractParser {
     PerBuildStateWithConfigurableAttributes stateWithConfigurableAttributes =
         (PerBuildStateWithConfigurableAttributes) state;
 
-    Platform targetPlatform = stateWithConfigurableAttributes.getTargetPlatform().get();
+    Platform targetPlatform =
+        stateWithConfigurableAttributes
+            .getTargetPlatformResolver()
+            .getTargetPlatform(targetNode.getBuildTarget().getTargetConfiguration());
     if (!TargetCompatibilityChecker.targetNodeArgMatchesPlatform(
         stateWithConfigurableAttributes.getConstraintResolver(),
+        stateWithConfigurableAttributes.getPlatformResolver(),
         targetNode.getConstructorArg(),
         targetPlatform)) {
       HasTargetCompatibleWith argWithTargetCompatible =
           (HasTargetCompatibleWith) targetNode.getConstructorArg();
 
-      String constraints =
-          argWithTargetCompatible
-              .getTargetCompatibleWith()
-              .stream()
-              .map(BuildTarget::getFullyQualifiedName)
-              .collect(Collectors.joining(System.lineSeparator()));
+      StringBuilder diagnostics = new StringBuilder();
+      if (!argWithTargetCompatible.getTargetCompatibleWith().isEmpty()) {
+        diagnostics.append("%nTarget constraints:%n");
+        argWithTargetCompatible
+            .getTargetCompatibleWith()
+            .forEach(
+                target ->
+                    diagnostics
+                        .append(target.getFullyQualifiedName())
+                        .append(System.lineSeparator()));
+      }
+      if (!argWithTargetCompatible.getTargetCompatiblePlatforms().isEmpty()) {
+        diagnostics.append("%nTarget compatible with platforms:%n");
+        argWithTargetCompatible
+            .getTargetCompatiblePlatforms()
+            .forEach(
+                target ->
+                    diagnostics
+                        .append(target.getFullyQualifiedName())
+                        .append(System.lineSeparator()));
+      }
 
       throw new HumanReadableException(
-          "Build target %s is restricted to constraints in \"target_compatible_with\" "
-              + "that do not match the target platform %s.%nTarget constraints:%n%s",
-          targetNode.getBuildTarget(), targetPlatform, constraints);
+          "Build target %s is restricted to constraints in \"target_compatible_with\""
+              + " and \"target_compatible_platforms\" that do not match the target platform %s."
+              + diagnostics,
+          targetNode.getBuildTarget(),
+          targetPlatform);
     }
   }
 }

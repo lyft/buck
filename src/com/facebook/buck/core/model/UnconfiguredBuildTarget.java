@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-present Facebook, Inc.
+ * Copyright 2014-present Facebook, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may
  * not use this file except in compliance with the License. You may obtain
@@ -16,177 +16,139 @@
 
 package com.facebook.buck.core.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.google.common.base.Joiner;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ComparisonChain;
 import com.google.common.collect.ImmutableSortedSet;
-import java.nio.file.Path;
-import java.util.Optional;
-import java.util.Set;
-import javax.annotation.concurrent.ThreadSafe;
+import com.google.common.collect.Ordering;
+import org.immutables.value.Value;
 
 /**
- * Represents a build target without configuration.
+ * Data object that holds properties to uniquely identify a build target with flavors
  *
- * <p>This is indented to be used during early stages of parsing when information about
- * configuration is not available.
+ * <p>In other words, this represents a parsed representation of a build target with flavors but
+ * without configuration.
+ *
+ * <p>For example, a fully qualified target name like `cell//path/to:target#flavor1,flavor2` parses
+ * `cell` as a cell name, `//path/to` as a base name that corresponds to the real path to the build
+ * file that contains a target, `target` is a target name found in that build file and `flavor1` and
+ * 'flavor2' as flavors as applied to this build target.
+ *
+ * <p>Flavors are a legacy way to configure a build target so it can mutate its behavior based on
+ * user-provided input or client settings, like target or running platforms. Flavors should not be
+ * used anymore, instead you want to use a {@link BuildTarget} along with passed {@link
+ * TargetConfiguration}.
  */
-@ThreadSafe
-public interface UnconfiguredBuildTarget extends Comparable<UnconfiguredBuildTarget> {
+@Value.Immutable(builder = false, copy = false, prehash = true)
+@JsonDeserialize
+public abstract class UnconfiguredBuildTarget
+    implements Comparable<UnconfiguredBuildTarget>, QueryTarget {
 
-  /** A build target without flavors. */
-  UnflavoredBuildTarget getUnflavoredBuildTarget();
+  private static final Ordering<Iterable<Flavor>> LEXICOGRAPHICAL_ORDERING =
+      Ordering.<Flavor>natural().lexicographical();
+
+  /** Flavors passed to this object should be sorted using this ordering */
+  public static final Ordering<Flavor> FLAVOR_ORDERING = Ordering.natural();
+
+  /** Indicates empty set of flavors */
+  public static final ImmutableSortedSet<Flavor> NO_FLAVORS =
+      ImmutableSortedSet.orderedBy(FLAVOR_ORDERING).build();
+
+  private static final String BUILD_TARGET_PREFIX = "//";
+
+  /** Name of the cell that current build target belongs to */
+  @Value.Parameter
+  @JsonProperty("cell")
+  public abstract String getCell();
+
+  /**
+   * Base name of build target, i.e. part of fully qualified name before the colon If this build
+   * target were //third_party/java/guava:guava-latest, then this would return
+   * "//third_party/java/guava"
+   */
+  @Value.Parameter
+  @JsonProperty("baseName")
+  public abstract String getBaseName();
+
+  /**
+   * Name of the build target, i.e. part of fully qualified name after the colon If this build
+   * target were //third_party/java/guava:guava-latest, then this would return "guava-latest"
+   */
+  @Value.Parameter
+  @JsonProperty("name")
+  public abstract String getName();
 
   /** Set of flavors used with that build target. */
-  ImmutableSortedSet<Flavor> getFlavors();
+  @Value.Parameter
+  @JsonProperty("flavors")
+  public abstract ImmutableSortedSet<Flavor> getFlavors();
+
+  /** Validation for flavor ordering */
+  @Value.Check
+  protected void check() {
+    // this check is not always required but may be expensive
+    // TODO(buck_team): only validate data if provided as a user input
+
+    Preconditions.checkArgument(
+        getBaseName().startsWith(BUILD_TARGET_PREFIX),
+        "baseName must start with %s but was %s",
+        BUILD_TARGET_PREFIX,
+        getBaseName());
+
+    // BaseName may contain backslashes, which are the path separator, so not permitted.
+    Preconditions.checkArgument(
+        !getBaseName().contains("\\"), "baseName may not contain backslashes.");
+
+    Preconditions.checkArgument(
+        !getName().contains("#"), "Build target name cannot contain '#' but was: %s.", getName());
+
+    Preconditions.checkArgument(
+        getFlavors().comparator() == FLAVOR_ORDERING,
+        "Flavors must be ordered using natural ordering.");
+  }
 
   /**
-   * The canonical name of the cell specified in the build target.
-   *
-   * <p>Note that this name can be different from the name specified on the name. See {@link
-   * com.facebook.buck.core.cell.CellPathResolver#getCanonicalCellName} for more information.
+   * Fully qualified name of unconfigured build target, for example
+   * cell//some/target:name#flavor1,flavor2
    */
-  Optional<String> getCell();
+  @Value.Lazy
+  @JsonIgnore
+  public String getFullyQualifiedName() {
+    return getCell() + getBaseName() + ":" + getName() + getFlavorPostfix();
+  }
 
-  /**
-   * The path to the root of the cell where this build target is used.
-   *
-   * <p>Note that the same build target name can reference different build targets when used in
-   * different cells. For example, given a target name {@code external_cell//lib:target}, for a cell
-   * that maps {@code external_cell} to a cell with location {@code /cells/cell_a}, this build
-   * target would point to a target {@code //lib:target} in the {@code /cells/cell_a} cell (defined
-   * in a build file located in {@code /cells/cell_a/lib} folder. If another cell uses the same
-   * build target name, but points {@code external_cell} to a different cell, say {@code
-   * /cells/cell_b}, then this build target refers to a target {@code //lib:target} in the {@code
-   * /cells/cell_b} cell.
-   */
-  Path getCellPath();
+  @JsonIgnore
+  private String getFlavorPostfix() {
+    if (getFlavors().isEmpty()) {
+      return "";
+    }
+    return "#" + getFlavorsAsString();
+  }
 
-  /**
-   * Part of build target name the colon excluding cell name.
-   *
-   * <p>For example, for {@code cell//third_party/java/guava:guava} this returns {@code
-   * //third_party/java/guava}.
-   */
-  String getBaseName();
+  @JsonIgnore
+  private String getFlavorsAsString() {
+    return Joiner.on(",").join(getFlavors());
+  }
 
-  /**
-   * The path of the directory where this target is located.
-   *
-   * <p>For example, for {@code //third_party/java/guava:guava} this returns {@link Path} {@code
-   * third_party/java/guava}.
-   */
-  Path getBasePath();
+  @Override
+  public String toString() {
+    return getFullyQualifiedName();
+  }
 
-  /**
-   * The part of the build target name after the colon.
-   *
-   * <p>For example, for {@code //third_party/java/guava:guava-latest} this returns {@code
-   * guava-latest}.
-   */
-  String getShortName();
+  @Override
+  public int compareTo(UnconfiguredBuildTarget o) {
+    if (this == o) {
+      return 0;
+    }
 
-  /**
-   * The short name with flavors.
-   *
-   * <p>For example, for {@code //third_party/java/guava:guava-latest#flavor} this returns {@code
-   * guava-latest#flavor}.
-   */
-  String getShortNameAndFlavorPostfix();
-
-  /**
-   * The full name of the build target including the cell name and flavors.
-   *
-   * <p>For example, for {@code cell//third_party/java/guava:guava-latest#flavor} this returns
-   * {@code cell//third_party/java/guava:guava-latest#flavor}.
-   */
-  String getFullyQualifiedName();
-
-  /** Whether this target contains flavors. */
-  boolean isFlavored();
-
-  /**
-   * Verifies that this build target has no flavors.
-   *
-   * @return this build target
-   * @throws IllegalStateException if a build target has flavors
-   */
-  UnconfiguredBuildTarget assertUnflavored();
-
-  /**
-   * Creates a new build target by copying all of the information from this build target and
-   * replacing the short name with the given name.
-   *
-   * @param shortName short name of the new build target
-   */
-  UnconfiguredBuildTarget withShortName(String shortName);
-
-  /**
-   * Creates a new build target by copying all of the information from this build target and
-   * removing the provided flavors from the set of flavors in the new build target.
-   *
-   * @param flavors flavors to remove when creating a new build target
-   */
-  UnconfiguredBuildTarget withoutFlavors(Set<Flavor> flavors);
-
-  /**
-   * Creates a new build target by copying all of the information from this build target and
-   * removing the provided flavors from the set of flavors in the new build target.
-   *
-   * @param flavors flavors to remove when creating a new build target
-   */
-  UnconfiguredBuildTarget withoutFlavors(Flavor... flavors);
-
-  /**
-   * Creates a new build target by copying all of the information from this build target excluding
-   * flavors.
-   */
-  UnconfiguredBuildTarget withoutFlavors();
-
-  /**
-   * Creates a new build target by copying all of the information from this build target and using
-   * the provided flavors as flavors in the new build target.
-   *
-   * @param flavors flavors to use when creating a new build target
-   */
-  UnconfiguredBuildTarget withFlavors(Flavor... flavors);
-
-  /**
-   * Creates a new build target by copying all of the information from this build target and using
-   * the provided flavors as flavors in the new build target.
-   *
-   * @param flavors flavors to use when creating a new build target
-   */
-  UnconfiguredBuildTarget withFlavors(Iterable<? extends Flavor> flavors);
-
-  /**
-   * Creates a new build target by copying all of the information from this build target and
-   * appending the provided flavors to the set of flavors in the new build target.
-   *
-   * @param flavors flavors to append when creating a new build target
-   */
-  UnconfiguredBuildTarget withAppendedFlavors(Set<Flavor> flavors);
-
-  /**
-   * Creates a new build target by copying all of the information from this build target and
-   * appending the provided flavors to the set of flavors in the new build target.
-   *
-   * @param flavors flavors to append when creating a new build target
-   */
-  UnconfiguredBuildTarget withAppendedFlavors(Flavor... flavors);
-
-  /**
-   * Creates a new build target by using the provided {@link UnflavoredBuildTarget} and flavors from
-   * this build target.
-   */
-  UnconfiguredBuildTarget withUnflavoredBuildTarget(UnflavoredBuildTarget target);
-
-  /**
-   * Creates a new build target by copying all of the information from this build target and
-   * removing the name of the cell.
-   */
-  UnconfiguredBuildTarget withoutCell();
-
-  /**
-   * Creates {@link BuildTarget} by attaching {@link TargetConfiguration} to this unconfigured build
-   * target.
-   */
-  BuildTarget configure(TargetConfiguration targetConfiguration);
+    return ComparisonChain.start()
+        .compare(getCell(), o.getCell())
+        .compare(getBaseName(), o.getBaseName())
+        .compare(getName(), o.getName())
+        .compare(getFlavors(), o.getFlavors(), LEXICOGRAPHICAL_ORDERING)
+        .result();
+  }
 }

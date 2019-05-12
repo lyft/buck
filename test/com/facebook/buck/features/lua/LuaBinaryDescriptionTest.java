@@ -27,14 +27,11 @@ import com.facebook.buck.core.model.InternalFlavor;
 import com.facebook.buck.core.model.targetgraph.TargetGraph;
 import com.facebook.buck.core.model.targetgraph.TargetGraphFactory;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.impl.SymlinkTree;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.FakeSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.SourceWithFlags;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.impl.ToolchainProviderBuilder;
 import com.facebook.buck.core.toolchain.tool.Tool;
 import com.facebook.buck.core.toolchain.tool.impl.CommandTool;
@@ -42,7 +39,7 @@ import com.facebook.buck.core.toolchain.toolprovider.impl.ConstantToolProvider;
 import com.facebook.buck.cxx.CxxLibraryBuilder;
 import com.facebook.buck.cxx.CxxTestUtils;
 import com.facebook.buck.cxx.PrebuiltCxxLibraryBuilder;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatformUtils;
 import com.facebook.buck.cxx.toolchain.nativelink.NativeLinkStrategy;
 import com.facebook.buck.features.python.CxxPythonExtensionBuilder;
@@ -107,8 +104,6 @@ public class LuaBinaryDescriptionTest {
   @Test
   public void extensionOverride() {
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder();
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder));
     LuaBinary binary =
         new LuaBinaryBuilder(
                 BuildTargetFactory.newInstance("//:rule"),
@@ -116,7 +111,10 @@ public class LuaBinaryDescriptionTest {
             .setMainModule("main")
             .build(graphBuilder);
     assertThat(
-        pathResolver.getRelativePath(binary.getSourcePathToOutput()).toString(),
+        graphBuilder
+            .getSourcePathResolver()
+            .getRelativePath(binary.getSourcePathToOutput())
+            .toString(),
         Matchers.endsWith(".override"));
   }
 
@@ -318,9 +316,7 @@ public class LuaBinaryDescriptionTest {
     pythonLibraryBuilder.build(graphBuilder, filesystem, targetGraph);
     LuaBinary luaBinary = luaBinaryBuilder.build(graphBuilder, filesystem, targetGraph);
     assertThat(
-        luaBinary
-            .getRuntimeDeps(new SourcePathRuleFinder(graphBuilder))
-            .collect(ImmutableSet.toImmutableSet()),
+        luaBinary.getRuntimeDeps(graphBuilder).collect(ImmutableSet.toImmutableSet()),
         Matchers.hasItem(PythonBinaryDescription.getEmptyInitTarget(luaBinary.getBuildTarget())));
   }
 

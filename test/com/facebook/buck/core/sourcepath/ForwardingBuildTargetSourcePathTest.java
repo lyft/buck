@@ -21,11 +21,9 @@ import static org.junit.Assert.assertEquals;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.impl.FakeBuildRule;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -40,7 +38,7 @@ public class ForwardingBuildTargetSourcePathTest {
   @Before
   public void setUp() {
     graphBuilder = new TestActionGraphBuilder();
-    pathResolver = DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder));
+    pathResolver = graphBuilder.getSourcePathResolver();
   }
 
   @Test

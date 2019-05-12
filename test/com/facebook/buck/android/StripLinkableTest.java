@@ -19,9 +19,9 @@ import static org.junit.Assert.assertEquals;
 
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
-import com.facebook.buck.core.rules.AbstractBuildRuleResolver;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.SourcePathRuleFinder;
+import com.facebook.buck.core.rules.impl.AbstractBuildRuleResolver;
 import com.facebook.buck.core.rules.impl.FakeBuildRule;
 import com.facebook.buck.core.sourcepath.DefaultBuildTargetSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
@@ -52,13 +52,12 @@ public class StripLinkableTest {
 
     ProjectFilesystem filesystem = new FakeProjectFilesystem();
     SourcePathRuleFinder ruleFinder =
-        new SourcePathRuleFinder(
-            new AbstractBuildRuleResolver() {
-              @Override
-              public Optional<BuildRule> getRuleOptional(BuildTarget buildTarget) {
-                return Optional.ofNullable(ruleMap.get(buildTarget));
-              }
-            });
+        new AbstractBuildRuleResolver() {
+          @Override
+          public Optional<BuildRule> getRuleOptional(BuildTarget buildTarget) {
+            return Optional.ofNullable(ruleMap.get(buildTarget));
+          }
+        };
 
     SourcePath libraryPath = DefaultBuildTargetSourcePath.of(libraryTarget);
     Tool stripTool = new HashedFileTool(DefaultBuildTargetSourcePath.of(toolTarget));

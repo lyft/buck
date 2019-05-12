@@ -20,7 +20,6 @@ import com.facebook.buck.core.build.execution.context.ExecutionContext;
 import com.facebook.buck.core.cell.Cell;
 import com.facebook.buck.core.cell.CellConfig;
 import com.facebook.buck.core.cell.CellName;
-import com.facebook.buck.core.cell.CellPathResolver;
 import com.facebook.buck.core.config.BuckConfig;
 import com.facebook.buck.core.exceptions.HumanReadableException;
 import com.facebook.buck.core.model.BuildTarget;
@@ -44,6 +43,7 @@ import com.facebook.buck.rules.keys.RuleKeyCacheScope;
 import com.facebook.buck.rules.keys.TrackedRuleKeyCache;
 import com.facebook.buck.support.cli.args.BuckCellArg;
 import com.facebook.buck.support.cli.args.GlobalCliOptions;
+import com.facebook.buck.support.cli.config.CliConfig;
 import com.facebook.buck.test.config.TestBuckConfig;
 import com.facebook.buck.util.DefaultProcessExecutor;
 import com.facebook.buck.util.ExitCode;
@@ -291,6 +291,16 @@ public abstract class AbstractCommand extends CommandWithPluginManager {
     };
   }
 
+  /** Helper for printing warnings to the console. */
+  protected void printWarning(CommandRunnerParams params, String format, Object... args) {
+    printWarning(params, String.format(format, args));
+  }
+
+  /** Helper for printing warnings to the console. */
+  protected void printWarning(CommandRunnerParams params, String s) {
+    params.getBuckEventBus().post(ConsoleEvent.warning(s));
+  }
+
   public abstract ExitCode runWithoutHelp(CommandRunnerParams params) throws Exception;
 
   protected CommandLineBuildTargetNormalizer getCommandLineBuildTargetNormalizer(
@@ -303,12 +313,12 @@ public abstract class AbstractCommand extends CommandWithPluginManager {
   }
 
   ImmutableList<TargetNodeSpec> parseArgumentsAsTargetNodeSpecs(
-      CellPathResolver cellPathResolver, BuckConfig config, Iterable<String> targetsAsArgs) {
+      Cell owningCell, BuckConfig config, Iterable<String> targetsAsArgs) {
     ImmutableList.Builder<TargetNodeSpec> specs = ImmutableList.builder();
     CommandLineTargetNodeSpecParser parser =
         new CommandLineTargetNodeSpecParser(config, new BuildTargetPatternTargetNodeParser());
     for (String arg : targetsAsArgs) {
-      specs.addAll(parser.parse(cellPathResolver, arg));
+      specs.addAll(parser.parse(owningCell, arg));
     }
     return specs.build();
   }
@@ -363,7 +373,8 @@ public abstract class AbstractCommand extends CommandWithPluginManager {
             params.getBuckConfig(),
             params.getTypeCoercerFactory(),
             params.getUnconfiguredBuildTargetFactory(),
-            targetGraphAndBuildTargets);
+            targetGraphAndBuildTargets,
+            params.getTargetConfiguration());
   }
 
   @Override
@@ -410,8 +421,7 @@ public abstract class AbstractCommand extends CommandWithPluginManager {
       CommandRunnerParams params, List<String> arguments) {
     UnconfiguredBuildTargetFactory unconfiguredBuildTargetFactory =
         params.getUnconfiguredBuildTargetFactory();
-    return getCommandLineBuildTargetNormalizer(params.getBuckConfig())
-        .normalizeAll(arguments)
+    return getCommandLineBuildTargetNormalizer(params.getBuckConfig()).normalizeAll(arguments)
         .stream()
         .map(
             input ->
@@ -556,8 +566,17 @@ public abstract class AbstractCommand extends CommandWithPluginManager {
       builder.put(CellName.ALL_CELLS_SPECIAL_NAME, "cache", "mode", "");
     }
 
+    addCommandSpecificConfigOverrides(builder);
+
     return builder.build();
   }
+
+  /**
+   * Injection point for commands to add config overrides. Adding anything here will likely
+   * invalidate the @{link BuckGlobalState} and so it should be used extremely sparingly.
+   */
+  @SuppressWarnings("unused")
+  protected void addCommandSpecificConfigOverrides(CellConfig.Builder builder) {}
 
   @Override
   public ParsingContext createParsingContext(Cell cell, ListeningExecutorService executor) {

@@ -16,21 +16,24 @@
 
 package com.facebook.buck.rules.modern.impl;
 
+import com.facebook.buck.core.exceptions.BuckUncheckedExecutionException;
 import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.model.impl.DefaultTargetConfiguration;
+import com.facebook.buck.core.model.impl.HostTargetConfiguration;
 import com.facebook.buck.core.rulekey.AddsToRuleKey;
-import com.facebook.buck.core.rules.modern.annotations.CustomFieldBehavior;
+import com.facebook.buck.core.rulekey.CustomFieldBehaviorTag;
 import com.facebook.buck.rules.modern.ClassInfo;
+import com.facebook.buck.rules.modern.Serializer;
 import com.facebook.buck.rules.modern.ValueTypeInfo;
 import com.facebook.buck.rules.modern.ValueVisitor;
-import com.facebook.buck.util.exceptions.BuckUncheckedExecutionException;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.collect.ImmutableSortedSet;
 import java.lang.reflect.Field;
+import java.util.List;
 import java.util.Map.Entry;
 import java.util.Optional;
 import javax.annotation.Nullable;
@@ -94,7 +97,7 @@ public abstract class AbstractValueVisitor<E extends Exception> implements Value
       Field field,
       T value,
       ValueTypeInfo<T> valueTypeInfo,
-      Optional<CustomFieldBehavior> customBehavior)
+      List<Class<? extends CustomFieldBehaviorTag>> customBehavior)
       throws E {
     try {
       valueTypeInfo.visit(value, this);
@@ -159,9 +162,11 @@ public abstract class AbstractValueVisitor<E extends Exception> implements Value
   @Override
   public void visitTargetConfiguration(TargetConfiguration value) throws E {
     if (value instanceof EmptyTargetConfiguration) {
-      visitSimple(Boolean.TRUE);
+      visitSimple(Serializer.TARGET_CONFIGURATION_TYPE_EMPTY);
+    } else if (value instanceof HostTargetConfiguration) {
+      visitSimple(Serializer.TARGET_CONFIGURATION_TYPE_HOST);
     } else if (value instanceof DefaultTargetConfiguration) {
-      visitSimple(Boolean.FALSE);
+      visitSimple(Serializer.TARGET_CONFIGURATION_TYPE_DEFAULT);
       visitSimple(((DefaultTargetConfiguration) value).getTargetPlatform().getFullyQualifiedName());
     } else {
       throw new IllegalArgumentException("Cannot visit target configuration: " + value);

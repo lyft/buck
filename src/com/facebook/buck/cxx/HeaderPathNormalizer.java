@@ -151,9 +151,7 @@ class HeaderPathNormalizer {
           MorePaths.splitOnCommonPrefix(headerMap.keySet());
       Optional<Pair<Path, ImmutableList<Path>>> vals =
           MorePaths.splitOnCommonPrefix(
-              headerMap
-                  .values()
-                  .stream()
+              headerMap.values().stream()
                   .map(pathResolver::getRelativePath)
                   .collect(Collectors.toList()));
       if (keys.isPresent()
@@ -194,10 +192,6 @@ class HeaderPathNormalizer {
     }
 
     public Builder addPrefixHeader(SourcePath sourcePath) {
-      return addHeader(sourcePath);
-    }
-
-    public Builder addBridgingHeader(SourcePath sourcePath) {
       return addHeader(sourcePath);
     }
 

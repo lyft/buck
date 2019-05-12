@@ -27,9 +27,6 @@ import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.targetgraph.TargetGraphAndBuildTargets;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.event.ConsoleEvent;
 import com.facebook.buck.parser.SpeculativeParsing;
 import com.facebook.buck.parser.exceptions.BuildFileParseException;
@@ -105,9 +102,7 @@ public class UninstallCommand extends AbstractCommand {
                       .withExcludeUnsupportedTargets(false)
                       .withSpeculativeParsing(SpeculativeParsing.ENABLED),
                   parseArgumentsAsTargetNodeSpecs(
-                      params.getCell().getCellPathResolver(),
-                      params.getBuckConfig(),
-                      getArguments()),
+                      params.getCell(), params.getBuckConfig(), getArguments()),
                   params.getTargetConfiguration());
       buildTargets = result.getBuildTargets();
       graphBuilder =
@@ -145,10 +140,9 @@ public class UninstallCommand extends AbstractCommand {
     AndroidDevicesHelper adbHelper = getExecutionContext().getAndroidDevicesHelper().get();
 
     // Find application package name from manifest and uninstall from matching devices.
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder));
     String appId =
-        AdbHelper.tryToExtractPackageNameFromManifest(pathResolver, hasInstallableApk.getApkInfo());
+        AdbHelper.tryToExtractPackageNameFromManifest(
+            graphBuilder.getSourcePathResolver(), hasInstallableApk.getApkInfo());
     adbHelper.uninstallApp(appId, uninstallOptions().shouldKeepUserData());
     return ExitCode.SUCCESS;
   }

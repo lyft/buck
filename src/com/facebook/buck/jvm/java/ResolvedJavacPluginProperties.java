@@ -18,7 +18,7 @@ package com.facebook.buck.jvm.java;
 
 import com.facebook.buck.core.rulekey.AddToRuleKey;
 import com.facebook.buck.core.rulekey.AddsToRuleKey;
-import com.facebook.buck.core.rules.modern.annotations.CustomFieldBehavior;
+import com.facebook.buck.core.rulekey.CustomFieldBehavior;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
@@ -66,9 +66,7 @@ public class ResolvedJavacPluginProperties implements AddsToRuleKey {
   public URL[] getClasspath(SourcePathResolver resolver, ProjectFilesystem filesystem) {
     return classpathSupplier.get(
         () ->
-            inner
-                .getClasspathEntries()
-                .stream()
+            inner.getClasspathEntries().stream()
                 .map(resolver::getAbsolutePath)
                 .map(filesystem::resolve)
                 .map(Path::toUri)
@@ -106,8 +104,7 @@ public class ResolvedJavacPluginProperties implements AddsToRuleKey {
       SourcePathResolver resolver,
       ProjectFilesystem filesystem,
       ImmutableList<ResolvedJavacPluginProperties> resolvedProperties) {
-    return resolvedProperties
-        .stream()
+    return resolvedProperties.stream()
         .map(properties -> properties.getClasspath(resolver, filesystem))
         .flatMap(Arrays::stream)
         .distinct()

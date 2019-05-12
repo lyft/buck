@@ -19,9 +19,7 @@ package com.facebook.buck.cxx.toolchain;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
 import com.facebook.buck.cxx.toolchain.linker.Linker;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.rules.args.Arg;
@@ -35,8 +33,6 @@ public interface SharedLibraryInterfaceFactory {
       BuildTarget target,
       ProjectFilesystem projectFilesystem,
       BuildRuleResolver resolver,
-      SourcePathResolver pathResolver,
-      SourcePathRuleFinder ruleFinder,
       CxxPlatform cxxPlatform,
       SourcePath library);
 
@@ -45,11 +41,7 @@ public interface SharedLibraryInterfaceFactory {
       BuildTarget target,
       ProjectFilesystem projectFilesystem,
       BuildRuleResolver resolver,
-      SourcePathResolver pathResolver,
-      SourcePathRuleFinder ruleFinder,
       String libName,
       Linker linker,
       ImmutableList<Arg> args);
-
-  Iterable<BuildTarget> getParseTimeDeps();
 }

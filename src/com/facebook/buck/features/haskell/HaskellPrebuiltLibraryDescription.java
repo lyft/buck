@@ -19,15 +19,14 @@ package com.facebook.buck.features.haskell;
 import com.facebook.buck.core.description.arg.CommonDescriptionArg;
 import com.facebook.buck.core.description.arg.HasDeclaredDeps;
 import com.facebook.buck.core.model.BuildTarget;
+import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.model.targetgraph.BuildRuleCreationContextWithTargetGraph;
 import com.facebook.buck.core.model.targetgraph.DescriptionWithTargetGraph;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
 import com.facebook.buck.cxx.CxxHeadersDir;
 import com.facebook.buck.cxx.CxxPreprocessables;
@@ -132,22 +131,24 @@ public class HaskellPrebuiltLibraryDescription
           CxxPlatform cxxPlatform,
           Linker.LinkableDepType type,
           boolean forceLinkWhole,
-          ActionGraphBuilder graphBuilder) {
+          ActionGraphBuilder graphBuilder,
+          TargetConfiguration targetConfiguration) {
         NativeLinkableInput.Builder builder = NativeLinkableInput.builder();
         builder.addAllArgs(StringArg.from(args.getExportedLinkerFlags()));
         if (type == Linker.LinkableDepType.SHARED) {
           builder.addAllArgs(SourcePathArg.from(args.getSharedLibs().values()));
         } else {
-          Linker linker = cxxPlatform.getLd().resolve(resolver);
+          Linker linker = cxxPlatform.getLd().resolve(resolver, targetConfiguration);
           ImmutableList<Arg> libArgs =
               SourcePathArg.from(
                   args.isEnableProfiling() ? args.getProfiledStaticLibs() : args.getStaticLibs());
           if (forceLinkWhole) {
-            DefaultSourcePathResolver pathResolver =
-                DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder));
             libArgs =
                 RichStream.from(libArgs)
-                    .flatMap(lib -> RichStream.from(linker.linkWhole(lib, pathResolver)))
+                    .flatMap(
+                        lib ->
+                            RichStream.from(
+                                linker.linkWhole(lib, graphBuilder.getSourcePathResolver())))
                     .toImmutableList();
           }
           builder.addAllArgs(libArgs);

@@ -46,10 +46,10 @@ import com.facebook.buck.util.MoreSuppliers;
 import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSortedSet;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import java.util.Optional;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 import org.immutables.value.Value;
 
 /** Description for kotlin_test. */
@@ -62,7 +62,6 @@ public class KotlinTestDescription
   private final Supplier<JavaOptions> javaOptionsForTests;
   private final JavacFactory javacFactory;
   private final Supplier<JavacOptions> defaultJavacOptions;
-  private final KotlinConfiguredCompilerFactory compilerFactory;
 
   public KotlinTestDescription(
       ToolchainProvider toolchainProvider,
@@ -78,8 +77,6 @@ public class KotlinTestDescription
                 toolchainProvider
                     .getByName(JavacOptionsProvider.DEFAULT_NAME, JavacOptionsProvider.class)
                     .getJavacOptions());
-
-    this.compilerFactory = new KotlinConfiguredCompilerFactory(kotlinBuckConfig, javacFactory);
   }
 
   @Override
@@ -109,9 +106,10 @@ public class KotlinTestDescription
                 params,
                 graphBuilder,
                 context.getCellPathResolver(),
-                compilerFactory,
+                kotlinBuckConfig,
                 javaBuckConfig,
-                args)
+                args,
+                javacFactory)
             .setJavacOptions(javacOptions)
             .build();
 
@@ -126,6 +124,7 @@ public class KotlinTestDescription
         StringWithMacrosConverter.builder()
             .setBuildTarget(buildTarget)
             .setCellPathResolver(context.getCellPathResolver())
+            .setActionGraphBuilder(graphBuilder)
             .setExpanders(JavaTestDescription.MACRO_EXPANDERS)
             .build();
     return new JavaTest(
@@ -138,11 +137,10 @@ public class KotlinTestDescription
         args.getLabels(),
         args.getContacts(),
         args.getTestType().orElse(TestType.JUNIT),
-        javaOptionsForTests.get().getJavaRuntimeLauncher(graphBuilder),
-        args.getVmArgs()
-            .stream()
-            .map(vmArg -> macrosConverter.convert(vmArg, graphBuilder))
-            .collect(Collectors.toList()),
+        javaOptionsForTests
+            .get()
+            .getJavaRuntimeLauncher(graphBuilder, buildTarget.getTargetConfiguration()),
+        Lists.transform(args.getVmArgs(), macrosConverter::convert),
         ImmutableMap.of(), /* nativeLibsEnvironment */
         args.getTestRuleTimeoutMs()
             .map(Optional::of)
@@ -152,8 +150,7 @@ public class KotlinTestDescription
                     .getView(TestBuckConfig.class)
                     .getDefaultTestRuleTimeoutMs()),
         args.getTestCaseTimeoutMs(),
-        ImmutableMap.copyOf(
-            Maps.transformValues(args.getEnv(), x -> macrosConverter.convert(x, graphBuilder))),
+        ImmutableMap.copyOf(Maps.transformValues(args.getEnv(), macrosConverter::convert)),
         args.getRunTestSeparately(),
         args.getForkMode(),
         args.getStdOutLogLevel(),
@@ -169,8 +166,9 @@ public class KotlinTestDescription
       ImmutableCollection.Builder<BuildTarget> extraDepsBuilder,
       ImmutableCollection.Builder<BuildTarget> targetGraphOnlyDepsBuilder) {
     javacFactory.addParseTimeDeps(targetGraphOnlyDepsBuilder, constructorArg);
-    javaOptionsForTests.get().addParseTimeDeps(targetGraphOnlyDepsBuilder);
-    compilerFactory.addTargetDeps(extraDepsBuilder, targetGraphOnlyDepsBuilder);
+    javaOptionsForTests
+        .get()
+        .addParseTimeDeps(targetGraphOnlyDepsBuilder, buildTarget.getTargetConfiguration());
   }
 
   @BuckStyleImmutable

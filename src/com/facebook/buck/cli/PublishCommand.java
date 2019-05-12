@@ -22,14 +22,11 @@ import static com.facebook.buck.jvm.java.Javadoc.DOC_JAR;
 
 import com.facebook.buck.core.exceptions.HumanReadableException;
 import com.facebook.buck.core.model.BuildTarget;
-import com.facebook.buck.core.model.UnconfiguredBuildTarget;
+import com.facebook.buck.core.model.UnconfiguredBuildTargetView;
 import com.facebook.buck.core.rules.BuildRule;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.jvm.java.MavenPublishable;
 import com.facebook.buck.maven.Publisher;
 import com.facebook.buck.parser.BuildTargetSpec;
-import com.facebook.buck.parser.ImmutableBuildTargetSpec;
 import com.facebook.buck.parser.TargetNodeSpec;
 import com.facebook.buck.util.CommandLineException;
 import com.facebook.buck.util.ExitCode;
@@ -180,9 +177,7 @@ public class PublishCommand extends BuildCommand {
     try {
       ImmutableSet<DeployResult> deployResults =
           publisher.publish(
-              DefaultSourcePathResolver.from(
-                  new SourcePathRuleFinder(getBuild().getGraphBuilder())),
-              publishables.build());
+              getBuild().getGraphBuilder().getSourcePathResolver(), publishables.build());
       for (DeployResult deployResult : deployResults) {
         printArtifactsInformation(params, deployResult);
       }
@@ -212,31 +207,30 @@ public class PublishCommand extends BuildCommand {
   private ImmutableList<TargetNodeSpec> enhanceFlavorsForPublishing(
       ImmutableList<TargetNodeSpec> specs) {
 
-    Map<UnconfiguredBuildTarget, TargetNodeSpec> uniqueSpecs = new HashMap<>();
+    Map<UnconfiguredBuildTargetView, TargetNodeSpec> uniqueSpecs = new HashMap<>();
     for (TargetNodeSpec spec : specs) {
       if (!(spec instanceof BuildTargetSpec)) {
         throw new IllegalArgumentException(
             "Need to specify build targets explicitly when publishing. " + "Cannot modify " + spec);
       }
 
-      // TODO(buck_team): remove upcast, use abstract BuildTargetSpec
-      ImmutableBuildTargetSpec targetSpec = (ImmutableBuildTargetSpec) spec;
-      Objects.requireNonNull(targetSpec.getUnconfiguredBuildTarget());
+      BuildTargetSpec targetSpec = (BuildTargetSpec) spec;
+      Objects.requireNonNull(targetSpec.getUnconfiguredBuildTargetView());
 
-      UnconfiguredBuildTarget mavenTarget =
-          targetSpec.getUnconfiguredBuildTarget().withFlavors(MAVEN_JAR);
-      uniqueSpecs.put(mavenTarget, targetSpec.withUnconfiguredBuildTarget(mavenTarget));
+      UnconfiguredBuildTargetView mavenTarget =
+          targetSpec.getUnconfiguredBuildTargetView().withFlavors(MAVEN_JAR);
+      uniqueSpecs.put(mavenTarget, BuildTargetSpec.from(mavenTarget));
 
       if (includeSource) {
-        UnconfiguredBuildTarget sourceTarget =
-            targetSpec.getUnconfiguredBuildTarget().withFlavors(MAVEN_JAR, SRC_JAR);
-        uniqueSpecs.put(sourceTarget, targetSpec.withUnconfiguredBuildTarget(sourceTarget));
+        UnconfiguredBuildTargetView sourceTarget =
+            targetSpec.getUnconfiguredBuildTargetView().withFlavors(MAVEN_JAR, SRC_JAR);
+        uniqueSpecs.put(sourceTarget, BuildTargetSpec.from(sourceTarget));
       }
 
       if (includeDocs) {
-        UnconfiguredBuildTarget docsTarget =
-            targetSpec.getUnconfiguredBuildTarget().withFlavors(MAVEN_JAR, DOC_JAR);
-        uniqueSpecs.put(docsTarget, targetSpec.withUnconfiguredBuildTarget(docsTarget));
+        UnconfiguredBuildTargetView docsTarget =
+            targetSpec.getUnconfiguredBuildTargetView().withFlavors(MAVEN_JAR, DOC_JAR);
+        uniqueSpecs.put(docsTarget, BuildTargetSpec.from(docsTarget));
       }
     }
 

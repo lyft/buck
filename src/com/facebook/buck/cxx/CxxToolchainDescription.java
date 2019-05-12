@@ -25,10 +25,10 @@ import com.facebook.buck.core.rules.BuildRuleResolver;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.toolchain.toolprovider.impl.ToolProviders;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.ArchiveContents;
 import com.facebook.buck.cxx.toolchain.ArchiverProvider;
 import com.facebook.buck.cxx.toolchain.CompilerProvider;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.CxxToolProvider;
 import com.facebook.buck.cxx.toolchain.ElfSharedLibraryInterfaceParams;
@@ -38,9 +38,10 @@ import com.facebook.buck.cxx.toolchain.PosixNmSymbolNameTool;
 import com.facebook.buck.cxx.toolchain.PreprocessorProvider;
 import com.facebook.buck.cxx.toolchain.SharedLibraryInterfaceParams;
 import com.facebook.buck.cxx.toolchain.SharedLibraryInterfaceParams.Type;
-import com.facebook.buck.cxx.toolchain.linker.DefaultLinkerProvider;
+import com.facebook.buck.cxx.toolchain.ToolType;
 import com.facebook.buck.cxx.toolchain.linker.Linker.LinkableDepType;
 import com.facebook.buck.cxx.toolchain.linker.LinkerProvider;
+import com.facebook.buck.cxx.toolchain.linker.impl.DefaultLinkerProvider;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSortedSet;
@@ -119,17 +120,20 @@ public class CxxToolchainDescription
         new CompilerProvider(
             ToolProviders.getToolProvider(args.getAssembler()),
             compilerType,
+            ToolType.AS,
             preferDependencyTree));
     cxxPlatform.setAsflags(args.getAssemblerFlags());
 
     cxxPlatform.setAspp(
-        new PreprocessorProvider(ToolProviders.getToolProvider(args.getAssembler()), compilerType));
+        new PreprocessorProvider(
+            ToolProviders.getToolProvider(args.getAssembler()), compilerType, ToolType.ASPP));
     cxxPlatform.setAsppflags(ImmutableList.of());
 
     cxxPlatform.setCc(
         new CompilerProvider(
             ToolProviders.getToolProvider(args.getCCompiler()),
             compilerType,
+            ToolType.CC,
             preferDependencyTree));
     cxxPlatform.setCflags(args.getCCompilerFlags());
 
@@ -137,16 +141,18 @@ public class CxxToolchainDescription
         new CompilerProvider(
             ToolProviders.getToolProvider(args.getCxxCompiler()),
             compilerType,
+            ToolType.CXX,
             preferDependencyTree));
     cxxPlatform.setCxxflags(args.getCxxCompilerFlags());
 
     cxxPlatform.setCpp(
-        new PreprocessorProvider(ToolProviders.getToolProvider(args.getCCompiler()), compilerType));
+        new PreprocessorProvider(
+            ToolProviders.getToolProvider(args.getCCompiler()), compilerType, ToolType.CPP));
     cxxPlatform.setCppflags(ImmutableList.of());
 
     cxxPlatform.setCxxpp(
         new PreprocessorProvider(
-            ToolProviders.getToolProvider(args.getCxxCompiler()), compilerType));
+            ToolProviders.getToolProvider(args.getCxxCompiler()), compilerType, ToolType.CXXPP));
     cxxPlatform.setCxxppflags(ImmutableList.of());
 
     cxxPlatform.setLd(
@@ -170,7 +176,9 @@ public class CxxToolchainDescription
             ToolProviders.getToolProvider(args.getArchiver()), args.getArchiverType()));
     cxxPlatform.setArflags(args.getArchiverFlags());
 
-    cxxPlatform.setStrip(ToolProviders.getToolProvider(args.getStrip()).resolve(ruleResolver));
+    cxxPlatform.setStrip(
+        ToolProviders.getToolProvider(args.getStrip())
+            .resolve(ruleResolver, buildTarget.getTargetConfiguration()));
     cxxPlatform.setStripFlags(args.getStripFlags());
 
     cxxPlatform.setRanlib(args.getRanlib().map(ToolProviders::getToolProvider));
@@ -185,11 +193,11 @@ public class CxxToolchainDescription
 
     cxxPlatform.setSymbolNameTool(
         new PosixNmSymbolNameTool(
-            ToolProviders.getToolProvider(args.getNm()).resolve(ruleResolver)));
+            ToolProviders.getToolProvider(args.getNm())
+                .resolve(ruleResolver, buildTarget.getTargetConfiguration())));
 
     // User-configured cxx platforms are required to handle path sanitization themselves.
     cxxPlatform.setCompilerDebugPathSanitizer(NoopDebugPathSanitizer.INSTANCE);
-    cxxPlatform.setAssemblerDebugPathSanitizer(NoopDebugPathSanitizer.INSTANCE);
 
     // We require that untracked headers are errors and don't allow any whitelisting (the
     // user-configured platform can implement it's only filtering of the produced depfiles).

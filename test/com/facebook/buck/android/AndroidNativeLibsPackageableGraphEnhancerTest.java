@@ -39,12 +39,9 @@ import com.facebook.buck.core.model.targetgraph.TargetGraphFactory;
 import com.facebook.buck.core.model.targetgraph.TargetNode;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.FakeSourcePath;
 import com.facebook.buck.core.sourcepath.SourceWithFlags;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.impl.ToolchainProviderBuilder;
 import com.facebook.buck.core.toolchain.tool.impl.CommandTool;
 import com.facebook.buck.cxx.CxxLibrary;
@@ -70,8 +67,6 @@ public class AndroidNativeLibsPackageableGraphEnhancerTest {
   @Test
   public void testNdkLibrary() {
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder();
-    SourcePathResolver sourcePathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder));
 
     NdkLibrary ndkLibrary =
         new NdkLibraryBuilder(BuildTargetFactory.newInstance("//:ndklib")).build(graphBuilder);
@@ -113,10 +108,8 @@ public class AndroidNativeLibsPackageableGraphEnhancerTest {
 
     assertThat(copyNativeLibraries.getStrippedObjectDescriptions(), Matchers.empty());
     assertThat(
-        copyNativeLibraries
-            .getNativeLibDirectories()
-            .stream()
-            .map(sourcePathResolver::getRelativePath)
+        copyNativeLibraries.getNativeLibDirectories().stream()
+            .map(graphBuilder.getSourcePathResolver()::getRelativePath)
             .collect(ImmutableList.toImmutableList()),
         Matchers.contains(ndkLibrary.getLibraryPath()));
   }
@@ -147,7 +140,6 @@ public class AndroidNativeLibsPackageableGraphEnhancerTest {
     TargetNode<CxxLibraryDescriptionArg> cxxLibraryDescription = cxxLibraryBuilder.build();
     TargetGraph targetGraph = TargetGraphFactory.newInstance(cxxLibraryDescription);
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder(targetGraph);
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
     CxxLibrary cxxLibrary =
         (CxxLibrary)
             cxxLibraryBuilder.build(graphBuilder, new FakeProjectFilesystem(), targetGraph);
@@ -201,10 +193,8 @@ public class AndroidNativeLibsPackageableGraphEnhancerTest {
                     "strippedObjectName", Matchers.equalTo("libgnustl_shared.so")))));
     assertThat(copyNativeLibraries.getNativeLibDirectories(), Matchers.empty());
     ImmutableCollection<BuildRule> stripRules =
-        ruleFinder.filterBuildRuleInputs(
-            copyNativeLibraries
-                .getStrippedObjectDescriptions()
-                .stream()
+        graphBuilder.filterBuildRuleInputs(
+            copyNativeLibraries.getStrippedObjectDescriptions().stream()
                 .map(StrippedObjectDescription::getSourcePath)
                 .collect(ImmutableSet.toImmutableSet()));
     assertThat(

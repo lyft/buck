@@ -23,26 +23,24 @@ import com.facebook.buck.core.description.arg.HasDefaultPlatform;
 import com.facebook.buck.core.exceptions.HumanReadableException;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.Flavor;
+import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.impl.SymlinkTree;
 import com.facebook.buck.core.rules.tool.BinaryWrapperRule;
 import com.facebook.buck.core.sourcepath.ForwardingBuildTargetSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.tool.Tool;
 import com.facebook.buck.core.toolchain.tool.impl.CommandTool;
 import com.facebook.buck.core.util.graph.AbstractBreadthFirstTraversal;
 import com.facebook.buck.cxx.CxxDescriptionEnhancer;
 import com.facebook.buck.cxx.CxxGenruleDescription;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
-import com.facebook.buck.cxx.toolchain.CxxPlatforms;
 import com.facebook.buck.cxx.toolchain.linker.Linker;
 import com.facebook.buck.cxx.toolchain.linker.Linker.LinkableDepType;
-import com.facebook.buck.cxx.toolchain.linker.Linkers;
+import com.facebook.buck.cxx.toolchain.linker.impl.Linkers;
 import com.facebook.buck.cxx.toolchain.nativelink.NativeLinkable;
 import com.facebook.buck.cxx.toolchain.nativelink.NativeLinkables;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
@@ -97,7 +95,6 @@ public class RustCompileUtils {
       ProjectFilesystem projectFilesystem,
       BuildRuleParams params,
       ActionGraphBuilder graphBuilder,
-      SourcePathRuleFinder ruleFinder,
       RustPlatform rustPlatform,
       RustBuckConfig rustConfig,
       ImmutableList<String> extraFlags,
@@ -120,7 +117,7 @@ public class RustCompileUtils {
 
     if (crateType == CrateType.CDYLIB) {
       String soname = filename.get();
-      Linker linker = cxxPlatform.getLd().resolve(graphBuilder);
+      Linker linker = cxxPlatform.getLd().resolve(graphBuilder, target.getTargetConfiguration());
       linkerArgs.addAll(StringArg.from(linker.soname(soname)));
     }
 
@@ -237,6 +234,7 @@ public class RustCompileUtils {
           NativeLinkables.getTransitiveNativeLinkableInput(
                   cxxPlatform,
                   graphBuilder,
+                  target.getTargetConfiguration(),
                   ruledeps,
                   depType,
                   r ->
@@ -261,18 +259,18 @@ public class RustCompileUtils {
     }
 
     return RustCompileRule.from(
-        ruleFinder,
+        graphBuilder,
         target,
         projectFilesystem,
         params,
         filename,
-        rustPlatform.getRustCompiler().resolve(graphBuilder),
-        rustPlatform.getLinkerProvider().resolve(graphBuilder),
+        rustPlatform.getRustCompiler().resolve(graphBuilder, target.getTargetConfiguration()),
+        rustPlatform.getLinkerProvider().resolve(graphBuilder, target.getTargetConfiguration()),
         args.build(),
         depArgs.build(),
         linkerArgs.build(),
-        CxxGenruleDescription.fixupSourcePaths(graphBuilder, ruleFinder, cxxPlatform, sources),
-        CxxGenruleDescription.fixupSourcePath(graphBuilder, ruleFinder, cxxPlatform, rootModule),
+        CxxGenruleDescription.fixupSourcePaths(graphBuilder, cxxPlatform, sources),
+        CxxGenruleDescription.fixupSourcePath(graphBuilder, cxxPlatform, rootModule),
         rustConfig.getRemapSrcPaths());
   }
 
@@ -281,7 +279,6 @@ public class RustCompileUtils {
       ProjectFilesystem projectFilesystem,
       BuildRuleParams params,
       ActionGraphBuilder graphBuilder,
-      SourcePathRuleFinder ruleFinder,
       RustPlatform rustPlatform,
       RustBuckConfig rustConfig,
       ImmutableList<String> extraFlags,
@@ -297,6 +294,7 @@ public class RustCompileUtils {
       boolean preferStatic,
       Iterable<BuildRule> deps,
       Optional<String> incremental) {
+
     return (RustCompileRule)
         graphBuilder.computeIfAbsent(
             getCompileBuildTarget(buildTarget, rustPlatform.getCxxPlatform(), crateType),
@@ -307,7 +305,6 @@ public class RustCompileUtils {
                     projectFilesystem,
                     params,
                     graphBuilder,
-                    ruleFinder,
                     rustPlatform,
                     rustConfig,
                     extraFlags,
@@ -347,7 +344,8 @@ public class RustCompileUtils {
     return ret;
   }
 
-  public static RustPlatform getRustPlatform(
+  /** Gets the {@link UnresolvedRustPlatform} for a target. */
+  public static UnresolvedRustPlatform getRustPlatform(
       RustToolchain rustToolchain, BuildTarget target, HasDefaultPlatform hasDefaultPlatform) {
     return rustToolchain
         .getRustPlatforms()
@@ -359,17 +357,15 @@ public class RustCompileUtils {
                 .orElseGet(rustToolchain::getDefaultRustPlatform));
   }
 
-  static Iterable<BuildTarget> getPlatformParseTimeDeps(RustPlatform rustPlatform) {
-    ImmutableSet.Builder<BuildTarget> deps = ImmutableSet.builder();
-    deps.addAll(rustPlatform.getRustCompiler().getParseTimeDeps());
-    rustPlatform.getLinker().ifPresent(l -> deps.addAll(l.getParseTimeDeps()));
-    deps.addAll(CxxPlatforms.getParseTimeDeps(rustPlatform.getCxxPlatform()));
-    return deps.build();
+  static Iterable<BuildTarget> getPlatformParseTimeDeps(
+      TargetConfiguration targetConfiguration, UnresolvedRustPlatform rustPlatform) {
+    return rustPlatform.getParseTimeDeps(targetConfiguration);
   }
 
   public static Iterable<BuildTarget> getPlatformParseTimeDeps(
       RustToolchain rustToolchain, BuildTarget buildTarget, HasDefaultPlatform hasDefaultPlatform) {
     return getPlatformParseTimeDeps(
+        buildTarget.getTargetConfiguration(),
         getRustPlatform(rustToolchain, buildTarget, hasDefaultPlatform));
   }
 
@@ -392,9 +388,6 @@ public class RustCompileUtils {
       ImmutableSet<String> defaultRoots,
       CrateType crateType,
       Iterable<BuildRule> deps) {
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
-
     ImmutableList.Builder<String> rustcArgs = ImmutableList.builder();
 
     RustCompileUtils.addFeatures(buildTarget, features, rustcArgs);
@@ -411,15 +404,7 @@ public class RustCompileUtils {
 
     Pair<SourcePath, ImmutableSortedSet<SourcePath>> rootModuleAndSources =
         getRootModuleAndSources(
-            buildTarget,
-            graphBuilder,
-            pathResolver,
-            ruleFinder,
-            cxxPlatform,
-            crate,
-            crateRoot,
-            defaultRoots,
-            srcs);
+            buildTarget, graphBuilder, cxxPlatform, crate, crateRoot, defaultRoots, srcs);
 
     // The target to use for the link rule.
     BuildTarget binaryTarget = buildTarget.withAppendedFlavors(crateType.getFlavor());
@@ -447,7 +432,6 @@ public class RustCompileUtils {
                           target,
                           projectFilesystem,
                           graphBuilder,
-                          ruleFinder,
                           cxxPlatform,
                           deps,
                           r ->
@@ -468,7 +452,10 @@ public class RustCompileUtils {
               "-rpath",
               String.format(
                   "%s/%s",
-                  cxxPlatform.getLd().resolve(graphBuilder).origin(),
+                  cxxPlatform
+                      .getLd()
+                      .resolve(graphBuilder, buildTarget.getTargetConfiguration())
+                      .origin(),
                   absBinaryDir.relativize(sharedLibraries.getRoot()).toString())));
 
       // Add all the shared libraries and the symlink tree as inputs to the tool that represents
@@ -495,7 +482,6 @@ public class RustCompileUtils {
                         projectFilesystem,
                         params,
                         graphBuilder,
-                        ruleFinder,
                         rustPlatform,
                         rustBuckConfig,
                         rustcArgs.build(),
@@ -618,8 +604,6 @@ public class RustCompileUtils {
   static Pair<SourcePath, ImmutableSortedSet<SourcePath>> getRootModuleAndSources(
       BuildTarget target,
       ActionGraphBuilder graphBuilder,
-      SourcePathResolver pathResolver,
-      SourcePathRuleFinder ruleFinder,
       CxxPlatform cxxPlatform,
       String crate,
       Optional<SourcePath> crateRoot,
@@ -627,12 +611,14 @@ public class RustCompileUtils {
       ImmutableSortedSet<SourcePath> srcs) {
 
     ImmutableSortedSet<SourcePath> fixedSrcs =
-        CxxGenruleDescription.fixupSourcePaths(graphBuilder, ruleFinder, cxxPlatform, srcs);
+        CxxGenruleDescription.fixupSourcePaths(graphBuilder, cxxPlatform, srcs);
 
     Optional<SourcePath> rootModule =
         crateRoot
             .map(Optional::of)
-            .orElse(getCrateRoot(pathResolver, crate, defaultRoots, fixedSrcs.stream()));
+            .orElse(
+                getCrateRoot(
+                    graphBuilder.getSourcePathResolver(), crate, defaultRoots, fixedSrcs.stream()));
 
     return new Pair<>(
         rootModule.orElseThrow(
@@ -674,6 +660,7 @@ public class RustCompileUtils {
       return null;
     }
 
+    // This is according to https://forge.rust-lang.org/platform-support.html
     String rawArch = parts.get(1);
     String rustArch;
     if (rawArch.equals("armv7")) {
@@ -681,7 +668,11 @@ public class RustCompileUtils {
       rustArch = "armv7";
     } else {
       Architecture arch = Architecture.fromName(parts.get(1));
-      rustArch = arch.toString();
+      if (arch == Architecture.X86_32) {
+        rustArch = "i386";
+      } else {
+        rustArch = arch.toString();
+      }
     }
 
     return rustArch + "-apple-ios";

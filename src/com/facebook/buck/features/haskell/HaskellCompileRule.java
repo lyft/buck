@@ -37,8 +37,8 @@ import com.facebook.buck.cxx.CxxToolFlags;
 import com.facebook.buck.cxx.PreprocessorFlags;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.PathShortener;
-import com.facebook.buck.cxx.toolchain.PicType;
 import com.facebook.buck.cxx.toolchain.Preprocessor;
+import com.facebook.buck.cxx.toolchain.linker.Linker;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.rules.args.Arg;
 import com.facebook.buck.shell.ShellStep;
@@ -49,7 +49,6 @@ import com.facebook.buck.step.StepExecutionResults;
 import com.facebook.buck.util.Escaper;
 import com.facebook.buck.util.MoreIterables;
 import com.facebook.buck.util.MoreSuppliers;
-import com.facebook.buck.util.Optionals;
 import com.facebook.buck.util.RichStream;
 import com.facebook.buck.util.Verbosity;
 import com.google.common.annotations.VisibleForTesting;
@@ -87,7 +86,7 @@ public class HaskellCompileRule extends AbstractBuildRuleWithDeclaredAndExtraDep
   @AddToRuleKey private final PreprocessorFlags ppFlags;
   private final CxxPlatform cxxPlatform;
 
-  @AddToRuleKey private boolean pic;
+  @AddToRuleKey private final Linker.LinkableDepType depType;
 
   @AddToRuleKey private final boolean hsProfile;
 
@@ -124,7 +123,7 @@ public class HaskellCompileRule extends AbstractBuildRuleWithDeclaredAndExtraDep
       ImmutableList<String> flags,
       PreprocessorFlags ppFlags,
       CxxPlatform cxxPlatform,
-      PicType picType,
+      Linker.LinkableDepType depType,
       boolean hsProfile,
       Optional<String> main,
       Optional<HaskellPackageInfo> packageInfo,
@@ -140,7 +139,7 @@ public class HaskellCompileRule extends AbstractBuildRuleWithDeclaredAndExtraDep
     this.flags = flags;
     this.ppFlags = ppFlags;
     this.cxxPlatform = cxxPlatform;
-    this.pic = (picType == PicType.PIC);
+    this.depType = depType;
     this.hsProfile = hsProfile;
     this.main = main;
     this.packageInfo = packageInfo;
@@ -149,8 +148,6 @@ public class HaskellCompileRule extends AbstractBuildRuleWithDeclaredAndExtraDep
     this.packages = packages;
     this.sources = sources;
     this.preprocessor = preprocessor;
-
-    Preconditions.checkState(!(pic && hsProfile), "Currently don't support profiled PIC.");
   }
 
   public static HaskellCompileRule from(
@@ -164,7 +161,7 @@ public class HaskellCompileRule extends AbstractBuildRuleWithDeclaredAndExtraDep
       ImmutableList<String> flags,
       PreprocessorFlags ppFlags,
       CxxPlatform cxxPlatform,
-      PicType picType,
+      Linker.LinkableDepType depType,
       boolean hsProfile,
       Optional<String> main,
       Optional<HaskellPackageInfo> packageInfo,
@@ -197,7 +194,7 @@ public class HaskellCompileRule extends AbstractBuildRuleWithDeclaredAndExtraDep
         flags,
         ppFlags,
         cxxPlatform,
-        picType,
+        depType,
         hsProfile,
         main,
         packageInfo,
@@ -288,9 +285,7 @@ public class HaskellCompileRule extends AbstractBuildRuleWithDeclaredAndExtraDep
   }
 
   private Iterable<String> getSourceArguments(SourcePathResolver resolver) {
-    return sources
-        .getSourcePaths()
-        .stream()
+    return sources.getSourcePaths().stream()
         .map(resolver::getAbsolutePath)
         .map(Object::toString)
         .collect(Collectors.toList());
@@ -301,16 +296,26 @@ public class HaskellCompileRule extends AbstractBuildRuleWithDeclaredAndExtraDep
 
     builder.addAll(flags).add("-no-link");
 
-    if (pic) {
-      builder.addAll(HaskellDescriptionUtils.PIC_FLAGS);
+    if (depType == Linker.LinkableDepType.SHARED) {
+      builder.addAll(HaskellDescriptionUtils.DYNAMIC_FLAGS);
     } else if (hsProfile) {
       builder.addAll(HaskellDescriptionUtils.PROF_FLAGS);
+    }
+    if (depType == Linker.LinkableDepType.SHARED) {
+      // -dynamic implies -fexternal-dynamic-refs but -fexternal-dynamic-refs
+      // is introduced in ghc-8.6, so let us not add this redundant flag
+      // so that older ghc can still be supported.
+      builder.addAll(
+          Iterables.filter(
+              HaskellDescriptionUtils.PIC_FLAGS, i -> !i.equals("-fexternal-dynamic-refs")));
+    } else if (depType == Linker.LinkableDepType.STATIC_PIC) {
+      builder.addAll(HaskellDescriptionUtils.PIC_FLAGS);
     }
 
     builder
         .addAll(
             MoreIterables.zipAndConcat(
-                Iterables.cycle("-main-is"), Optionals.toStream(main).toOnceIterable()))
+                Iterables.cycle("-main-is"), RichStream.from(main).toOnceIterable()))
         .addAll(getPackageNameArgs())
         .addAll(getPreprocessorFlags(resolver))
         .add("-odir", getProjectFilesystem().resolve(getObjectDir()).toString())
@@ -318,8 +323,7 @@ public class HaskellCompileRule extends AbstractBuildRuleWithDeclaredAndExtraDep
         .add("-stubdir", getProjectFilesystem().resolve(getStubDir()).toString())
         .add(
             "-i"
-                + includes
-                    .stream()
+                + includes.stream()
                     .map(resolver::getAbsolutePath)
                     .map(Object::toString)
                     .collect(Collectors.joining(":")))
@@ -328,13 +332,7 @@ public class HaskellCompileRule extends AbstractBuildRuleWithDeclaredAndExtraDep
     if (useArgsfile) {
       builder.add("@" + getArgsfile());
     } else {
-      builder.addAll(
-          sources
-              .getSourcePaths()
-              .stream()
-              .map(resolver::getAbsolutePath)
-              .map(Object::toString)
-              .iterator());
+      builder.addAll(getSourceArguments(resolver));
     }
 
     return builder.build();
@@ -442,7 +440,9 @@ public class HaskellCompileRule extends AbstractBuildRuleWithDeclaredAndExtraDep
   }
 
   private String getObjectSuffix() {
-    if (hsProfile) {
+    if (depType == Linker.LinkableDepType.SHARED) {
+      return "dyn_o";
+    } else if (hsProfile) {
       return "p_o";
     } else {
       return "o";
@@ -450,7 +450,7 @@ public class HaskellCompileRule extends AbstractBuildRuleWithDeclaredAndExtraDep
   }
 
   private String getInterfaceSuffix() {
-    if (pic) {
+    if (depType == Linker.LinkableDepType.SHARED) {
       return "dyn_hi";
     } else if (hsProfile) {
       return "p_hi";

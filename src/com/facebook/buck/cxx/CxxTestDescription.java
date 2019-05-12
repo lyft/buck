@@ -25,6 +25,7 @@ import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.Flavor;
 import com.facebook.buck.core.model.FlavorDomain;
 import com.facebook.buck.core.model.Flavored;
+import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.model.targetgraph.BuildRuleCreationContextWithTargetGraph;
 import com.facebook.buck.core.model.targetgraph.DescriptionWithTargetGraph;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
@@ -36,7 +37,7 @@ import com.facebook.buck.core.sourcepath.PathSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.toolchain.ToolchainProvider;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.CxxPlatformsProvider;
 import com.facebook.buck.cxx.toolchain.LinkerMapMode;
@@ -92,22 +93,22 @@ public class CxxTestDescription
   }
 
   private ImmutableSet<BuildTarget> getImplicitFrameworkDeps(
-      AbstractCxxTestDescriptionArg constructorArg) {
+      TargetConfiguration targetConfiguration, AbstractCxxTestDescriptionArg constructorArg) {
     ImmutableSet.Builder<BuildTarget> deps = ImmutableSet.builder();
 
     CxxTestType type = constructorArg.getFramework().orElse(getDefaultTestType());
     switch (type) {
       case GTEST:
         {
-          cxxBuckConfig.getGtestDep().ifPresent(deps::add);
+          cxxBuckConfig.getGtestDep(targetConfiguration).ifPresent(deps::add);
           if (constructorArg.getUseDefaultTestMain().orElse(true)) {
-            cxxBuckConfig.getGtestDefaultTestMainDep().ifPresent(deps::add);
+            cxxBuckConfig.getGtestDefaultTestMainDep(targetConfiguration).ifPresent(deps::add);
           }
           break;
         }
       case BOOST:
         {
-          cxxBuckConfig.getBoostTestDep().ifPresent(deps::add);
+          cxxBuckConfig.getBoostTestDep(targetConfiguration).ifPresent(deps::add);
           break;
         }
       default:
@@ -163,8 +164,9 @@ public class CxxTestDescription
     BuildTarget buildTarget = inputBuildTarget;
 
     ActionGraphBuilder graphBuilder = context.getActionGraphBuilder();
-    CxxPlatform cxxPlatform = getCxxPlatform(buildTarget, args).resolve(graphBuilder);
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
+    CxxPlatform cxxPlatform =
+        getCxxPlatform(buildTarget, args)
+            .resolve(graphBuilder, buildTarget.getTargetConfiguration());
     ProjectFilesystem projectFilesystem = context.getProjectFilesystem();
     CellPathResolver cellRoots = context.getCellPathResolver();
 
@@ -178,7 +180,7 @@ public class CxxTestDescription
               cxxBuckConfig,
               cxxPlatform,
               args,
-              getImplicitFrameworkDeps(args),
+              getImplicitFrameworkDeps(buildTarget.getTargetConfiguration(), args),
               flavoredStripStyle,
               flavoredLinkerMapMode);
       return CxxCompilationDatabase.createCompilationDatabase(
@@ -204,7 +206,7 @@ public class CxxTestDescription
             cxxBuckConfig,
             cxxPlatform,
             args,
-            getImplicitFrameworkDeps(args),
+            getImplicitFrameworkDeps(buildTarget.getTargetConfiguration(), args),
             flavoredStripStyle,
             flavoredLinkerMapMode);
 
@@ -218,24 +220,24 @@ public class CxxTestDescription
         params
             .withDeclaredDeps(cxxLinkAndCompileRules.deps)
             .copyAppendingExtraDeps(
-                BuildableSupport.getDepsCollection(cxxLinkAndCompileRules.executable, ruleFinder));
+                BuildableSupport.getDepsCollection(
+                    cxxLinkAndCompileRules.executable, graphBuilder));
 
     StringWithMacrosConverter macrosConverter =
         StringWithMacrosConverter.builder()
             .setBuildTarget(buildTarget)
             .setCellPathResolver(cellRoots)
+            .setActionGraphBuilder(graphBuilder)
             .addExpanders(new LocationMacroExpander())
             .build();
 
     // Supplier which expands macros in the passed in test environment.
     ImmutableMap<String, Arg> testEnv =
-        ImmutableMap.copyOf(
-            Maps.transformValues(args.getEnv(), x -> macrosConverter.convert(x, graphBuilder)));
+        ImmutableMap.copyOf(Maps.transformValues(args.getEnv(), macrosConverter::convert));
 
     ImmutableList<Arg> testArgs =
-        args.getArgs()
-            .stream()
-            .map(x -> macrosConverter.convert(x, graphBuilder))
+        args.getArgs().stream()
+            .map(macrosConverter::convert)
             .collect(ImmutableList.toImmutableList());
 
     Function<SourcePathRuleFinder, ImmutableSortedSet<BuildRule>> additionalDeps =
@@ -337,10 +339,12 @@ public class CxxTestDescription
 
     // Get any parse time deps from the C/C++ platforms.
     targetGraphOnlyDepsBuilder.addAll(
-        getCxxPlatform(buildTarget, constructorArg).getParseTimeDeps());
+        getCxxPlatform(buildTarget, constructorArg)
+            .getParseTimeDeps(buildTarget.getTargetConfiguration()));
 
     // Add in any implicit framework deps.
-    extraDepsBuilder.addAll(getImplicitFrameworkDeps(constructorArg));
+    extraDepsBuilder.addAll(
+        getImplicitFrameworkDeps(buildTarget.getTargetConfiguration(), constructorArg));
 
     constructorArg
         .getDepsQuery()

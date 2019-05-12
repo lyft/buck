@@ -49,14 +49,11 @@ import com.facebook.buck.core.model.targetgraph.TargetNode;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.TestBuildRuleParams;
 import com.facebook.buck.core.rules.impl.FakeBuildRule;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.FakeSourcePath;
 import com.facebook.buck.core.sourcepath.PathSourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.ToolchainProvider;
 import com.facebook.buck.core.toolchain.impl.ToolchainProviderBuilder;
 import com.facebook.buck.cxx.toolchain.CxxPlatformUtils;
@@ -126,7 +123,6 @@ public class AndroidBinaryGraphEnhancerTest {
         TargetGraphFactory.newInstance(javaDep1Node, javaDep2Node, javaLibNode);
     ActionGraphBuilder graphBuilder =
         new TestActionGraphBuilder(targetGraph, createToolchainProviderForAndroidWithJava8());
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
 
     BuildRule javaDep1 = graphBuilder.requireRule(javaDep1BuildTarget);
     BuildRule javaDep2 = graphBuilder.requireRule(javaDep2BuildTarget);
@@ -209,7 +205,6 @@ public class AndroidBinaryGraphEnhancerTest {
             aaptPackageResourcesTarget,
             filesystem,
             TestAndroidPlatformTargetFactory.create(),
-            ruleFinder,
             graphBuilder,
             /* manifest */ FakeSourcePath.of("java/src/com/facebook/base/AndroidManifest.xml"),
             ImmutableList.of(),
@@ -314,7 +309,6 @@ public class AndroidBinaryGraphEnhancerTest {
         TargetGraphFactory.newInstance(javaDep1Node, javaDep2Node, javaLibNode);
     ActionGraphBuilder graphBuilder =
         new TestActionGraphBuilder(targetGraph, createToolchainProviderForAndroidWithJava8());
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
 
     BuildRule javaDep1 = graphBuilder.requireRule(javaDep1BuildTarget);
     BuildRule javaDep2 = graphBuilder.requireRule(javaDep2BuildTarget);
@@ -397,7 +391,6 @@ public class AndroidBinaryGraphEnhancerTest {
             aaptPackageResourcesTarget,
             filesystem,
             TestAndroidPlatformTargetFactory.create(),
-            ruleFinder,
             graphBuilder,
             /* manifest */ FakeSourcePath.of("java/src/com/facebook/base/AndroidManifest.xml"),
             ImmutableList.of(),
@@ -517,7 +510,6 @@ public class AndroidBinaryGraphEnhancerTest {
     TargetGraph targetGraph =
         TargetGraphFactory.newInstance(javaDep1Node, javaDep2Node, javaLibNode);
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder(targetGraph);
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
 
     BuildRule javaDep1 = graphBuilder.requireRule(javaDep1BuildTarget);
     BuildRule javaDep2 = graphBuilder.requireRule(javaDep2BuildTarget);
@@ -607,7 +599,6 @@ public class AndroidBinaryGraphEnhancerTest {
             aaptPackageResourcesTarget,
             filesystem,
             TestAndroidPlatformTargetFactory.create(),
-            ruleFinder,
             graphBuilder,
             /* manifest */ FakeSourcePath.of("java/src/com/facebook/base/AndroidManifest.xml"),
             ImmutableList.of(),
@@ -755,8 +746,6 @@ public class AndroidBinaryGraphEnhancerTest {
 
     // Verify that android_build_config() was processed correctly.
     Flavor flavor = InternalFlavor.of("buildconfig_com_example_buck");
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder));
     BuildTarget enhancedBuildConfigTarget = apkTarget.withAppendedFlavors(flavor);
     assertEquals(
         "The only classpath entry to dex should be the one from the AndroidBuildConfigJavaLibrary"
@@ -765,10 +754,8 @@ public class AndroidBinaryGraphEnhancerTest {
             BuildTargetPaths.getGenPath(
                     projectFilesystem, enhancedBuildConfigTarget, "lib__%s__output")
                 .resolve(enhancedBuildConfigTarget.getShortNameAndFlavorPostfix() + ".jar")),
-        result
-            .getClasspathEntriesToDex()
-            .stream()
-            .map(pathResolver::getRelativePath)
+        result.getClasspathEntriesToDex().stream()
+            .map(graphBuilder.getSourcePathResolver()::getRelativePath)
             .collect(ImmutableSet.toImmutableSet()));
     BuildRule enhancedBuildConfigRule = graphBuilder.getRule(enhancedBuildConfigTarget);
     assertTrue(enhancedBuildConfigRule instanceof AndroidBuildConfigJavaLibrary);
@@ -986,7 +973,6 @@ public class AndroidBinaryGraphEnhancerTest {
   @Test
   public void testResourceRulesDependOnRulesBehindResourceSourcePaths() {
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
 
     FakeBuildRule resourcesDep =
         graphBuilder.addToIndex(
@@ -1001,7 +987,7 @@ public class AndroidBinaryGraphEnhancerTest {
                 new FakeProjectFilesystem(),
                 TestBuildRuleParams.create()
                     .copyAppendingExtraDeps(ImmutableSortedSet.of(resourcesDep)),
-                ruleFinder,
+                graphBuilder,
                 ImmutableSortedSet.of(),
                 resourcesDep.getSourcePathToOutput(),
                 ImmutableSortedMap.of(),

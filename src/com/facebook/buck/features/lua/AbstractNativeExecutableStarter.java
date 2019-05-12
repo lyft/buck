@@ -23,7 +23,6 @@ import com.facebook.buck.core.model.impl.BuildTargetPaths;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.impl.WriteStringTemplateRule;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
@@ -39,11 +38,11 @@ import com.facebook.buck.cxx.CxxPreprocessorDep;
 import com.facebook.buck.cxx.CxxPreprocessorInput;
 import com.facebook.buck.cxx.CxxSource;
 import com.facebook.buck.cxx.CxxSourceRuleFactory;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.PicType;
 import com.facebook.buck.cxx.toolchain.linker.Linker;
-import com.facebook.buck.cxx.toolchain.linker.Linkers;
+import com.facebook.buck.cxx.toolchain.linker.impl.Linkers;
 import com.facebook.buck.cxx.toolchain.nativelink.NativeLinkTarget;
 import com.facebook.buck.cxx.toolchain.nativelink.NativeLinkTargetMode;
 import com.facebook.buck.cxx.toolchain.nativelink.NativeLinkable;
@@ -84,8 +83,6 @@ abstract class AbstractNativeExecutableStarter implements Starter, NativeLinkTar
   abstract ActionGraphBuilder getActionGraphBuilder();
 
   abstract SourcePathResolver getPathResolver();
-
-  abstract SourcePathRuleFinder getRuleFinder();
 
   abstract CellPathResolver getCellPathResolver();
 
@@ -146,7 +143,7 @@ abstract class AbstractNativeExecutableStarter implements Starter, NativeLinkTar
                   return WriteStringTemplateRule.from(
                       getProjectFilesystem(),
                       getBaseParams(),
-                      getRuleFinder(),
+                      getActionGraphBuilder(),
                       target,
                       output,
                       templateRule.getSourcePathToOutput(),
@@ -193,7 +190,9 @@ abstract class AbstractNativeExecutableStarter implements Starter, NativeLinkTar
         getNativeStarterLibrary().isPresent()
             ? getActionGraphBuilder()
                 .getRuleWithType(getNativeStarterLibrary().get(), AbstractCxxLibrary.class)
-            : getLuaPlatform().getLuaCxxLibrary(getActionGraphBuilder()));
+            : getLuaPlatform()
+                .getLuaCxxLibrary(
+                    getActionGraphBuilder(), getBaseTarget().getTargetConfiguration()));
   }
 
   private NativeLinkableInput getNativeLinkableInput() {
@@ -204,7 +203,6 @@ abstract class AbstractNativeExecutableStarter implements Starter, NativeLinkTar
                 getBaseTarget(),
                 getActionGraphBuilder(),
                 getPathResolver(),
-                getRuleFinder(),
                 getCxxBuckConfig(),
                 getLuaPlatform().getCxxPlatform(),
                 ImmutableList.<CxxPreprocessorInput>builder()
@@ -237,7 +235,9 @@ abstract class AbstractNativeExecutableStarter implements Starter, NativeLinkTar
                             getLuaPlatform()
                                 .getCxxPlatform()
                                 .getLd()
-                                .resolve(getActionGraphBuilder())
+                                .resolve(
+                                    getActionGraphBuilder(),
+                                    getBaseTarget().getTargetConfiguration())
                                 .origin(),
                             getRelativeNativeLibsDir().get().toString())))
                 : ImmutableList.of())
@@ -256,8 +256,6 @@ abstract class AbstractNativeExecutableStarter implements Starter, NativeLinkTar
                     getLuaPlatform().getCxxPlatform(),
                     getProjectFilesystem(),
                     getActionGraphBuilder(),
-                    getPathResolver(),
-                    getRuleFinder(),
                     linkTarget,
                     Linker.LinkType.EXECUTABLE,
                     Optional.empty(),
@@ -294,15 +292,12 @@ abstract class AbstractNativeExecutableStarter implements Starter, NativeLinkTar
 
   @Override
   public NativeLinkableInput getNativeLinkTargetInput(
-      CxxPlatform cxxPlatform,
-      ActionGraphBuilder graphBuilder,
-      SourcePathResolver pathResolver,
-      SourcePathRuleFinder ruleFinder) {
+      CxxPlatform cxxPlatform, ActionGraphBuilder graphBuilder, SourcePathResolver pathResolver) {
     return getNativeLinkableInput();
   }
 
   @Override
-  public Optional<Path> getNativeLinkTargetOutputPath(CxxPlatform cxxPlatform) {
+  public Optional<Path> getNativeLinkTargetOutputPath() {
     return Optional.of(getOutput());
   }
 }

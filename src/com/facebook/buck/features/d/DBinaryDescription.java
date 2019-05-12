@@ -30,15 +30,12 @@ import com.facebook.buck.core.model.targetgraph.DescriptionWithTargetGraph;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.impl.SymlinkTree;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.ToolchainProvider;
 import com.facebook.buck.core.toolchain.tool.impl.CommandTool;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
 import com.facebook.buck.cxx.CxxLink;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.rules.args.SourcePathArg;
 import com.facebook.buck.rules.coercer.SourceSortedSet;
@@ -79,13 +76,11 @@ public class DBinaryDescription
       DBinaryDescriptionArg args) {
 
     ActionGraphBuilder graphBuilder = context.getActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
     ProjectFilesystem projectFilesystem = context.getProjectFilesystem();
 
     if (buildTarget.getFlavors().contains(SOURCE_LINK_TREE)) {
       return DDescriptionUtils.createSourceSymlinkTree(
-          buildTarget, projectFilesystem, pathResolver, ruleFinder, args.getSrcs());
+          buildTarget, projectFilesystem, graphBuilder, args.getSrcs());
     }
 
     SymlinkTree sourceTree =
@@ -100,7 +95,8 @@ public class DBinaryDescription
             projectFilesystem,
             params,
             graphBuilder,
-            DDescriptionUtils.getCxxPlatform(graphBuilder, toolchainProvider, dBuckConfig),
+            DDescriptionUtils.getCxxPlatform(
+                graphBuilder, toolchainProvider, dBuckConfig, buildTarget.getTargetConfiguration()),
             dBuckConfig,
             cxxBuckConfig,
             /* compilerFlags */ ImmutableList.of(),
@@ -135,7 +131,7 @@ public class DBinaryDescription
       ImmutableCollection.Builder<BuildTarget> targetGraphOnlyDepsBuilder) {
     extraDepsBuilder.addAll(
         DDescriptionUtils.getUnresolvedCxxPlatform(toolchainProvider, dBuckConfig)
-            .getParseTimeDeps());
+            .getParseTimeDeps(buildTarget.getTargetConfiguration()));
   }
 
   @BuckStyleImmutable

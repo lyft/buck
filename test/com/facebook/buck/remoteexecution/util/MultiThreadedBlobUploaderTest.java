@@ -71,7 +71,8 @@ public class MultiThreadedBlobUploaderTest {
     EasyMock.replay(casBlobUploader);
 
     // Run the test case.
-    ListenableFuture<Void> failedFuture = uploader.addMissing(data);
+    ListenableFuture<Void> failedFuture = uploader.addMissing(data.values().stream());
+
     try {
       // Must throw.
       failedFuture.get();
@@ -80,7 +81,7 @@ public class MultiThreadedBlobUploaderTest {
       Assert.assertEquals(StatusRuntimeException.class, e.getCause().getClass());
     }
     // Does not throw.
-    ListenableFuture<Void> successfulFuture = uploader.addMissing(data);
+    ListenableFuture<Void> successfulFuture = uploader.addMissing(data.values().stream());
     successfulFuture.get();
 
     // Make sure all calls were exactly correctly.
@@ -93,8 +94,13 @@ public class MultiThreadedBlobUploaderTest {
     UploadDataSupplier supplier =
         new UploadDataSupplier() {
           @Override
-          public InputStream get() throws IOException {
+          public InputStream get() {
             return new ByteArrayInputStream(buffer);
+          }
+
+          @Override
+          public Digest getDigest() {
+            return digest;
           }
         };
 

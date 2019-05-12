@@ -42,9 +42,7 @@ public class HaskellGhciRuleIntegrationTest {
   public static Collection<Object[]> data() {
     return ImmutableList.copyOf(
         new Object[][] {
-          {Linker.LinkableDepType.STATIC},
-          {Linker.LinkableDepType.STATIC_PIC},
-          {Linker.LinkableDepType.SHARED},
+          {Linker.LinkableDepType.STATIC}, {Linker.LinkableDepType.SHARED},
         });
   }
 
@@ -62,7 +60,7 @@ public class HaskellGhciRuleIntegrationTest {
   private Path genPath;
 
   @Before
-  public void setUp() throws IOException, InterruptedException {
+  public void setUp() throws IOException {
 
     // We don't currently support windows.
     assumeThat(Platform.detect(), Matchers.not(Platform.WINDOWS));

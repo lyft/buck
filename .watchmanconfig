@@ -4,7 +4,5 @@
     ".idea",
     ".buckd",
     "ant-out",
-    "test/com/facebook/buck/testutil/integration/testlibs/buck-out",
-    "test/com/facebook/buck/testutil/integration/testlibs/.buckd"
   ]
 }

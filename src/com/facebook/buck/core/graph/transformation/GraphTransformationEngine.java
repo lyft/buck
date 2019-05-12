@@ -16,19 +16,21 @@
 
 package com.facebook.buck.core.graph.transformation;
 
+import com.facebook.buck.core.graph.transformation.model.ComputeKey;
+import com.facebook.buck.core.graph.transformation.model.ComputeResult;
 import com.google.common.collect.ImmutableMap;
 import java.util.Set;
 import java.util.concurrent.Future;
 
 /**
  * Transformation engine that transforms supplied ComputeKey into ComputeResult via {@link
- * GraphTransformer}. This engine is able to asynchronously run graph based computation, reusing
+ * GraphComputation}. This engine is able to asynchronously run graph based computation, reusing
  * results when possible. Note that the computation graph must be an acyclic graph.
  *
  * <p>This engine is able to deal with dependencies in the computation graph by having {@link
- * GraphTransformer} request dependent results of other transformations through {@link
- * GraphTransformer#discoverPreliminaryDeps(ComputeKey)} and {@link
- * GraphTransformer#discoverDeps(ComputeKey, TransformationEnvironment)}
+ * GraphComputation} request dependent results of other transformations through {@link
+ * GraphComputation#discoverPreliminaryDeps(ComputeKey)} and {@link
+ * GraphComputation#discoverDeps(ComputeKey, ComputationEnvironment)}
  */
 public interface GraphTransformationEngine extends AutoCloseable {
 

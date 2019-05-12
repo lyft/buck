@@ -38,10 +38,11 @@ import com.facebook.buck.core.config.FakeBuckConfig;
 import com.facebook.buck.core.exceptions.HumanReadableException;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
+import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.model.impl.BuildTargetPaths;
 import com.facebook.buck.core.rules.BuildRuleResolver;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.CxxPlatformUtils;
 import com.facebook.buck.cxx.toolchain.HeaderVisibility;
@@ -95,7 +96,7 @@ public class CxxBinaryIntegrationTest {
   }
 
   @Test
-  public void testInferCxxBinaryDepsCaching() throws IOException, InterruptedException {
+  public void testInferCxxBinaryDepsCaching() throws IOException {
     ProjectWorkspace workspace = InferHelper.setupCxxInferWorkspace(this, tmp, Optional.empty());
     workspace.enableDirCache();
 
@@ -168,8 +169,7 @@ public class CxxBinaryIntegrationTest {
   }
 
   @Test
-  public void testInferCxxBinaryDepsInvalidateCacheWhenVersionChanges()
-      throws IOException, InterruptedException {
+  public void testInferCxxBinaryDepsInvalidateCacheWhenVersionChanges() throws IOException {
     ProjectWorkspace workspace = InferHelper.setupCxxInferWorkspace(this, tmp, Optional.empty());
     workspace.enableDirCache();
 
@@ -288,7 +288,7 @@ public class CxxBinaryIntegrationTest {
   }
 
   @Test
-  public void testInferCxxBinaryWithoutDeps() throws IOException, InterruptedException {
+  public void testInferCxxBinaryWithoutDeps() throws IOException {
     ProjectWorkspace workspace = InferHelper.setupCxxInferWorkspace(this, tmp, Optional.empty());
 
     CxxBuckConfig cxxBuckConfig = new CxxBuckConfig(workspace.asCell().getBuckConfig());
@@ -379,7 +379,7 @@ public class CxxBinaryIntegrationTest {
   }
 
   @Test
-  public void testInferCxxBinaryWithDeps() throws IOException, InterruptedException {
+  public void testInferCxxBinaryWithDeps() throws IOException {
     ProjectWorkspace workspace = InferHelper.setupCxxInferWorkspace(this, tmp, Optional.empty());
 
     CxxBuckConfig cxxBuckConfig = new CxxBuckConfig(workspace.asCell().getBuckConfig());
@@ -979,7 +979,7 @@ public class CxxBinaryIntegrationTest {
 
   @Test
   public void testInferCxxBinaryWithUnusedDepsDoesNotRebuildWhenUnusedHeaderChanges()
-      throws IOException, InterruptedException {
+      throws IOException {
     ProjectWorkspace workspace = InferHelper.setupCxxInferWorkspace(this, tmp, Optional.empty());
     workspace.enableDirCache();
 
@@ -1557,7 +1557,7 @@ public class CxxBinaryIntegrationTest {
   }
 
   @Test
-  public void testSimpleCxxBinaryWithHeader() throws IOException, InterruptedException {
+  public void testSimpleCxxBinaryWithHeader() throws IOException {
     ProjectWorkspace workspace =
         TestDataHelper.createProjectWorkspaceForScenario(this, "simple", tmp);
     workspace.setUp();
@@ -1624,8 +1624,7 @@ public class CxxBinaryIntegrationTest {
   }
 
   @Test
-  public void testSimpleCxxBinaryWithDependencyOnCxxLibraryWithHeader()
-      throws IOException, InterruptedException {
+  public void testSimpleCxxBinaryWithDependencyOnCxxLibraryWithHeader() throws IOException {
     ProjectWorkspace workspace =
         TestDataHelper.createProjectWorkspaceForScenario(this, "simple", tmp);
     workspace.setUp();
@@ -1930,7 +1929,7 @@ public class CxxBinaryIntegrationTest {
     }
   }
 
-  private void platformLinkerFlags(ProjectWorkspace workspace, String target) throws IOException {
+  private void platformLinkerFlags(ProjectWorkspace workspace, String target) {
     workspace.runBuckBuild("//:binary_matches_default_exactly_" + target).assertSuccess();
     workspace.runBuckBuild("//:binary_matches_default_" + target).assertSuccess();
     ProcessResult result = workspace.runBuckBuild("//:binary_no_match_" + target);
@@ -2358,7 +2357,11 @@ public class CxxBinaryIntegrationTest {
     CxxPlatform cxxPlatform =
         CxxPlatformUtils.build(new CxxBuckConfig(FakeBuckConfig.builder().build()));
     BuildRuleResolver ruleResolver = new TestActionGraphBuilder();
-    assumeTrue(cxxPlatform.getAr().resolve(ruleResolver).supportsThinArchives());
+    assumeTrue(
+        cxxPlatform
+            .getAr()
+            .resolve(ruleResolver, EmptyTargetConfiguration.INSTANCE)
+            .supportsThinArchives());
     ProjectWorkspace workspace =
         TestDataHelper.createProjectWorkspaceForScenario(this, "simple", tmp);
     workspace.setUp();
@@ -2494,6 +2497,22 @@ public class CxxBinaryIntegrationTest {
           "Linker for target //:binary#linkmap does not support linker maps.",
           e.getHumanReadableErrorMessage());
     }
+  }
+
+  @Test
+  public void testRunFlavors() throws IOException {
+    assumeThat(Platform.detect(), Matchers.not(Platform.WINDOWS));
+
+    ProjectWorkspace workspace =
+        TestDataHelper.createProjectWorkspaceForScenario(this, "cxx_flavors", tmp);
+    workspace.setUp();
+
+    workspace.runBuckCommand("build", "//bin:bin").assertSuccess("build //bin:bin1");
+    workspace.runBuckCommand("run", "//bin:bin").assertSuccess("run //bin:bin1");
+    workspace.runBuckCommand("build", "//bin:bin#default").assertSuccess("build //bin:bin#default");
+    workspace.runBuckCommand("run", "//bin:bin#default").assertSuccess("run //bin:bin#default");
+    workspace.runBuckCommand("build", "//bin:bin1").assertSuccess("build //bin:bin1");
+    workspace.runBuckCommand("run", "//bin:bin1").assertSuccess("run //bin:bin1");
   }
 
   private ImmutableSortedSet<Path> findFiles(Path root, PathMatcher matcher) throws IOException {

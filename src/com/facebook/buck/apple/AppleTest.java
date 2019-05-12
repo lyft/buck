@@ -26,7 +26,7 @@ import com.facebook.buck.core.model.impl.BuildTargetPaths;
 import com.facebook.buck.core.rulekey.AddToRuleKey;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
+import com.facebook.buck.core.rules.BuildRuleResolver;
 import com.facebook.buck.core.rules.attr.HasRuntimeDeps;
 import com.facebook.buck.core.rules.impl.AbstractBuildRuleWithDeclaredAndExtraDeps;
 import com.facebook.buck.core.sourcepath.ForwardingBuildTargetSourcePath;
@@ -43,7 +43,7 @@ import com.facebook.buck.step.fs.MakeCleanDirectoryStep;
 import com.facebook.buck.test.TestCaseSummary;
 import com.facebook.buck.test.TestResults;
 import com.facebook.buck.test.TestRunningOptions;
-import com.facebook.buck.util.Optionals;
+import com.facebook.buck.util.RichStream;
 import com.facebook.buck.util.types.Either;
 import com.facebook.buck.util.types.Pair;
 import com.google.common.annotations.VisibleForTesting;
@@ -238,6 +238,7 @@ public class AppleTest extends AbstractBuildRuleWithDeclaredAndExtraDeps
     ImmutableList.Builder<Step> steps = ImmutableList.builder();
     ExternalTestRunnerTestSpec.Builder externalSpec =
         ExternalTestRunnerTestSpec.builder()
+            .setCwd(getProjectFilesystem().getRootPath())
             .setTarget(getBuildTarget())
             .setLabels(getLabels())
             .setContacts(getContacts());
@@ -488,14 +489,14 @@ public class AppleTest extends AbstractBuildRuleWithDeclaredAndExtraDeps
 
   // This test rule just executes the test bundle, so we need it available locally.
   @Override
-  public Stream<BuildTarget> getRuntimeDeps(SourcePathRuleFinder ruleFinder) {
+  public Stream<BuildTarget> getRuntimeDeps(BuildRuleResolver buildRuleResolver) {
     return Stream.concat(
         Stream.concat(
                 Stream.of(testBundle),
-                Stream.concat(Optionals.toStream(testHostApp), Optionals.toStream(uiTestTargetApp)))
+                Stream.concat(RichStream.from(testHostApp), RichStream.from(uiTestTargetApp)))
             .map(BuildRule::getBuildTarget),
-        Optionals.toStream(xctool)
-            .map(ruleFinder::filterBuildRuleInputs)
+        RichStream.from(xctool)
+            .map(buildRuleResolver::filterBuildRuleInputs)
             .flatMap(ImmutableSet::stream)
             .map(BuildRule::getBuildTarget));
   }

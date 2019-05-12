@@ -33,6 +33,7 @@ import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.rulekey.AddToRuleKey;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
+import com.facebook.buck.core.rules.BuildRuleResolver;
 import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.attr.HasDeclaredAndExtraDeps;
 import com.facebook.buck.core.rules.attr.HasInstallHelpers;
@@ -225,6 +226,7 @@ public class AndroidBinary extends AbstractBuildRule
             resourceFilesInfo,
             apkModules,
             enhancementResult.getModuleResourceApkPaths(),
+            Optional.empty(),
             true);
     this.exopackageInfo = exopackageInfo;
 
@@ -367,10 +369,8 @@ public class AndroidBinary extends AbstractBuildRule
   @Override
   public ImmutableSet<JavaLibrary> getTransitiveClasspathDeps() {
     return JavaLibraryClasspathProvider.getClasspathDeps(
-        enhancementResult
-            .getClasspathEntriesToDex()
-            .stream()
-            .flatMap(ruleFinder.FILTER_BUILD_RULE_INPUTS)
+        ruleFinder
+            .filterBuildRuleInputs(enhancementResult.getClasspathEntriesToDex().stream())
             .collect(ImmutableSet.toImmutableSet()));
   }
 
@@ -386,10 +386,10 @@ public class AndroidBinary extends AbstractBuildRule
   }
 
   @Override
-  public Stream<BuildTarget> getRuntimeDeps(SourcePathRuleFinder ruleFinder) {
+  public Stream<BuildTarget> getRuntimeDeps(BuildRuleResolver buildRuleResolver) {
     return RichStream.from(moduleVerification)
         .map(BuildRule::getBuildTarget)
-        .concat(HasInstallableApkSupport.getRuntimeDepsForInstallableApk(this, ruleFinder));
+        .concat(HasInstallableApkSupport.getRuntimeDepsForInstallableApk(this, buildRuleResolver));
   }
 
   @Override

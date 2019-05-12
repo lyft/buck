@@ -60,10 +60,10 @@ import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.DefaultBuildTargetSourcePath;
 import com.facebook.buck.core.sourcepath.FakeSourcePath;
 import com.facebook.buck.core.sourcepath.SourceWithFlags;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.CxxPlatformUtils;
-import com.facebook.buck.cxx.toolchain.DefaultCxxPlatforms;
+import com.facebook.buck.cxx.toolchain.impl.DefaultCxxPlatforms;
 import com.facebook.buck.event.BuckEventBus;
 import com.facebook.buck.event.BuckEventBusForTests;
 import com.facebook.buck.features.halide.HalideBuckConfig;
@@ -473,7 +473,11 @@ public class WorkspaceAndProjectGeneratorTest {
         mainSchemeTestAction.getTestables(), hasItem(withName("bin-xctest")));
 
     // validate project specific (foo) scheme values
-    Optional<XCScheme> fooScheme = generator.getSchemeGenerators().get("foo").getOutputScheme();
+    SchemeGenerator fooSchemeGenerator = generator.getSchemeGenerators().get("foo");
+
+    assertThat(fooSchemeGenerator.getOutputDirectory(), is(Paths.get("foo/foo.xcodeproj")));
+
+    Optional<XCScheme> fooScheme = fooSchemeGenerator.getOutputScheme();
 
     assertThat(fooScheme.isPresent(), is(true));
 
@@ -499,7 +503,11 @@ public class WorkspaceAndProjectGeneratorTest {
         fooSchemeTestAction.getTestables(), hasItem(withName("bin-xctest")));
 
     // validate project specific (bar) scheme values
-    Optional<XCScheme> barScheme = generator.getSchemeGenerators().get("bar").getOutputScheme();
+    SchemeGenerator barSchemeGenerator = generator.getSchemeGenerators().get("bar");
+
+    assertThat(barSchemeGenerator.getOutputDirectory(), is(Paths.get("bar/bar.xcodeproj")));
+
+    Optional<XCScheme> barScheme = barSchemeGenerator.getOutputScheme();
 
     assertThat(barScheme.isPresent(), is(true));
 

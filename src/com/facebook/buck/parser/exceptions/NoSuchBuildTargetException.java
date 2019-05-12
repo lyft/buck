@@ -18,6 +18,7 @@ package com.facebook.buck.parser.exceptions;
 
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.UnconfiguredBuildTarget;
+import com.facebook.buck.core.model.UnconfiguredBuildTargetView;
 import java.nio.file.Path;
 
 /** Thrown when build target definition is missing in corresponding build file */
@@ -27,13 +28,17 @@ public class NoSuchBuildTargetException extends BuildTargetException {
     this(String.format("No such target: '%s'", target));
   }
 
+  public NoSuchBuildTargetException(UnconfiguredBuildTarget target) {
+    this(String.format("No such target: '%s'", target));
+  }
+
   private NoSuchBuildTargetException(String message) {
     super(message);
   }
 
   /** @param buildTarget the failing {@link BuildTarget} */
   public static NoSuchBuildTargetException createForMissingBuildRule(
-      UnconfiguredBuildTarget buildTarget, Path buckFilePath) {
+      UnconfiguredBuildTargetView buildTarget, Path buckFilePath) {
     String message =
         String.format(
             "The rule %s could not be found.\nPlease check the spelling and whether it exists in %s.",

@@ -35,12 +35,12 @@ import com.facebook.buck.android.toolchain.ndk.NdkCxxPlatform;
 import com.facebook.buck.android.toolchain.ndk.impl.AndroidNdkHelper;
 import com.facebook.buck.core.cell.Cell;
 import com.facebook.buck.core.exceptions.HumanReadableException;
+import com.facebook.buck.core.graph.transformation.executor.DepsAwareExecutor;
+import com.facebook.buck.core.graph.transformation.executor.impl.DefaultDepsAwareExecutor;
+import com.facebook.buck.core.graph.transformation.model.ComputeResult;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.io.file.MorePaths;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.TestProjectFilesystems;
@@ -49,6 +49,7 @@ import com.facebook.buck.parser.Parser;
 import com.facebook.buck.parser.ParsingContext;
 import com.facebook.buck.parser.TestParserFactory;
 import com.facebook.buck.parser.exceptions.BuildFileParseException;
+import com.facebook.buck.testutil.CloseableResource;
 import com.facebook.buck.testutil.ProcessResult;
 import com.facebook.buck.testutil.TemporaryPaths;
 import com.facebook.buck.testutil.TestConsole;
@@ -90,6 +91,10 @@ public class InterCellIntegrationTest {
 
   @Rule public TemporaryPaths tmp = new TemporaryPaths();
   @Rule public ExpectedException thrown = ExpectedException.none();
+
+  @Rule
+  public CloseableResource<DepsAwareExecutor<? super ComputeResult, ?>> executor =
+      CloseableResource.of(() -> DefaultDepsAwareExecutor.of(4));
 
   @Test
   public void ensureThatNormalBuildsWorkAsExpected() throws IOException {
@@ -372,7 +377,7 @@ public class InterCellIntegrationTest {
     registerCell(secondary, "primary", primary);
 
     // We could just do a build, but that's a little extreme since all we need is the target graph
-    Parser parser = TestParserFactory.create(primary.asCell());
+    Parser parser = TestParserFactory.create(executor.get(), primary.asCell());
 
     Cell primaryCell = primary.asCell();
     BuildTarget namedTarget =
@@ -614,7 +619,7 @@ public class InterCellIntegrationTest {
   }
 
   @Test
-  public void testCrossCellAndroidLibrary() throws InterruptedException, IOException {
+  public void testCrossCellAndroidLibrary() throws IOException {
     AssumeAndroidPlatform.assumeSdkIsAvailable();
 
     Pair<ProjectWorkspace, ProjectWorkspace> cells =
@@ -642,15 +647,13 @@ public class InterCellIntegrationTest {
 
     NdkCxxPlatform platform = AndroidNdkHelper.getNdkCxxPlatform(primary.asCell().getFilesystem());
     TestActionGraphBuilder graphBuilder = new TestActionGraphBuilder();
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder));
     Path tmpDir = tmp.newFolder("merging_tmp");
     SymbolGetter syms =
         new SymbolGetter(
             new DefaultProcessExecutor(new TestConsole()),
             tmpDir,
             platform.getObjdump(),
-            pathResolver);
+            graphBuilder.getSourcePathResolver());
     SymbolsAndDtNeeded info;
     Path apkPath = primary.buildAndReturnOutput("//apps/sample:app_with_merged_cross_cell_libs");
 
@@ -688,15 +691,13 @@ public class InterCellIntegrationTest {
 
     NdkCxxPlatform platform = AndroidNdkHelper.getNdkCxxPlatform(primary.asCell().getFilesystem());
     TestActionGraphBuilder graphBuilder = new TestActionGraphBuilder();
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder));
     Path tmpDir = tmp.newFolder("merging_tmp");
     SymbolGetter syms =
         new SymbolGetter(
             new DefaultProcessExecutor(new TestConsole()),
             tmpDir,
             platform.getObjdump(),
-            pathResolver);
+            graphBuilder.getSourcePathResolver());
     SymbolsAndDtNeeded info;
     Path apkPath = primary.buildAndReturnOutput("//apps/sample:app_with_merged_cross_cell_deps");
 
@@ -769,7 +770,7 @@ public class InterCellIntegrationTest {
   }
 
   @Test
-  public void testCrossCellCleanCommand() throws IOException, InterruptedException {
+  public void testCrossCellCleanCommand() throws IOException {
     Pair<ProjectWorkspace, ProjectWorkspace> cells =
         prepare("inter-cell/export-file/primary", "inter-cell/export-file/secondary");
     ProjectWorkspace primary = cells.getFirst();

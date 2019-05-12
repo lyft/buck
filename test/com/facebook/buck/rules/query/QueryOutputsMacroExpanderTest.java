@@ -30,10 +30,8 @@ import com.facebook.buck.core.model.targetgraph.TargetGraphFactory;
 import com.facebook.buck.core.model.targetgraph.TargetNode;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.impl.NoopBuildRule;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
 import com.facebook.buck.jvm.java.JavaLibraryBuilder;
@@ -107,6 +105,7 @@ public class QueryOutputsMacroExpanderTest {
         StringWithMacrosConverter.builder()
             .setBuildTarget(ruleNode.getBuildTarget())
             .setCellPathResolver(cellNames)
+            .setActionGraphBuilder(graphBuilder)
             .addExpanders(new QueryOutputsMacroExpander(Optional.empty()))
             .setPrecomputedWorkCache(cache)
             .build();
@@ -188,8 +187,7 @@ public class QueryOutputsMacroExpanderTest {
                     rule.getBuildTarget().getBasePath(),
                     EmptyTargetConfiguration.INSTANCE,
                     input);
-    Arg arg = converter.convert(stringWithMacros, graphBuilder);
-    return Arg.stringify(
-        arg, DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder)));
+    Arg arg = converter.convert(stringWithMacros);
+    return Arg.stringify(arg, graphBuilder.getSourcePathResolver());
   }
 }

@@ -35,7 +35,7 @@ import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.HeaderMode;
 import com.facebook.buck.cxx.toolchain.HeaderSymlinkTree;
@@ -177,9 +177,9 @@ public class CxxLibraryDescription
                     args.getLangPreprocessorFlags(),
                     args.getLangPlatformPreprocessorFlags(),
                     cxxPlatform),
-                f ->
-                    CxxDescriptionEnhancer.toStringWithMacrosArgs(
-                        target, cellRoots, graphBuilder, cxxPlatform, f))),
+                CxxDescriptionEnhancer.getStringWithMacrosArgsConverter(
+                        target, cellRoots, graphBuilder, cxxPlatform)
+                    ::convert)),
         headerSymlinkTrees,
         ImmutableSet.of(),
         RichStream.from(
@@ -247,7 +247,8 @@ public class CxxLibraryDescription
       ImmutableCollection.Builder<BuildTarget> extraDepsBuilder,
       ImmutableCollection.Builder<BuildTarget> targetGraphOnlyDepsBuilder) {
     // Get any parse time deps from the C/C++ platforms.
-    targetGraphOnlyDepsBuilder.addAll(cxxLibraryFactory.getPlatformParseTimeDeps());
+    targetGraphOnlyDepsBuilder.addAll(
+        cxxLibraryFactory.getPlatformParseTimeDeps(buildTarget.getTargetConfiguration()));
   }
 
   /**
@@ -491,6 +492,17 @@ public class CxxLibraryDescription
      */
     @Value.Default
     default ImmutableSortedSet<String> getPublicIncludeDirectories() {
+      return ImmutableSortedSet.of();
+    }
+
+    /**
+     * A list of include directories to be added to the compile command for compiling this cxx
+     * target and every target that depends on it.
+     *
+     * @return a list of public (exported) include paths for this cxx target.
+     */
+    @Value.Default
+    default ImmutableSortedSet<String> getPublicSystemIncludeDirectories() {
       return ImmutableSortedSet.of();
     }
 

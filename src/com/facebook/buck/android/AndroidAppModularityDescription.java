@@ -64,8 +64,9 @@ public class AndroidAppModularityDescription
     return new AndroidAppModularity(
         buildTarget,
         context.getProjectFilesystem(),
-        params.withExtraDeps(result.getFinalDeps()),
-        result);
+        result,
+        args.getShouldIncludeClasses(),
+        apkModuleGraph);
   }
 
   @BuckStyleImmutable
@@ -82,5 +83,10 @@ public class AndroidAppModularityDescription
 
     @Hint(isDep = false)
     ImmutableSet<BuildTarget> getNoDx();
+
+    @Value.Default
+    default boolean getShouldIncludeClasses() {
+      return true;
+    }
   }
 }

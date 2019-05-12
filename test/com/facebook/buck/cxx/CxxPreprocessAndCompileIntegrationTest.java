@@ -32,7 +32,7 @@ import com.facebook.buck.core.config.FakeBuckConfig;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
 import com.facebook.buck.core.model.impl.BuildTargetPaths;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.CxxPlatformUtils;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
@@ -527,12 +527,12 @@ public class CxxPreprocessAndCompileIntegrationTest {
   }
 
   @Test
-  public void langCompilerFlags() throws IOException {
+  public void langCompilerFlags() {
     workspace.runBuckBuild("//:lang_compiler_flags#default,static").assertSuccess();
   }
 
   @Test
-  public void binaryBuildRuleTools() throws IOException {
+  public void binaryBuildRuleTools() {
     workspace
         .runBuckBuild(
             "-c",
@@ -556,14 +556,14 @@ public class CxxPreprocessAndCompileIntegrationTest {
   }
 
   @Test
-  public void ignoreVerifyHeaders() throws IOException {
+  public void ignoreVerifyHeaders() {
     ProcessResult result =
         workspace.runBuckBuild("-c", "cxx.untracked_headers=ignore", "//:untracked_header");
     result.assertSuccess();
   }
 
   @Test
-  public void errorVerifyHeaders() throws IOException {
+  public void errorVerifyHeaders() {
     ProcessResult result;
     result =
         workspace.runBuckBuild(
@@ -581,7 +581,7 @@ public class CxxPreprocessAndCompileIntegrationTest {
   }
 
   @Test
-  public void errorVerifyTwoHeaders() throws IOException {
+  public void errorVerifyTwoHeaders() {
     ProcessResult result;
     result =
         workspace.runBuckBuild(
@@ -606,7 +606,7 @@ public class CxxPreprocessAndCompileIntegrationTest {
   }
 
   @Test
-  public void errorVerifyNestedHeaders() throws IOException {
+  public void errorVerifyNestedHeaders() {
     ProcessResult result;
     result =
         workspace.runBuckBuild(
@@ -629,7 +629,7 @@ public class CxxPreprocessAndCompileIntegrationTest {
   }
 
   @Test
-  public void whitelistVerifyHeaders() throws IOException {
+  public void whitelistVerifyHeaders() {
     ProcessResult result =
         workspace.runBuckBuild(
             "-c",
@@ -649,7 +649,7 @@ public class CxxPreprocessAndCompileIntegrationTest {
   }
 
   @Test
-  public void errorVerifyHeadersWithPrefixHeader() throws Exception {
+  public void errorVerifyHeadersWithPrefixHeader() {
     ProcessResult result =
         workspace.runBuckBuild(
             "-c",
@@ -662,7 +662,7 @@ public class CxxPreprocessAndCompileIntegrationTest {
   }
 
   @Test
-  public void verifyAppleFrameworksHeaders() throws IOException {
+  public void verifyAppleFrameworksHeaders() {
     assumeThat(Platform.detect(), is(Platform.MACOS));
     assumeTrue(AppleNativeIntegrationTestUtils.isApplePlatformAvailable(ApplePlatform.MACOSX));
 

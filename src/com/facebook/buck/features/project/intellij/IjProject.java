@@ -19,9 +19,6 @@ package com.facebook.buck.features.project.intellij;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.targetgraph.impl.TargetGraphAndTargets;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.features.project.intellij.aggregation.DefaultAggregationModuleFactory;
 import com.facebook.buck.features.project.intellij.lang.android.AndroidManifestParser;
 import com.facebook.buck.features.project.intellij.lang.java.ParsingJavaPackageFinder;
@@ -43,8 +40,6 @@ public class IjProject {
   private final JavaPackageFinder javaPackageFinder;
   private final JavaFileParser javaFileParser;
   private final ActionGraphBuilder graphBuilder;
-  private final SourcePathResolver sourcePathResolver;
-  private final SourcePathRuleFinder ruleFinder;
   private final ProjectFilesystem projectFilesystem;
   private final IjProjectConfig projectConfig;
   private final ProjectFilesystem outFilesystem;
@@ -62,8 +57,6 @@ public class IjProject {
     this.javaPackageFinder = javaPackageFinder;
     this.javaFileParser = javaFileParser;
     this.graphBuilder = graphBuilder;
-    this.ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    this.sourcePathResolver = DefaultSourcePathResolver.from(this.ruleFinder);
     this.projectFilesystem = projectFilesystem;
     this.projectConfig = projectConfig;
     this.outFilesystem = outFilesystem;
@@ -108,14 +101,9 @@ public class IjProject {
     IjLibraryFactory libraryFactory =
         new DefaultIjLibraryFactory(
             new DefaultIjLibraryFactoryResolver(
-                projectFilesystem,
-                sourcePathResolver,
-                graphBuilder,
-                ruleFinder,
-                requiredBuildTargets));
+                projectFilesystem, graphBuilder, requiredBuildTargets));
     IjModuleFactoryResolver moduleFactoryResolver =
-        new DefaultIjModuleFactoryResolver(
-            graphBuilder, sourcePathResolver, ruleFinder, projectFilesystem, requiredBuildTargets);
+        new DefaultIjModuleFactoryResolver(graphBuilder, projectFilesystem, requiredBuildTargets);
     SupportedTargetTypeRegistry typeRegistry =
         new SupportedTargetTypeRegistry(
             projectFilesystem, moduleFactoryResolver, projectConfig, javaPackageFinder);

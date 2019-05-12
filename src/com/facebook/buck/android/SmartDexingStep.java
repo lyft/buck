@@ -21,7 +21,6 @@ import com.facebook.buck.core.build.context.BuildContext;
 import com.facebook.buck.core.build.execution.context.ExecutionContext;
 import com.facebook.buck.io.BuildCellRelativePath;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
-import com.facebook.buck.step.DefaultStepRunner;
 import com.facebook.buck.step.Step;
 import com.facebook.buck.step.StepExecutionResult;
 import com.facebook.buck.step.StepExecutionResults;
@@ -208,7 +207,6 @@ public class SmartDexingStep implements Step {
             Path secondaryBlobOutput =
                 secondaryCompressedBlobOutput.getParent().resolve("uncompressed.dex.blob");
             // Concatenate the jars into a blob and compress it.
-            StepRunner stepRunner = new DefaultStepRunner();
             Step concatStep =
                 new ConcatStep(
                     filesystem, ImmutableList.copyOf(secondaryDexJars), secondaryBlobOutput);
@@ -218,8 +216,8 @@ public class SmartDexingStep implements Step {
                     secondaryBlobOutput,
                     secondaryCompressedBlobOutput,
                     xzCompressionLevel.orElse(XzStep.DEFAULT_COMPRESSION_LEVEL));
-            stepRunner.runStepForBuildTarget(context, concatStep, Optional.empty());
-            stepRunner.runStepForBuildTarget(context, xzStep, Optional.empty());
+            StepRunner.runStep(context, concatStep);
+            StepRunner.runStep(context, xzStep);
           }
         }
       }
@@ -233,7 +231,6 @@ public class SmartDexingStep implements Step {
 
   private void runDxCommands(ExecutionContext context, Multimap<Path, Path> outputToInputs)
       throws StepFailedException, InterruptedException {
-    DefaultStepRunner stepRunner = new DefaultStepRunner();
     // Invoke dx commands in parallel for maximum thread utilization.  In testing, dx revealed
     // itself to be CPU (and not I/O) bound making it a good candidate for parallelization.
     Stream<ImmutableList<Step>> dxSteps = generateDxCommands(filesystem, outputToInputs);
@@ -245,7 +242,7 @@ public class SmartDexingStep implements Step {
                     (Callable<Void>)
                         () -> {
                           for (Step step : steps) {
-                            stepRunner.runStepForBuildTarget(context, step, Optional.empty());
+                            StepRunner.runStep(context, step);
                           }
                           return null;
                         })
@@ -313,10 +310,7 @@ public class SmartDexingStep implements Step {
     ImmutableMap<Path, Sha1HashCode> dexInputHashes = dexInputHashesProvider.getDexInputHashes();
     ImmutableSet<Path> allDexInputPaths = ImmutableSet.copyOf(outputToInputs.values());
 
-    return outputToInputs
-        .asMap()
-        .entrySet()
-        .stream()
+    return outputToInputs.asMap().entrySet().stream()
         .map(
             outputInputsPair ->
                 new DxPseudoRule(

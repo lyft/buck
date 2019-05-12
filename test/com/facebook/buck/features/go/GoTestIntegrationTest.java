@@ -17,6 +17,7 @@
 package com.facebook.buck.features.go;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
@@ -40,7 +41,7 @@ public class GoTestIntegrationTest {
   public ProjectWorkspace workspace;
 
   @Before
-  public void ensureGoIsAvailable() throws IOException {
+  public void ensureGoIsAvailable() {
     GoAssumptions.assumeGoCompilerAvailable();
   }
 
@@ -85,13 +86,13 @@ public class GoTestIntegrationTest {
 
   @Ignore
   @Test
-  public void testGoInternalTest() throws IOException {
+  public void testGoInternalTest() {
     ProcessResult result1 = workspace.runBuckCommand("test", "//:test-success-internal");
     result1.assertSuccess();
   }
 
   @Test
-  public void testWithResources() throws IOException {
+  public void testWithResources() {
     ProcessResult result1 = workspace.runBuckCommand("test", "//:test-with-resources");
     result1.assertSuccess();
 
@@ -110,25 +111,76 @@ public class GoTestIntegrationTest {
             "//:test-with-resources");
     result1.assertSuccess();
 
-    assertIsSymbolicLink(
+    assertIsRegularCopy(
         workspace.resolve("buck-out/gen/test-with-resources#test-main/testdata/input"),
         workspace.resolve("testdata/input"));
   }
 
   @Test
-  public void testGoInternalTestInTestList() throws IOException {
+  public void testWithResourcesDirectoryAndExternalRunner() throws IOException {
+    ProcessResult result1 =
+        workspace.runBuckCommand(
+            "build",
+            "--config",
+            "test.external_runner=fake/bin/fake_runner",
+            "//:test-with-resources-directory");
+    result1.assertSuccess();
+
+    assertIsRegularCopy(
+        workspace.resolve("buck-out/gen/test-with-resources-directory#test-main/testdata/input"),
+        workspace.resolve("testdata/input"));
+  }
+
+  @Test
+  public void testWithResourcesDirectory2LevelAndExternalRunner() throws IOException {
+    ProcessResult result1 =
+        workspace.runBuckCommand(
+            "build",
+            "--config",
+            "test.external_runner=fake/bin/fake_runner",
+            "//:test-with-resources-2directory");
+    result1.assertSuccess();
+
+    assertIsRegularCopy(
+        workspace.resolve(
+            "buck-out/gen/test-with-resources-2directory#test-main/testdata/level2/input"),
+        workspace.resolve("testdata/level2/input"));
+  }
+
+  @Test
+  public void testWithResourcesDirectory2Level2ResourcesAndExternalRunner() throws IOException {
+    ProcessResult result1 =
+        workspace.runBuckCommand(
+            "build",
+            "--config",
+            "test.external_runner=fake/bin/fake_runner",
+            "//:test-with-resources-2directory-2resources");
+    result1.assertSuccess();
+
+    assertIsRegularCopy(
+        workspace.resolve(
+            "buck-out/gen/test-with-resources-2directory-2resources#test-main/testdata/level2/input"),
+        workspace.resolve("testdata/level2/input"));
+    assertIsRegularCopy(
+        workspace.resolve(
+            "buck-out/gen/test-with-resources-2directory-2resources#test-main/testdata/level2bis/input"),
+        workspace.resolve("testdata/level2bis/input"));
+  }
+
+  @Test
+  public void testGoInternalTestInTestList() {
     ProcessResult processResult = workspace.runBuckCommand("test", "//:test-success-bad");
     processResult.assertFailure();
   }
 
   @Test
-  public void testGoTestTimeout() throws IOException {
+  public void testGoTestTimeout() {
     ProcessResult result = workspace.runBuckCommand("test", "//:test-spinning");
     result.assertTestFailure("test timed out after 500ms");
   }
 
   @Test
-  public void testGoPanic() throws IOException {
+  public void testGoPanic() {
     ProcessResult result2 = workspace.runBuckCommand("test", "//:test-panic");
     result2.assertTestFailure();
     assertThat(
@@ -142,52 +194,52 @@ public class GoTestIntegrationTest {
   }
 
   @Test
-  public void testSubTests() throws IOException {
+  public void testSubTests() {
     GoAssumptions.assumeGoVersionAtLeast("1.7.0");
     ProcessResult result = workspace.runBuckCommand("test", "//:subtests");
     result.assertSuccess();
   }
 
   @Test
-  public void testIndirectDeps() throws IOException {
+  public void testIndirectDeps() {
     ProcessResult result = workspace.runBuckCommand("test", "//add:test-add13");
     result.assertSuccess();
   }
 
   @Test
-  public void testLibWithCgoDeps() throws IOException {
+  public void testLibWithCgoDeps() {
     GoAssumptions.assumeGoVersionAtLeast("1.10.0");
     ProcessResult result = workspace.runBuckCommand("test", "//cgo/lib:all_tests");
     result.assertSuccess();
   }
 
   @Test
-  public void testGenRuleAsSrc() throws IOException {
+  public void testGenRuleAsSrc() {
     ProcessResult result = workspace.runBuckCommand("test", "//genrule_as_src:test");
     result.assertSuccess();
   }
 
   @Test
-  public void testGenRuleWithLibAsSrc() throws IOException {
+  public void testGenRuleWithLibAsSrc() {
     ProcessResult result = workspace.runBuckCommand("test", "//genrule_wtih_lib_as_src:test");
     result.assertSuccess();
   }
 
   @Test
-  public void testHyphen() throws IOException {
+  public void testHyphen() {
     // This test should pass.
     ProcessResult result = workspace.runBuckCommand("test", "//:test-hyphen");
     result.assertSuccess();
   }
 
   @Test
-  public void testFuncWithPrefixTest() throws IOException {
+  public void testFuncWithPrefixTest() {
     ProcessResult result = workspace.runBuckCommand("test", "//:test-scores");
     result.assertSuccess();
   }
 
   @Test
-  public void testNonprintableCharacterInResult() throws IOException {
+  public void testNonprintableCharacterInResult() {
     ProcessResult result = workspace.runBuckCommand("test", "//testOutput:all_tests");
     assertThat(
         "`buck test` should print out the error message",
@@ -197,7 +249,7 @@ public class GoTestIntegrationTest {
   }
 
   @Test
-  public void testGoTestWithEnv() throws IOException {
+  public void testGoTestWithEnv() {
     ProcessResult result = workspace.runBuckCommand("test", "//:test-with-env");
     result.assertSuccess();
   }
@@ -215,8 +267,8 @@ public class GoTestIntegrationTest {
         .assertTestFailure();
   }
 
-  private static void assertIsSymbolicLink(Path link, Path target) throws IOException {
-    assertTrue(Files.isSymbolicLink(link));
-    assertTrue(Files.isSameFile(target, Files.readSymbolicLink(link)));
+  private static void assertIsRegularCopy(Path link, Path target) throws IOException {
+    assertTrue(Files.isRegularFile(link));
+    assertEquals(Files.readAllLines(link), Files.readAllLines(target));
   }
 }

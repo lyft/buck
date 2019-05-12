@@ -16,14 +16,15 @@
 
 package com.facebook.buck.features.ocaml;
 
+import com.facebook.buck.core.exceptions.BuckUncheckedExecutionException;
 import com.facebook.buck.core.model.BuildTarget;
+import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.model.impl.BuildTargetPaths;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
 import com.facebook.buck.core.util.log.Logger;
-import com.facebook.buck.cxx.toolchain.CxxPlatforms;
+import com.facebook.buck.cxx.toolchain.impl.CxxPlatforms;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
-import com.facebook.buck.util.exceptions.BuckUncheckedExecutionException;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -144,12 +145,13 @@ public class OcamlUtil {
     return (index > 0) ? fileName.substring(0, index) : fileName;
   }
 
-  static Iterable<BuildTarget> getParseTimeDeps(OcamlPlatform platform) {
+  static Iterable<BuildTarget> getParseTimeDeps(
+      TargetConfiguration targetConfiguration, OcamlPlatform platform) {
     ImmutableSet.Builder<BuildTarget> deps = ImmutableSet.builder();
-    deps.addAll(platform.getCCompiler().getParseTimeDeps());
-    deps.addAll(platform.getCxxCompiler().getParseTimeDeps());
-    deps.addAll(platform.getCPreprocessor().getParseTimeDeps());
-    deps.addAll(CxxPlatforms.getParseTimeDeps(platform.getCxxPlatform()));
+    deps.addAll(platform.getCCompiler().getParseTimeDeps(targetConfiguration));
+    deps.addAll(platform.getCxxCompiler().getParseTimeDeps(targetConfiguration));
+    deps.addAll(platform.getCPreprocessor().getParseTimeDeps(targetConfiguration));
+    deps.addAll(CxxPlatforms.getParseTimeDeps(targetConfiguration, platform.getCxxPlatform()));
     return deps.build();
   }
 }

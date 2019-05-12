@@ -83,7 +83,7 @@ public class HostInfoTest {
         "arch",
         "is_armeb");
     validateSkylarkStruct(
-        HostInfo.createHostInfoStruct(() -> Platform.UNKNOWN, () -> Architecture.I386),
+        HostInfo.createHostInfoStruct(() -> Platform.UNKNOWN, () -> Architecture.X86_32),
         "arch",
         "is_i386");
     validateSkylarkStruct(
@@ -193,9 +193,7 @@ public class HostInfoTest {
     SkylarkInfo realHostOs = realHostInfo.getValue("os", SkylarkInfo.class);
     SkylarkInfo realHostArch = realHostInfo.getValue("arch", SkylarkInfo.class);
     String trueOsKey =
-        realHostOs
-            .getFieldNames()
-            .stream()
+        realHostOs.getFieldNames().stream()
             .filter(
                 k -> {
                   try {
@@ -208,9 +206,7 @@ public class HostInfoTest {
             .get();
 
     String trueArchKey =
-        realHostArch
-            .getFieldNames()
-            .stream()
+        realHostArch.getFieldNames().stream()
             .filter(
                 k -> {
                   try {

@@ -31,7 +31,7 @@ import com.facebook.buck.jvm.java.JarDumper;
 import com.facebook.buck.jvm.java.JavacEventSinkToBuckEventBusBridge;
 import com.facebook.buck.jvm.java.testutil.compiler.CompilerTreeApiParameterized;
 import com.facebook.buck.jvm.java.testutil.compiler.TestCompiler;
-import com.facebook.buck.util.JavaVersion;
+import com.facebook.buck.jvm.java.version.JavaVersion;
 import com.facebook.buck.util.sha1.Sha1HashCode;
 import com.facebook.buck.util.timing.FakeClock;
 import com.facebook.buck.util.unarchive.ArchiveFormat;
@@ -5529,9 +5529,7 @@ public class StubJarTest {
             jarBuilder.createJarFile(stubJar);
           } else {
             List<String> actualCompileErrors =
-                testCompiler
-                    .getErrorMessages()
-                    .stream()
+                testCompiler.getErrorMessages().stream()
                     .map(
                         diagnostic ->
                             diagnostic.substring(diagnostic.lastIndexOf(File.separatorChar) + 1))
@@ -5604,9 +5602,7 @@ public class StubJarTest {
         compiler.compile();
         if (!expectedCompileErrors.isEmpty()) {
           List<String> actualCompileErrors =
-              compiler
-                  .getErrorMessages()
-                  .stream()
+              compiler.getErrorMessages().stream()
                   .map(
                       diagnostic ->
                           diagnostic.substring(diagnostic.lastIndexOf(File.separatorChar) + 1))

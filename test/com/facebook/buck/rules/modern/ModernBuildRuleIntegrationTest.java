@@ -111,9 +111,7 @@ public class ModernBuildRuleIntegrationTest {
         BuildRuleParams params,
         TemporaryWritingDescriptionArg args) {
       return new TemporaryWritingRule(
-          buildTarget,
-          context.getProjectFilesystem(),
-          new SourcePathRuleFinder(context.getActionGraphBuilder()));
+          buildTarget, context.getProjectFilesystem(), context.getActionGraphBuilder());
     }
   }
 

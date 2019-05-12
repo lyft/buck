@@ -16,10 +16,9 @@
 
 package com.facebook.buck.core.sourcepath.resolver;
 
+import com.facebook.buck.core.io.ArchiveMemberPath;
 import com.facebook.buck.core.model.BuildTarget;
-import com.facebook.buck.core.sourcepath.PathSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.io.ArchiveMemberPath;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableMap;
@@ -27,7 +26,6 @@ import com.google.common.collect.ImmutableSortedSet;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
@@ -37,8 +35,6 @@ public interface SourcePathResolver {
   ProjectFilesystem getFilesystem(SourcePath sourcePath);
 
   Path getAbsolutePath(SourcePath sourcePath);
-
-  ArchiveMemberPath getAbsoluteArchiveMemberPath(SourcePath sourcePath);
 
   ArchiveMemberPath getRelativeArchiveMemberPath(SourcePath sourcePath);
 
@@ -61,10 +57,6 @@ public interface SourcePathResolver {
   String getSourcePathName(BuildTarget target, SourcePath sourcePath);
 
   ImmutableCollection<Path> filterInputsToCompareToOutput(Iterable<? extends SourcePath> sources);
-
-  ImmutableCollection<Path> filterInputsToCompareToOutput(SourcePath... sources);
-
-  Optional<PathSourcePath> getPathSourcePath(SourcePath sourcePath);
 
   /**
    * @return {@link Path} to the given {@link SourcePath} that is relative to the given {@link

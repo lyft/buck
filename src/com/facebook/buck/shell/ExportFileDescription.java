@@ -21,15 +21,12 @@ import com.facebook.buck.core.description.arg.CommonDescriptionArg;
 import com.facebook.buck.core.description.attr.ImplicitInputsInferringDescription;
 import com.facebook.buck.core.exceptions.HumanReadableException;
 import com.facebook.buck.core.model.BuildTarget;
-import com.facebook.buck.core.model.UnflavoredBuildTarget;
+import com.facebook.buck.core.model.UnflavoredBuildTargetView;
 import com.facebook.buck.core.model.targetgraph.BuildRuleCreationContextWithTargetGraph;
 import com.facebook.buck.core.model.targetgraph.DescriptionWithTargetGraph;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.sourcepath.PathSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.google.common.collect.ImmutableList;
@@ -72,12 +69,14 @@ public class ExportFileDescription
     }
 
     SourcePath src;
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(context.getActionGraphBuilder());
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
     ProjectFilesystem projectFilesystem = context.getProjectFilesystem();
     if (args.getSrc().isPresent()) {
       if (mode == ExportFileDescription.Mode.REFERENCE
-          && !pathResolver.getFilesystem(args.getSrc().get()).equals(projectFilesystem)) {
+          && !context
+              .getActionGraphBuilder()
+              .getSourcePathResolver()
+              .getFilesystem(args.getSrc().get())
+              .equals(projectFilesystem)) {
         throw new HumanReadableException(
             "%s: must use `COPY` mode for `export_file` when source (%s) uses a different cell",
             buildTarget, args.getSrc().get());
@@ -91,7 +90,13 @@ public class ExportFileDescription
     }
 
     return new ExportFile(
-        buildTarget, projectFilesystem, ruleFinder, name, mode, src, directoryAction);
+        buildTarget,
+        projectFilesystem,
+        context.getActionGraphBuilder(),
+        name,
+        mode,
+        src,
+        directoryAction);
   }
 
   private static ExportFileDirectoryAction getDirectoryActionFromConfig(BuckConfig buckConfig) {
@@ -103,7 +108,7 @@ public class ExportFileDescription
   /** If the src field is absent, add the name field to the list of inputs. */
   @Override
   public Iterable<Path> inferInputsFromConstructorArgs(
-      UnflavoredBuildTarget buildTarget, ExportFileDescriptionArg constructorArg) {
+      UnflavoredBuildTargetView buildTarget, ExportFileDescriptionArg constructorArg) {
     ImmutableList.Builder<Path> inputs = ImmutableList.builder();
     if (!constructorArg.getSrc().isPresent()) {
       inputs.add(buildTarget.getBasePath().resolve(buildTarget.getShortName()));

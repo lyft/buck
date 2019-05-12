@@ -18,6 +18,7 @@ package com.facebook.buck.versions;
 
 import com.facebook.buck.core.config.BuckConfig;
 import com.facebook.buck.core.model.BuildTarget;
+import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.model.targetgraph.TargetGraphAndBuildTargets;
 import com.facebook.buck.core.model.targetgraph.impl.TargetGraphAndTargets;
 import com.facebook.buck.core.parser.buildtargetparser.UnconfiguredBuildTargetFactory;
@@ -36,15 +37,14 @@ public class VersionedTargetGraphAndTargets {
       BuckConfig buckConfig,
       TypeCoercerFactory typeCoercerFactory,
       UnconfiguredBuildTargetFactory unconfiguredBuildTargetFactory,
-      ImmutableSet<BuildTarget> explicitTestTargets)
+      ImmutableSet<BuildTarget> explicitTestTargets,
+      TargetConfiguration targetConfiguration)
       throws VersionException, InterruptedException {
     TargetGraphAndBuildTargets targetGraphAndBuildTargets =
         TargetGraphAndBuildTargets.of(
             targetGraphAndTargets.getTargetGraph(),
             Sets.union(
-                targetGraphAndTargets
-                    .getProjectRoots()
-                    .stream()
+                targetGraphAndTargets.getProjectRoots().stream()
                     .map(root -> root.getBuildTarget())
                     .collect(Collectors.toSet()),
                 explicitTestTargets));
@@ -54,7 +54,8 @@ public class VersionedTargetGraphAndTargets {
             buckConfig,
             typeCoercerFactory,
             unconfiguredBuildTargetFactory,
-            targetGraphAndBuildTargets);
+            targetGraphAndBuildTargets,
+            targetConfiguration);
     return new TargetGraphAndTargets(
         versionedTargetGraphAndBuildTargets.getTargetGraph(),
         targetGraphAndTargets.getProjectRoots());

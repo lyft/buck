@@ -115,14 +115,15 @@ public class CxxLibraryMetadataFactory {
 
           // TODO(agallagher): We currently always add exported flags and frameworks to the
           // preprocessor input to mimic existing behavior, but this should likely be fixed.
-          CxxPlatform cxxPlatform = platform.getValue().resolve(graphBuilder);
+          CxxPlatform cxxPlatform =
+              platform.getValue().resolve(graphBuilder, buildTarget.getTargetConfiguration());
           addCxxPreprocessorInputFromArgs(
               cxxPreprocessorInputBuilder,
               args,
               cxxPlatform,
-              f ->
-                  CxxDescriptionEnhancer.toStringWithMacrosArgs(
-                      buildTarget, cellRoots, graphBuilder, cxxPlatform, f));
+              CxxDescriptionEnhancer.getStringWithMacrosArgsConverter(
+                      buildTarget, cellRoots, graphBuilder, cxxPlatform)
+                  ::convert);
 
           if (visibility.getValue() == HeaderVisibility.PRIVATE) {
             if (!args.getHeaders().isEmpty()) {
@@ -153,6 +154,7 @@ public class CxxLibraryMetadataFactory {
                     baseTarget,
                     CxxDescriptionEnhancer.getHeaderModeForPlatform(
                         graphBuilder,
+                        buildTarget.getTargetConfiguration(),
                         cxxPlatform,
                         args.getXcodePublicHeadersSymlinks()
                             .orElse(cxxPlatform.getPublicHeadersSymlinksEnabled())))
@@ -185,6 +187,15 @@ public class CxxLibraryMetadataFactory {
                       PathSourcePath.of(
                           projectFilesystem,
                           buildTarget.getBasePath().resolve(publicInclude).normalize())));
+            }
+
+            for (String publicSystemInclude : args.getPublicSystemIncludeDirectories()) {
+              cxxPreprocessorInputBuilder.addIncludes(
+                  CxxIncludes.of(
+                      IncludeType.SYSTEM,
+                      PathSourcePath.of(
+                          projectFilesystem,
+                          buildTarget.getBasePath().resolve(publicSystemInclude).normalize())));
             }
           }
 

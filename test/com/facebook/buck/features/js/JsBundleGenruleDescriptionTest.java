@@ -43,10 +43,8 @@ import com.facebook.buck.core.model.targetgraph.TargetNode;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.impl.ToolchainProviderBuilder;
 import com.facebook.buck.io.BuildCellRelativePath;
 import com.facebook.buck.rules.macros.LocationMacro;
@@ -140,7 +138,7 @@ public class JsBundleGenruleDescriptionTest {
   public void underlyingJsBundleIsARuntimeDep() {
     assertArrayEquals(
         new BuildTarget[] {defaultBundleTarget},
-        setup.genrule().getRuntimeDeps(new SourcePathRuleFinder(setup.graphBuilder())).toArray());
+        setup.genrule().getRuntimeDeps(setup.graphBuilder()).toArray());
   }
 
   @Test
@@ -239,48 +237,38 @@ public class JsBundleGenruleDescriptionTest {
   @Test
   public void exposesReleaseFlavorAsEnvironmentVariable() {
     setUp(JsFlavors.RELEASE);
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(setup.graphBuilder()));
     ImmutableMap.Builder<String, String> env = ImmutableMap.builder();
-    setup.genrule().addEnvironmentVariables(pathResolver, env);
+    setup.genrule().addEnvironmentVariables(setup.graphBuilder().getSourcePathResolver(), env);
     assertThat(env.build(), hasEntry("RELEASE", "1"));
   }
 
   @Test
   public void withoutReleaseFlavorEnvVariableIsEmpty() {
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(setup.graphBuilder()));
     ImmutableMap.Builder<String, String> env = ImmutableMap.builder();
-    setup.genrule().addEnvironmentVariables(pathResolver, env);
+    setup.genrule().addEnvironmentVariables(setup.graphBuilder().getSourcePathResolver(), env);
     assertThat(env.build(), hasEntry("RELEASE", ""));
   }
 
   @Test
   public void exposesAndroidFlavorAsEnvironmentVariable() {
     setUp(JsFlavors.ANDROID);
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(setup.graphBuilder()));
     ImmutableMap.Builder<String, String> env = ImmutableMap.builder();
-    setup.genrule().addEnvironmentVariables(pathResolver, env);
+    setup.genrule().addEnvironmentVariables(setup.graphBuilder().getSourcePathResolver(), env);
     assertThat(env.build(), hasEntry("PLATFORM", "android"));
   }
 
   @Test
   public void exposesIosFlavorAsEnvironmentVariable() {
     setUp(JsFlavors.IOS);
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(setup.graphBuilder()));
     ImmutableMap.Builder<String, String> env = ImmutableMap.builder();
-    setup.genrule().addEnvironmentVariables(pathResolver, env);
+    setup.genrule().addEnvironmentVariables(setup.graphBuilder().getSourcePathResolver(), env);
     assertThat(env.build(), hasEntry("PLATFORM", "ios"));
   }
 
   @Test
   public void withoutPlatformFlavorEnvVariableIsEmpty() {
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(setup.graphBuilder()));
     ImmutableMap.Builder<String, String> env = ImmutableMap.builder();
-    setup.genrule().addEnvironmentVariables(pathResolver, env);
+    setup.genrule().addEnvironmentVariables(setup.graphBuilder().getSourcePathResolver(), env);
     assertThat(env.build(), hasEntry("PLATFORM", ""));
   }
 
@@ -407,7 +395,7 @@ public class JsBundleGenruleDescriptionTest {
   public void exposesSourceMapOfJsBundleWithSpecialFlavor() {
     setUp(JsFlavors.SOURCE_MAP);
 
-    DefaultSourcePathResolver pathResolver = sourcePathResolver();
+    SourcePathResolver pathResolver = sourcePathResolver();
 
     assertEquals(
         pathResolver.getRelativePath(setup.jsBundle().getSourcePathToSourceMap()),
@@ -418,7 +406,7 @@ public class JsBundleGenruleDescriptionTest {
   public void exposesMiscOfJsBundleWithSpecialFlavor() {
     setUp(JsFlavors.MISC);
 
-    DefaultSourcePathResolver pathResolver = sourcePathResolver();
+    SourcePathResolver pathResolver = sourcePathResolver();
 
     assertEquals(
         pathResolver.getRelativePath(setup.jsBundle().getSourcePathToMisc()),
@@ -509,7 +497,7 @@ public class JsBundleGenruleDescriptionTest {
   public void specialSourceMapTargetPointsToOwnSourceMap() {
     setUpWithRewriteSourceMap(JsFlavors.SOURCE_MAP);
 
-    DefaultSourcePathResolver pathResolver = sourcePathResolver();
+    SourcePathResolver pathResolver = sourcePathResolver();
 
     assertEquals(
         pathResolver.getRelativePath(setup.genrule().getSourcePathToSourceMap()),
@@ -608,7 +596,7 @@ public class JsBundleGenruleDescriptionTest {
   public void specialMiscTargetPointsToOwnMiscDir() {
     setUpWithRewriteMiscDir(JsFlavors.MISC);
 
-    DefaultSourcePathResolver pathResolver = sourcePathResolver();
+    SourcePathResolver pathResolver = sourcePathResolver();
 
     assertEquals(
         pathResolver.getRelativePath(setup.genrule().getSourcePathToMisc()),
@@ -657,7 +645,7 @@ public class JsBundleGenruleDescriptionTest {
   @Test
   public void exposeDepsFileOfJsBundleWithSpecialFlavor() {
     setUp(JsFlavors.DEPENDENCY_FILE);
-    DefaultSourcePathResolver pathResolver = sourcePathResolver();
+    SourcePathResolver pathResolver = sourcePathResolver();
 
     assertEquals(
         pathResolver.getRelativePath(setup.jsBundleDepsFile().getSourcePathToOutput()),
@@ -705,7 +693,7 @@ public class JsBundleGenruleDescriptionTest {
   public void specialDepsFileTargetPointsToOwnDepsFile() {
     setUp(JsFlavors.DEPENDENCY_FILE);
 
-    DefaultSourcePathResolver pathResolver = sourcePathResolver();
+    SourcePathResolver pathResolver = sourcePathResolver();
 
     assertEquals(
         pathResolver.getRelativePath(setup.genrule().getSourcePathToDepsFile()),
@@ -720,7 +708,7 @@ public class JsBundleGenruleDescriptionTest {
   public void specialDepsFileTargetPointsToOwnDepsFileOnRewrite() {
     setUpWithRewriteDepsFile(JsFlavors.DEPENDENCY_FILE);
 
-    DefaultSourcePathResolver pathResolver = sourcePathResolver();
+    SourcePathResolver pathResolver = sourcePathResolver();
 
     assertEquals(
         pathResolver.getRelativePath(setup.genrule().getSourcePathToDepsFile()),
@@ -770,8 +758,8 @@ public class JsBundleGenruleDescriptionTest {
     return builderOptions(defaultBundleTarget);
   }
 
-  private DefaultSourcePathResolver sourcePathResolver() {
-    return DefaultSourcePathResolver.from(new SourcePathRuleFinder(setup.graphBuilder()));
+  private SourcePathResolver sourcePathResolver() {
+    return setup.graphBuilder().getSourcePathResolver();
   }
 
   private static class TestSetup {

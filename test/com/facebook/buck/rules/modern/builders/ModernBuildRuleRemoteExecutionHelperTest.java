@@ -25,11 +25,11 @@ import com.facebook.buck.core.model.BuildId;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
 import com.facebook.buck.core.rulekey.AddToRuleKey;
-import com.facebook.buck.core.rules.AbstractBuildRuleResolver;
+import com.facebook.buck.core.rulekey.CustomFieldBehavior;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.SourcePathRuleFinder;
+import com.facebook.buck.core.rules.impl.AbstractBuildRuleResolver;
 import com.facebook.buck.core.rules.modern.annotations.CustomClassBehavior;
-import com.facebook.buck.core.rules.modern.annotations.CustomFieldBehavior;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.event.BuckEventBus;
 import com.facebook.buck.event.DefaultBuckEventBus;
@@ -47,7 +47,6 @@ import com.facebook.buck.testutil.TemporaryPaths;
 import com.facebook.buck.util.timing.FakeClock;
 import com.google.common.base.Verify;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
 import com.google.common.hash.HashCode;
 import java.util.Optional;
 import org.junit.Before;
@@ -61,29 +60,21 @@ public class ModernBuildRuleRemoteExecutionHelperTest {
   private SourcePathRuleFinder ruleFinder;
 
   @Before
-  public void setUp() throws Exception {
+  public void setUp() {
     BuckEventBus eventBus = new DefaultBuckEventBus(FakeClock.doNotCare(), new BuildId("dontcare"));
     ruleFinder =
-        new SourcePathRuleFinder(
-            new AbstractBuildRuleResolver() {
-              @Override
-              public Optional<BuildRule> getRuleOptional(BuildTarget buildTarget) {
-                return Optional.empty();
-              }
-            });
+        new AbstractBuildRuleResolver() {
+          @Override
+          public Optional<BuildRule> getRuleOptional(BuildTarget buildTarget) {
+            return Optional.empty();
+          }
+        };
 
     filesystem = new FakeProjectFilesystem(tmp.getRoot());
     Cell root = new TestCellBuilder().setFilesystem(filesystem).build();
     mbrHelper =
         new ModernBuildRuleRemoteExecutionHelper(
-            eventBus,
-            new GrpcProtocol(),
-            ruleFinder,
-            root.getCellPathResolver(),
-            root,
-            ImmutableSet.of(Optional.empty()),
-            tmp.getRoot(),
-            path -> HashCode.fromInt(0));
+            eventBus, new GrpcProtocol(), ruleFinder, root, path -> HashCode.fromInt(0));
   }
 
   public static class SimpleBuildable implements Buildable {

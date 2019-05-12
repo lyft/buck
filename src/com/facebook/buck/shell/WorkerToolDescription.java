@@ -26,7 +26,6 @@ import com.facebook.buck.core.model.targetgraph.DescriptionWithTargetGraph;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.tool.BinaryBuildRule;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
 import com.facebook.buck.core.toolchain.tool.impl.CommandTool;
@@ -93,9 +92,7 @@ public class WorkerToolDescription implements DescriptionWithTargetGraph<WorkerT
     }
 
     builder.addInputs(
-        params
-            .getBuildDeps()
-            .stream()
+        params.getBuildDeps().stream()
             .map(BuildRule::getSourcePathToOutput)
             .filter(Objects::nonNull)
             .collect(ImmutableList.toImmutableList()));
@@ -104,12 +101,13 @@ public class WorkerToolDescription implements DescriptionWithTargetGraph<WorkerT
         StringWithMacrosConverter.builder()
             .setBuildTarget(buildTarget)
             .setCellPathResolver(context.getCellPathResolver())
+            .setActionGraphBuilder(graphBuilder)
             .setExpanders(MACRO_EXPANDERS)
             .build();
 
     if (args.getArgs().isLeft()) {
       builder.addArg(
-          new ProxyArg(macrosConverter.convert(args.getArgs().getLeft(), graphBuilder)) {
+          new ProxyArg(macrosConverter.convert(args.getArgs().getLeft())) {
             @Override
             public void appendToCommandLine(
                 Consumer<String> consumer, SourcePathResolver pathResolver) {
@@ -124,11 +122,11 @@ public class WorkerToolDescription implements DescriptionWithTargetGraph<WorkerT
           });
     } else {
       for (StringWithMacros arg : args.getArgs().getRight()) {
-        builder.addArg(macrosConverter.convert(arg, graphBuilder));
+        builder.addArg(macrosConverter.convert(arg));
       }
     }
     for (Map.Entry<String, StringWithMacros> e : args.getEnv().entrySet()) {
-      builder.addEnv(e.getKey(), macrosConverter.convert(e.getValue(), graphBuilder));
+      builder.addEnv(e.getKey(), macrosConverter.convert(e.getValue()));
     }
 
     Preconditions.checkArgument(
@@ -155,10 +153,10 @@ public class WorkerToolDescription implements DescriptionWithTargetGraph<WorkerT
     }
 
     CommandTool tool = builder.build();
-    return new DefaultWorkerTool(
+    return new DefaultWorkerToolRule(
         buildTarget,
         context.getProjectFilesystem(),
-        new SourcePathRuleFinder(graphBuilder),
+        graphBuilder,
         tool,
         maxWorkers,
         args.getPersistent()

@@ -30,24 +30,22 @@ import com.facebook.buck.core.config.FakeBuckConfig;
 import com.facebook.buck.core.exceptions.HumanReadableException;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
+import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.ToolchainCreationContext;
 import com.facebook.buck.core.toolchain.ToolchainProvider;
 import com.facebook.buck.core.toolchain.impl.ToolchainProviderBuilder;
 import com.facebook.buck.cxx.CxxDescriptionEnhancer;
 import com.facebook.buck.cxx.CxxSourceRuleFactory;
 import com.facebook.buck.cxx.CxxSourceRuleFactoryHelper;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.CxxPlatformUtils;
 import com.facebook.buck.cxx.toolchain.CxxPlatformsProvider;
-import com.facebook.buck.cxx.toolchain.DefaultCxxPlatforms;
 import com.facebook.buck.cxx.toolchain.HeaderVisibility;
 import com.facebook.buck.cxx.toolchain.PicType;
+import com.facebook.buck.cxx.toolchain.impl.DefaultCxxPlatforms;
 import com.facebook.buck.io.ExecutableFinder;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.TestProjectFilesystems;
@@ -114,7 +112,8 @@ public class OCamlIntegrationTest {
             new FakeProjectFilesystem(),
             processExecutor,
             executableFinder,
-            TestRuleKeyConfigurationFactory.create());
+            TestRuleKeyConfigurationFactory.create(),
+            () -> EmptyTargetConfiguration.INSTANCE);
 
     OcamlToolchainFactory factory = new OcamlToolchainFactory();
     Optional<OcamlToolchain> toolchain =
@@ -124,10 +123,11 @@ public class OCamlIntegrationTest {
         toolchain.orElseThrow(AssertionError::new).getDefaultOcamlPlatform();
 
     BuildRuleResolver resolver = new TestActionGraphBuilder();
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(resolver));
     try {
-      ocamlPlatform.getOcamlCompiler().resolve(resolver).getCommandPrefix(pathResolver);
+      ocamlPlatform
+          .getOcamlCompiler()
+          .resolve(resolver, EmptyTargetConfiguration.INSTANCE)
+          .getCommandPrefix(resolver.getSourcePathResolver());
     } catch (HumanReadableException e) {
       assumeNoException(e);
     }
@@ -346,13 +346,13 @@ public class OCamlIntegrationTest {
   }
 
   @Test
-  public void testSimpleBuildWithLib() throws IOException {
+  public void testSimpleBuildWithLib() {
     BuildTarget target = BuildTargetFactory.newInstance(workspace.getDestPath(), "//:plus");
     workspace.runBuckCommand("build", target.toString()).assertSuccess();
   }
 
   @Test
-  public void testRootBuildTarget() throws IOException {
+  public void testRootBuildTarget() {
     BuildTarget target = BuildTargetFactory.newInstance(workspace.getDestPath(), "//:main");
     workspace.runBuckCommand("build", target.toString()).assertSuccess();
   }
@@ -463,7 +463,7 @@ public class OCamlIntegrationTest {
   }
 
   @Test
-  public void testCppLibraryDependency() throws InterruptedException, IOException {
+  public void testCppLibraryDependency() throws IOException {
     BuildTarget target = BuildTargetFactory.newInstance(workspace.getDestPath(), "//clib:clib");
     BuildTarget binary = createOcamlLinkTarget(target);
     BuildTarget libplus = BuildTargetFactory.newInstance(workspace.getDestPath(), "//clib:plus");

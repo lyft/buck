@@ -23,8 +23,8 @@ import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.Flavor;
 import com.facebook.buck.core.model.Flavored;
 import com.facebook.buck.core.model.RuleType;
-import com.facebook.buck.core.model.UnconfiguredBuildTarget;
-import com.facebook.buck.core.model.UnflavoredBuildTarget;
+import com.facebook.buck.core.model.UnconfiguredBuildTargetView;
+import com.facebook.buck.core.model.UnflavoredBuildTargetView;
 import com.facebook.buck.core.util.log.Logger;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableSet;
@@ -40,10 +40,10 @@ class BuiltTargetVerifier {
       Cell cell,
       RuleType buildRuleType,
       Path buildFile,
-      UnconfiguredBuildTarget target,
+      UnconfiguredBuildTargetView target,
       BaseDescription<?> description,
       Map<String, Object> rawNode) {
-    UnflavoredBuildTarget unflavoredBuildTarget = target.getUnflavoredBuildTarget();
+    UnflavoredBuildTargetView unflavoredBuildTargetView = target.getUnflavoredBuildTargetView();
     if (target.isFlavored()) {
       if (description instanceof Flavored) {
         if (!((Flavored) description).hasFlavors(ImmutableSet.copyOf(target.getFlavors()))) {
@@ -53,11 +53,9 @@ class BuiltTargetVerifier {
         LOG.warn(
             "Target %s (type %s) must implement the Flavored interface "
                 + "before we can check if it supports flavors: %s",
-            unflavoredBuildTarget, buildRuleType, target.getFlavors());
+            unflavoredBuildTargetView, buildRuleType, target.getFlavors());
         ImmutableSet<String> invalidFlavorsStr =
-            target
-                .getFlavors()
-                .stream()
+            target.getFlavors().stream()
                 .map(Flavor::toString)
                 .collect(ImmutableSet.toImmutableSet());
         String invalidFlavorsDisplayStr = String.join(", ", invalidFlavorsStr);
@@ -65,19 +63,19 @@ class BuiltTargetVerifier {
             "The following flavor(s) are not supported on target %s:\n"
                 + "%s.\n\n"
                 + "Please try to remove them when referencing this target.",
-            unflavoredBuildTarget, invalidFlavorsDisplayStr);
+            unflavoredBuildTargetView, invalidFlavorsDisplayStr);
       }
     }
 
-    UnflavoredBuildTarget unflavoredBuildTargetFromRawData =
+    UnflavoredBuildTargetView unflavoredBuildTargetViewFromRawData =
         UnflavoredBuildTargetFactory.createFromRawNode(
             cell.getRoot(), cell.getCanonicalName(), rawNode, buildFile);
-    if (!unflavoredBuildTarget.equals(unflavoredBuildTargetFromRawData)) {
+    if (!unflavoredBuildTargetView.equals(unflavoredBuildTargetViewFromRawData)) {
       throw new IllegalStateException(
           String.format(
               "Inconsistent internal state, target from data: %s, expected: %s, raw data: %s",
-              unflavoredBuildTargetFromRawData,
-              unflavoredBuildTarget,
+              unflavoredBuildTargetViewFromRawData,
+              unflavoredBuildTargetView,
               Joiner.on(',').withKeyValueSeparator("->").join(rawNode)));
     }
   }

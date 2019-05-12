@@ -24,11 +24,10 @@ import com.facebook.buck.core.rulekey.AddsToRuleKey;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
 import com.facebook.buck.io.file.MorePaths;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
+import com.facebook.buck.io.pathformat.PathFormatter;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableSortedMap;
@@ -58,18 +57,12 @@ abstract class AbstractResourcesParameters implements AddsToRuleKey {
       ImmutableCollection<SourcePath> resources,
       Optional<Path> resourcesRoot) {
     return ResourcesParameters.builder()
-        .setResources(
-            getNamedResources(
-                DefaultSourcePathResolver.from(ruleFinder),
-                ruleFinder,
-                projectFilesystem,
-                resources))
+        .setResources(getNamedResources(ruleFinder, projectFilesystem, resources))
         .setResourcesRoot(resourcesRoot.map(Path::toString))
         .build();
   }
 
   public static ImmutableSortedMap<String, SourcePath> getNamedResources(
-      SourcePathResolver pathResolver,
       SourcePathRuleFinder ruleFinder,
       ProjectFilesystem filesystem,
       ImmutableCollection<SourcePath> resources) {
@@ -91,7 +84,7 @@ abstract class AbstractResourcesParameters implements AddsToRuleKey {
       // Therefore, some path-wrangling is required to produce the correct string.
 
       Optional<BuildRule> underlyingRule = ruleFinder.getRule(rawResource);
-      Path relativePathToResource = pathResolver.getRelativePath(rawResource);
+      Path relativePathToResource = ruleFinder.getSourcePathResolver().getRelativePath(rawResource);
 
       String resource;
 
@@ -99,7 +92,7 @@ abstract class AbstractResourcesParameters implements AddsToRuleKey {
         BuildTarget underlyingTarget = underlyingRule.get().getBuildTarget();
         if (underlyingRule.get() instanceof HasOutputName) {
           resource =
-              MorePaths.pathWithUnixSeparators(
+              PathFormatter.pathWithUnixSeparators(
                   underlyingTarget
                       .getBasePath()
                       .resolve(((HasOutputName) underlyingRule.get()).getOutputName()));
@@ -117,11 +110,11 @@ abstract class AbstractResourcesParameters implements AddsToRuleKey {
               "%s is used as a resource but does not output to a default output directory",
               underlyingTarget.getFullyQualifiedName());
           resource =
-              MorePaths.pathWithUnixSeparators(
+              PathFormatter.pathWithUnixSeparators(
                   underlyingTarget.getBasePath().resolve(outputPath.get()));
         }
       } else {
-        resource = MorePaths.pathWithUnixSeparators(relativePathToResource);
+        resource = PathFormatter.pathWithUnixSeparators(relativePathToResource);
       }
       builder.put(resource, rawResource);
     }

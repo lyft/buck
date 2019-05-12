@@ -128,7 +128,7 @@ public class DistBuildSlaveEventBusListenerTest {
   }
 
   @After
-  public void tearDown() throws IOException {
+  public void tearDown() {
     listener.close();
   }
 
@@ -324,9 +324,7 @@ public class DistBuildSlaveEventBusListenerTest {
     verify(distBuildServiceMock);
 
     List<BuildSlaveEvent> progressEvents =
-        capturedBuildSlaveEvents
-            .getValues()
-            .stream()
+        capturedBuildSlaveEvents.getValues().stream()
             .flatMap(List::stream)
             .filter(
                 event ->
@@ -418,6 +416,7 @@ public class DistBuildSlaveEventBusListenerTest {
             Optional.empty(),
             Optional.empty(),
             Optional.empty(),
+            Optional.empty(),
             Optional.empty()));
     listener.updateFinishedRuleCount(1);
     eventBus.post(started3);
@@ -430,6 +429,7 @@ public class DistBuildSlaveEventBusListenerTest {
             Optional.empty(),
             Optional.of(BuildRuleSuccessType.BUILT_LOCALLY),
             UploadToCacheResultType.UNCACHEABLE,
+            Optional.empty(),
             Optional.empty(),
             Optional.empty(),
             Optional.empty(),
@@ -459,6 +459,7 @@ public class DistBuildSlaveEventBusListenerTest {
             Optional.empty(),
             Optional.empty(),
             Optional.empty(),
+            Optional.empty(),
             Optional.empty()));
     eventBus.post(
         BuildRuleEvent.finished(
@@ -469,6 +470,7 @@ public class DistBuildSlaveEventBusListenerTest {
             Optional.empty(),
             Optional.empty(),
             UploadToCacheResultType.UNCACHEABLE,
+            Optional.empty(),
             Optional.empty(),
             Optional.empty(),
             Optional.empty(),
@@ -491,6 +493,7 @@ public class DistBuildSlaveEventBusListenerTest {
             Optional.empty(),
             Optional.of(BuildRuleSuccessType.BUILT_LOCALLY),
             UploadToCacheResultType.UNCACHEABLE,
+            Optional.empty(),
             Optional.empty(),
             Optional.empty(),
             Optional.empty(),
@@ -686,9 +689,7 @@ public class DistBuildSlaveEventBusListenerTest {
 
     verify(distBuildServiceMock);
     List<String> capturedEventsTargets =
-        capturedEventsLists
-            .getValues()
-            .stream()
+        capturedEventsLists.getValues().stream()
             .flatMap(List::stream)
             .filter(event -> event.eventType.equals(BuildSlaveEventType.BUILD_RULE_UNLOCKED_EVENT))
             .map(event -> event.getBuildRuleUnlockedEvent().getBuildTarget())

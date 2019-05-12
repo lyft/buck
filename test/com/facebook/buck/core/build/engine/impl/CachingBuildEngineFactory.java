@@ -16,6 +16,7 @@
 
 package com.facebook.buck.core.build.engine.impl;
 
+import com.facebook.buck.core.build.action.resolver.BuildEngineActionToBuildRuleResolver;
 import com.facebook.buck.core.build.distributed.synchronization.RemoteBuildRuleCompletionWaiter;
 import com.facebook.buck.core.build.engine.cache.manager.BuildInfoStoreManager;
 import com.facebook.buck.core.build.engine.config.ResourceAwareSchedulingInfo;
@@ -28,17 +29,13 @@ import com.facebook.buck.core.cell.TestCellPathResolver;
 import com.facebook.buck.core.model.TargetConfigurationSerializer;
 import com.facebook.buck.core.model.TargetConfigurationSerializerForTests;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.build.strategy.BuildRuleStrategy;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
 import com.facebook.buck.rules.keys.DefaultRuleKeyCache;
 import com.facebook.buck.rules.keys.RuleKeyDiagnostics;
 import com.facebook.buck.rules.keys.RuleKeyFactories;
 import com.facebook.buck.rules.keys.TrackedRuleKeyCache;
 import com.facebook.buck.rules.keys.config.TestRuleKeyConfigurationFactory;
-import com.facebook.buck.step.DefaultStepRunner;
 import com.facebook.buck.testutil.DummyFileHashCache;
 import com.facebook.buck.util.cache.NoOpCacheStatsTracker;
 import com.facebook.buck.util.concurrent.FakeWeightedListeningExecutorService;
@@ -60,6 +57,7 @@ public class CachingBuildEngineFactory {
   private CachingBuildEngineDelegate cachingBuildEngineDelegate;
   private WeightedListeningExecutorService executorService;
   private BuildRuleResolver buildRuleResolver;
+  private BuildEngineActionToBuildRuleResolver actionToBuildRuleResolver;
   private ResourceAwareSchedulingInfo resourceAwareSchedulingInfo =
       ResourceAwareSchedulingInfo.NON_AWARE_SCHEDULING_INFO;
   private boolean logBuildRuleFailuresInline = true;
@@ -69,12 +67,14 @@ public class CachingBuildEngineFactory {
 
   public CachingBuildEngineFactory(
       BuildRuleResolver buildRuleResolver,
+      BuildEngineActionToBuildRuleResolver actionToBuildRuleResolver,
       BuildInfoStoreManager buildInfoStoreManager,
       RemoteBuildRuleCompletionWaiter remoteBuildRuleCompletionWaiter) {
     this.remoteBuildRuleCompletionWaiter = remoteBuildRuleCompletionWaiter;
     this.cachingBuildEngineDelegate = new LocalCachingBuildEngineDelegate(new DummyFileHashCache());
     this.executorService = toWeighted(MoreExecutors.newDirectExecutorService());
     this.buildRuleResolver = buildRuleResolver;
+    this.actionToBuildRuleResolver = actionToBuildRuleResolver;
     this.buildInfoStoreManager = buildInfoStoreManager;
   }
 
@@ -139,8 +139,6 @@ public class CachingBuildEngineFactory {
   }
 
   public CachingBuildEngine build() {
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(buildRuleResolver);
-    SourcePathResolver sourcePathResolver = DefaultSourcePathResolver.from(ruleFinder);
     TargetConfigurationSerializer targetConfigurationSerializer =
         TargetConfigurationSerializerForTests.create(
             TestCellPathResolver.get(new FakeProjectFilesystem()));
@@ -149,7 +147,6 @@ public class CachingBuildEngineFactory {
           cachingBuildEngineDelegate,
           customBuildRuleStrategy,
           executorService,
-          new DefaultStepRunner(),
           buildMode,
           metadataStorage,
           depFiles,
@@ -157,8 +154,7 @@ public class CachingBuildEngineFactory {
           artifactCacheSizeLimit,
           buildRuleResolver,
           buildInfoStoreManager,
-          ruleFinder,
-          sourcePathResolver,
+          actionToBuildRuleResolver,
           targetConfigurationSerializer,
           ruleKeyFactories.get(),
           remoteBuildRuleCompletionWaiter,
@@ -172,15 +168,13 @@ public class CachingBuildEngineFactory {
         cachingBuildEngineDelegate,
         customBuildRuleStrategy,
         executorService,
-        new DefaultStepRunner(),
         buildMode,
         metadataStorage,
         depFiles,
         maxDepFileCacheEntries,
         artifactCacheSizeLimit,
         buildRuleResolver,
-        ruleFinder,
-        sourcePathResolver,
+        actionToBuildRuleResolver,
         targetConfigurationSerializer,
         buildInfoStoreManager,
         resourceAwareSchedulingInfo,

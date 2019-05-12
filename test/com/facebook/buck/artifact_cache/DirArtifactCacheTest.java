@@ -29,13 +29,10 @@ import com.facebook.buck.core.rulekey.AddToRuleKey;
 import com.facebook.buck.core.rulekey.RuleKey;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.impl.FakeBuildRule;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.FakeSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.io.file.BorrowablePath;
 import com.facebook.buck.io.file.LazyPath;
 import com.facebook.buck.io.filesystem.TestProjectFilesystems;
@@ -108,10 +105,7 @@ public class DirArtifactCacheTest {
     BuildRule inputRuleX = new BuildRuleForTest(fileX);
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder();
     graphBuilder.addToIndex(inputRuleX);
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver resolver = DefaultSourcePathResolver.from(ruleFinder);
-    RuleKey ruleKeyX =
-        new TestDefaultRuleKeyFactory(fileHashCache, resolver, ruleFinder).build(inputRuleX);
+    RuleKey ruleKeyX = new TestDefaultRuleKeyFactory(fileHashCache, graphBuilder).build(inputRuleX);
 
     assertEquals(
         CacheResultType.MISS,
@@ -132,10 +126,7 @@ public class DirArtifactCacheTest {
     BuildRule inputRuleX = new BuildRuleForTest(fileX);
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder();
     graphBuilder.addToIndex(inputRuleX);
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver resolver = DefaultSourcePathResolver.from(ruleFinder);
-    RuleKey ruleKeyX =
-        new TestDefaultRuleKeyFactory(fileHashCache, resolver, ruleFinder).build(inputRuleX);
+    RuleKey ruleKeyX = new TestDefaultRuleKeyFactory(fileHashCache, graphBuilder).build(inputRuleX);
 
     dirArtifactCache.store(
         ArtifactInfo.builder().addRuleKeys(ruleKeyX).build(),
@@ -171,10 +162,7 @@ public class DirArtifactCacheTest {
     BuildRule inputRuleX = new BuildRuleForTest(fileX);
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder();
     graphBuilder.addToIndex(inputRuleX);
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver resolver = DefaultSourcePathResolver.from(ruleFinder);
-    RuleKey ruleKeyX =
-        new TestDefaultRuleKeyFactory(fileHashCache, resolver, ruleFinder).build(inputRuleX);
+    RuleKey ruleKeyX = new TestDefaultRuleKeyFactory(fileHashCache, graphBuilder).build(inputRuleX);
 
     assertEquals(
         CacheResultType.MISS,
@@ -195,10 +183,7 @@ public class DirArtifactCacheTest {
     BuildRule inputRuleX = new BuildRuleForTest(fileX);
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder();
     graphBuilder.addToIndex(inputRuleX);
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver resolver = DefaultSourcePathResolver.from(ruleFinder);
-    RuleKey ruleKeyX =
-        new TestDefaultRuleKeyFactory(fileHashCache, resolver, ruleFinder).build(inputRuleX);
+    RuleKey ruleKeyX = new TestDefaultRuleKeyFactory(fileHashCache, graphBuilder).build(inputRuleX);
 
     dirArtifactCache.store(
         ArtifactInfo.builder().addRuleKeys(ruleKeyX).build(),
@@ -223,10 +208,7 @@ public class DirArtifactCacheTest {
     BuildRule inputRuleX = new BuildRuleForTest(fileX);
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder();
     graphBuilder.addToIndex(inputRuleX);
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver resolver = DefaultSourcePathResolver.from(ruleFinder);
-    RuleKey ruleKeyX =
-        new TestDefaultRuleKeyFactory(fileHashCache, resolver, ruleFinder).build(inputRuleX);
+    RuleKey ruleKeyX = new TestDefaultRuleKeyFactory(fileHashCache, graphBuilder).build(inputRuleX);
 
     dirArtifactCache.store(
         ArtifactInfo.builder().addRuleKeys(ruleKeyX).build(),
@@ -274,11 +256,9 @@ public class DirArtifactCacheTest {
     graphBuilder.addToIndex(inputRuleX);
     graphBuilder.addToIndex(inputRuleY);
     graphBuilder.addToIndex(inputRuleZ);
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver resolver = DefaultSourcePathResolver.from(ruleFinder);
 
     DefaultRuleKeyFactory fakeRuleKeyFactory =
-        new TestDefaultRuleKeyFactory(fileHashCache, resolver, ruleFinder);
+        new TestDefaultRuleKeyFactory(fileHashCache, graphBuilder);
 
     RuleKey ruleKeyX = fakeRuleKeyFactory.build(inputRuleX);
     RuleKey ruleKeyY = fakeRuleKeyFactory.build(inputRuleY);
@@ -338,8 +318,7 @@ public class DirArtifactCacheTest {
     assertEquals(6, cachedFiles.size());
 
     ImmutableSet<String> filenames =
-        cachedFiles
-            .stream()
+        cachedFiles.stream()
             .map(input -> input.getFileName().toString())
             .collect(ImmutableSet.toImmutableSet());
 
@@ -378,11 +357,9 @@ public class DirArtifactCacheTest {
     graphBuilder.addToIndex(inputRuleX);
     graphBuilder.addToIndex(inputRuleY);
     graphBuilder.addToIndex(inputRuleZ);
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver resolver = DefaultSourcePathResolver.from(ruleFinder);
 
     DefaultRuleKeyFactory fakeRuleKeyFactory =
-        new TestDefaultRuleKeyFactory(fileHashCache, resolver, ruleFinder);
+        new TestDefaultRuleKeyFactory(fileHashCache, graphBuilder);
 
     RuleKey ruleKeyX = fakeRuleKeyFactory.build(inputRuleX);
     RuleKey ruleKeyY = fakeRuleKeyFactory.build(inputRuleY);
@@ -444,8 +421,7 @@ public class DirArtifactCacheTest {
     assertEquals(6, cachedFiles.size());
 
     ImmutableSet<String> filenames =
-        cachedFiles
-            .stream()
+        cachedFiles.stream()
             .map(input -> input.getFileName().toString())
             .collect(ImmutableSet.toImmutableSet());
 
@@ -485,11 +461,9 @@ public class DirArtifactCacheTest {
     graphBuilder.addToIndex(inputRuleX);
     graphBuilder.addToIndex(inputRuleY);
     graphBuilder.addToIndex(inputRuleZ);
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver resolver = DefaultSourcePathResolver.from(ruleFinder);
 
     DefaultRuleKeyFactory fakeRuleKeyFactory =
-        new TestDefaultRuleKeyFactory(fileHashCache, resolver, ruleFinder);
+        new TestDefaultRuleKeyFactory(fileHashCache, graphBuilder);
 
     RuleKey ruleKeyX = fakeRuleKeyFactory.build(inputRuleX);
     RuleKey ruleKeyY = fakeRuleKeyFactory.build(inputRuleY);
@@ -499,8 +473,7 @@ public class DirArtifactCacheTest {
         ImmutableList.of(CacheResultType.MISS, CacheResultType.MISS, CacheResultType.MISS),
         Futures.getUnchecked(
                 dirArtifactCache.multiContainsAsync(ImmutableSet.of(ruleKeyX, ruleKeyY, ruleKeyZ)))
-            .values()
-            .stream()
+            .values().stream()
             .map(CacheResult::getType)
             .collect(ImmutableList.toImmutableList()));
 
@@ -523,8 +496,7 @@ public class DirArtifactCacheTest {
             CacheResultType.CONTAINS, CacheResultType.CONTAINS, CacheResultType.CONTAINS),
         Futures.getUnchecked(
                 dirArtifactCache.multiContainsAsync(ImmutableSet.of(ruleKeyX, ruleKeyY, ruleKeyZ)))
-            .values()
-            .stream()
+            .values().stream()
             .map(CacheResult::getType)
             .collect(ImmutableList.toImmutableList()));
   }
@@ -551,11 +523,9 @@ public class DirArtifactCacheTest {
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder();
     graphBuilder.addToIndex(inputRuleX);
     graphBuilder.addToIndex(inputRuleY);
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver resolver = DefaultSourcePathResolver.from(ruleFinder);
 
     DefaultRuleKeyFactory fakeRuleKeyFactory =
-        new TestDefaultRuleKeyFactory(fileHashCache, resolver, ruleFinder);
+        new TestDefaultRuleKeyFactory(fileHashCache, graphBuilder);
 
     RuleKey ruleKeyX = fakeRuleKeyFactory.build(inputRuleX);
     RuleKey ruleKeyY = fakeRuleKeyFactory.build(inputRuleY);
@@ -599,11 +569,9 @@ public class DirArtifactCacheTest {
     graphBuilder.addToIndex(inputRuleX);
     graphBuilder.addToIndex(inputRuleY);
     graphBuilder.addToIndex(inputRuleZ);
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver resolver = DefaultSourcePathResolver.from(ruleFinder);
 
     DefaultRuleKeyFactory fakeRuleKeyFactory =
-        new TestDefaultRuleKeyFactory(fileHashCache, resolver, ruleFinder);
+        new TestDefaultRuleKeyFactory(fileHashCache, graphBuilder);
 
     RuleKey ruleKeyX = fakeRuleKeyFactory.build(inputRuleX);
     RuleKey ruleKeyY = fakeRuleKeyFactory.build(inputRuleY);
@@ -783,11 +751,9 @@ public class DirArtifactCacheTest {
     graphBuilder.addToIndex(inputRuleX);
     graphBuilder.addToIndex(inputRuleY);
     graphBuilder.addToIndex(inputRuleZ);
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver resolver = DefaultSourcePathResolver.from(ruleFinder);
 
     DefaultRuleKeyFactory fakeRuleKeyFactory =
-        new TestDefaultRuleKeyFactory(fileHashCache, resolver, ruleFinder);
+        new TestDefaultRuleKeyFactory(fileHashCache, graphBuilder);
 
     RuleKey ruleKeyX = fakeRuleKeyFactory.build(inputRuleX);
     RuleKey ruleKeyY = fakeRuleKeyFactory.build(inputRuleY);

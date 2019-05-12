@@ -16,14 +16,13 @@
 
 package com.facebook.buck.rules.keys;
 
+import com.facebook.buck.core.io.ArchiveMemberPath;
 import com.facebook.buck.core.rulekey.AddsToRuleKey;
 import com.facebook.buck.core.rulekey.RuleKey;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.sourcepath.BuildTargetSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.io.ArchiveMemberPath;
 import com.facebook.buck.log.thrift.ThriftRuleKeyLogger;
 import com.facebook.buck.rules.keys.hasher.RuleKeyHasher;
 import com.facebook.buck.util.hashing.FileHashLoader;
@@ -39,7 +38,6 @@ import java.util.Optional;
 public class ContentAgnosticRuleKeyFactory implements RuleKeyFactory<RuleKey> {
 
   private final RuleKeyFieldLoader ruleKeyFieldLoader;
-  private final SourcePathResolver pathResolver;
   private final SourcePathRuleFinder ruleFinder;
   private final Optional<ThriftRuleKeyLogger> ruleKeyLogger;
 
@@ -66,11 +64,9 @@ public class ContentAgnosticRuleKeyFactory implements RuleKeyFactory<RuleKey> {
 
   public ContentAgnosticRuleKeyFactory(
       RuleKeyFieldLoader ruleKeyFieldLoader,
-      SourcePathResolver pathResolver,
       SourcePathRuleFinder ruleFinder,
       Optional<ThriftRuleKeyLogger> ruleKeyLogger) {
     this.ruleKeyFieldLoader = ruleKeyFieldLoader;
-    this.pathResolver = pathResolver;
     this.ruleFinder = ruleFinder;
     this.ruleKeyLogger = ruleKeyLogger;
   }
@@ -100,7 +96,7 @@ public class ContentAgnosticRuleKeyFactory implements RuleKeyFactory<RuleKey> {
   public class Builder<RULE_KEY> extends RuleKeyBuilder<RULE_KEY> {
 
     public Builder(RuleKeyHasher<RULE_KEY> hasher) {
-      super(ruleFinder, pathResolver, fileHashLoader, hasher);
+      super(ruleFinder, fileHashLoader, hasher);
     }
 
     @Override

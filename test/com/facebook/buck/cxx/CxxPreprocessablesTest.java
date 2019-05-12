@@ -27,13 +27,12 @@ import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.TestBuildRuleParams;
 import com.facebook.buck.core.rules.impl.FakeBuildRule;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.FakeSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.CxxPlatformUtils;
 import com.facebook.buck.cxx.toolchain.HeaderMode;
@@ -205,12 +204,7 @@ public class CxxPreprocessablesTest {
     // Build our symlink tree rule using the helper method.
     HeaderSymlinkTree symlinkTree =
         CxxPreprocessables.createHeaderSymlinkTreeBuildRule(
-            target,
-            filesystem,
-            new SourcePathRuleFinder(graphBuilder),
-            root,
-            links,
-            HeaderMode.SYMLINK_TREE_ONLY);
+            target, filesystem, graphBuilder, root, links, HeaderMode.SYMLINK_TREE_ONLY);
 
     // Verify that the symlink tree has no deps.  This is by design, since setting symlinks can
     // be done completely independently from building the source that the links point to and

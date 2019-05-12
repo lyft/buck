@@ -17,6 +17,7 @@
 package com.facebook.buck.jvm.java;
 
 import com.facebook.buck.core.config.FakeBuckConfig;
+import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.jvm.java.toolchain.JavaToolchain;
 import com.google.common.collect.ImmutableList;
 
@@ -30,18 +31,30 @@ public class JavaCompilationConstants {
   public static final JavaOptions DEFAULT_JAVA_OPTIONS = JavaBuckConfig.DEFAULT_JAVA_OPTIONS;
 
   public static final JavacOptions DEFAULT_JAVA8_JAVAC_OPTIONS =
-      JavacOptions.builderForUseInJavaBuckConfig().setSourceLevel("8").setTargetLevel("8").build();
+      JavacOptions.builderForUseInJavaBuckConfig()
+          .setLanguageLevelOptions(
+              JavacLanguageLevelOptions.builder().setSourceLevel("8").setTargetLevel("8").build())
+          .build();
 
   public static final JavacOptions DEFAULT_JAVAC_OPTIONS =
-      JavacOptions.builderForUseInJavaBuckConfig().setSourceLevel("7").setTargetLevel("7").build();
+      JavacOptions.builderForUseInJavaBuckConfig()
+          .setLanguageLevelOptions(
+              JavacLanguageLevelOptions.builder().setSourceLevel("7").setTargetLevel("7").build())
+          .build();
 
   public static final JavacOptions ANDROID_JAVAC_OPTIONS =
-      JavacOptions.builderForUseInJavaBuckConfig().setSourceLevel("7").setTargetLevel("6").build();
+      JavacOptions.builderForUseInJavaBuckConfig()
+          .setLanguageLevelOptions(
+              JavacLanguageLevelOptions.builder().setSourceLevel("7").setTargetLevel("6").build())
+          .build();
 
   public static final Javac DEFAULT_JAVAC = new JdkProvidedInMemoryJavac();
   public static final JavaToolchain DEFAULT_JAVA_TOOLCHAIN =
       JavaToolchain.builder()
-          .setJavacProvider(DEFAULT_JAVA_CONFIG.getJavacSpec().getJavacProvider())
+          .setJavacProvider(
+              DEFAULT_JAVA_CONFIG
+                  .getJavacSpec(EmptyTargetConfiguration.INSTANCE)
+                  .getJavacProvider())
           .build();
 
   private JavaCompilationConstants() {

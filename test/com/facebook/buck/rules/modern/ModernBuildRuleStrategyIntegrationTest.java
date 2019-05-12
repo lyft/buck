@@ -137,7 +137,7 @@ public class ModernBuildRuleStrategyIntegrationTest {
       return new TouchOutput(
           buildTarget,
           creationContext.getProjectFilesystem(),
-          new SourcePathRuleFinder(creationContext.getActionGraphBuilder()),
+          creationContext.getActionGraphBuilder(),
           args.getOut());
     }
   }
@@ -162,7 +162,7 @@ public class ModernBuildRuleStrategyIntegrationTest {
       return new CheckSerialization(
           buildTarget,
           creationContext.getProjectFilesystem(),
-          new SourcePathRuleFinder(creationContext.getActionGraphBuilder()));
+          creationContext.getActionGraphBuilder());
     }
   }
 
@@ -226,7 +226,7 @@ public class ModernBuildRuleStrategyIntegrationTest {
       return new LargeDynamics(
           buildTarget,
           context.getProjectFilesystem(),
-          new SourcePathRuleFinder(graphBuilder),
+          graphBuilder,
           firstRef,
           secondRef,
           args.getValue().charAt(0));
@@ -255,7 +255,7 @@ public class ModernBuildRuleStrategyIntegrationTest {
       return new FailingRule(
           buildTarget,
           context.getProjectFilesystem(),
-          new SourcePathRuleFinder(context.getActionGraphBuilder()),
+          context.getActionGraphBuilder(),
           args.getStepFailure());
     }
   }
@@ -382,7 +382,7 @@ public class ModernBuildRuleStrategyIntegrationTest {
   }
 
   @Test
-  public void testAbstractBuildRuleFieldSerialization() throws Exception {
+  public void testAbstractBuildRuleFieldSerialization() {
     ProcessResult result = workspace.runBuckBuild(checkSerializationTarget);
     result.assertSuccess();
   }
@@ -409,7 +409,7 @@ public class ModernBuildRuleStrategyIntegrationTest {
       return new DuplicateOutputsRule(
           buildTarget,
           context.getProjectFilesystem(),
-          new SourcePathRuleFinder(context.getActionGraphBuilder()),
+          context.getActionGraphBuilder(),
           args.getOutputsAreDirectories());
     }
   }
@@ -460,13 +460,13 @@ public class ModernBuildRuleStrategyIntegrationTest {
   }
 
   @Test
-  public void testBuildRuleWithDuplicateOutputFiles() throws Exception {
+  public void testBuildRuleWithDuplicateOutputFiles() {
     ProcessResult result = workspace.runBuckBuild(duplicateOutputFilesTarget);
     result.assertSuccess();
   }
 
   @Test
-  public void testBuildRuleWithDuplicateOutputDirs() throws Exception {
+  public void testBuildRuleWithDuplicateOutputDirs() {
     ProcessResult result = workspace.runBuckBuild(duplicateOutputDirsTarget);
     result.assertSuccess();
   }

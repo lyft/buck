@@ -37,7 +37,7 @@ import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
 import com.facebook.buck.core.toolchain.tool.Tool;
 import com.facebook.buck.cxx.CxxLink;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.LinkerMapMode;
 import com.facebook.buck.cxx.toolchain.linker.Linker;
 import com.facebook.buck.io.BuildCellRelativePath;
@@ -316,9 +316,8 @@ class RelinkerRule extends AbstractBuildRule implements OverrideScheduleRule {
   }
 
   @Override
-  public void updateBuildRuleResolver(
-      BuildRuleResolver ruleResolver, SourcePathRuleFinder ruleFinder) {
-    this.ruleFinder = ruleFinder;
+  public void updateBuildRuleResolver(BuildRuleResolver ruleResolver) {
+    this.ruleFinder = ruleResolver;
     this.depsSupplier.updateRuleFinder(ruleFinder);
   }
 }

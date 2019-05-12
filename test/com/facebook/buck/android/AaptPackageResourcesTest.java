@@ -26,12 +26,9 @@ import com.facebook.buck.core.model.targetgraph.TargetGraphFactory;
 import com.facebook.buck.core.model.targetgraph.TargetNode;
 import com.facebook.buck.core.rulekey.RuleKey;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.FakeSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
 import com.facebook.buck.parser.exceptions.NoSuchBuildTargetException;
 import com.facebook.buck.rules.coercer.ManifestEntries;
@@ -51,8 +48,6 @@ import org.junit.Test;
 public class AaptPackageResourcesTest {
 
   private ActionGraphBuilder graphBuilder;
-  private SourcePathRuleFinder ruleFinder;
-  private SourcePathResolver pathResolver;
   private BuildTarget aaptTarget;
   private FakeProjectFilesystem filesystem;
 
@@ -98,8 +93,6 @@ public class AaptPackageResourcesTest {
     resource1 = (AndroidResource) graphBuilder.requireRule(resourceNode.getBuildTarget());
     resource2 = (AndroidResource) graphBuilder.requireRule(resourceNode2.getBuildTarget());
 
-    ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    pathResolver = DefaultSourcePathResolver.from(ruleFinder);
     aaptTarget = BuildTargetFactory.newInstance("//foo:bar");
 
     hashCache = new FakeFileHashCache(new HashMap<>());
@@ -207,7 +200,7 @@ public class AaptPackageResourcesTest {
             filesystem,
             ImmutableSortedSet.of(resource1, resource2),
             ImmutableSortedSet.of(resource1, resource2),
-            ruleFinder,
+            graphBuilder,
             ImmutableList.of(resource1.getRes(), resource2.getRes()),
             ImmutableSet.of(),
             ImmutableSet.of(),
@@ -224,7 +217,7 @@ public class AaptPackageResourcesTest {
             filesystem,
             ImmutableSortedSet.of(resource1, resource2),
             ImmutableSortedSet.of(resource1, resource2),
-            ruleFinder,
+            graphBuilder,
             ImmutableList.of(resource1.getRes(), resource2.getRes()),
             ImmutableSet.of(),
             ImmutableSet.of("some_locale"),
@@ -255,13 +248,12 @@ public class AaptPackageResourcesTest {
   }
 
   private RuleKey calculateRuleKey(AaptConstructorArgs constructorArgs) {
-    return new TestDefaultRuleKeyFactory(hashCache, pathResolver, ruleFinder)
+    return new TestDefaultRuleKeyFactory(hashCache, graphBuilder)
         .build(
             new AaptPackageResources(
                 aaptTarget,
                 filesystem,
                 TestAndroidPlatformTargetFactory.create(),
-                ruleFinder,
                 graphBuilder,
                 constructorArgs.manifest,
                 ImmutableList.of(),

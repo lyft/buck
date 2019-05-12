@@ -35,7 +35,6 @@ public abstract class AbstractDotnetBuckConfig implements ConfigView<BuckConfig>
   @Value.Parameter
   public abstract BuckConfig getDelegate();
 
-  @Value.Lazy
   public Optional<ToolProvider> getCsharpCompiler() {
     return getDelegate().getView(ToolConfig.class).getToolProvider(SECTION, CSC);
   }

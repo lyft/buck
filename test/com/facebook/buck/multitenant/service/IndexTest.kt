@@ -16,128 +16,106 @@
 
 package com.facebook.buck.multitenant.service
 
+import com.facebook.buck.core.model.UnconfiguredBuildTarget
+import com.facebook.buck.multitenant.importer.populateIndexFromStream
+import com.google.common.collect.ImmutableSet
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
-import java.nio.file.Paths
 
 class IndexTest {
 
     @Test
     fun getTargetsAndDeps() {
-        val bt = BUILD_TARGET_PARSER
-        val index = Index(bt)
-        /*
-         * //java/com/facebook/buck/base:base has no deps.
-         */
-        val changes1 = Changes(
-                addedBuildPackages = listOf(
-                        BuildPackage(Paths.get("java/com/facebook/buck/base"),
-                                setOf(
-                                        createRawRule("//java/com/facebook/buck/base:base", setOf())
-                                ))
-                ),
-                modifiedBuildPackages = listOf(),
-                removedBuildPackages = listOf())
-        val commit1 = "608fd7bdf9"
-        index.addCommitData(commit1, changes1)
+        val (index, generations) = loadIndex("index_test_targets_and_deps.json")
+        val generation1 = generations[0]
+        val generation2 = generations[1]
+        val generation3 = generations[2]
+        val generation4 = generations[3]
+        val generation5 = generations[4]
 
-        /*
-         * //java/com/facebook/buck/model:model depends on //java/com/facebook/buck/base:base.
-         */
-        val changes2 = Changes(
-                addedBuildPackages = listOf(
-                        BuildPackage(Paths.get("java/com/facebook/buck/model"),
-                                setOf(
-                                        createRawRule("//java/com/facebook/buck/model:model", setOf(
-                                                "//java/com/facebook/buck/base:base"
-                                        )))
-                        )),
-                modifiedBuildPackages = listOf(),
-                removedBuildPackages = listOf())
-        val commit2 = "9efba3bca1"
-        index.addCommitData(commit2, changes2)
+        assertEquals(
+                targetSet("//java/com/facebook/buck/base:base"),
+                index.getTargets(generation1).toSet())
+        assertEquals(
+                targetSet("//java/com/facebook/buck/base:base", "//java/com/facebook/buck/model:model"),
+                index.getTargets(generation2).toSet())
+        assertEquals(
+                targetSet(
+                        "//java/com/facebook/buck/base:base",
+                        "//java/com/facebook/buck/model:model",
+                        "//java/com/facebook/buck/util:util"),
+                index.getTargets(generation3).toSet())
+        assertEquals(
+                targetSet(
+                        "//java/com/facebook/buck/base:base",
+                        "//java/com/facebook/buck/model:model",
+                        "//java/com/facebook/buck/util:util"),
+                index.getTargets(generation4).toSet())
+        assertEquals(
+                targetSet(
+                        "//java/com/facebook/buck/base:base",
+                        "//java/com/facebook/buck/util:util"),
+                index.getTargets(generation5).toSet())
 
-        /*
-         * //java/com/facebook/buck/util:util is introduced and
-         * //java/com/facebook/buck/model:model is updated to depend on it.
-         */
-        val changes3 = Changes(
-                addedBuildPackages = listOf(
-                        BuildPackage(Paths.get("java/com/facebook/buck/util"),
-                                setOf(
-                                        createRawRule("//java/com/facebook/buck/util:util", setOf(
-                                                "//java/com/facebook/buck/base:base"
-                                        ))
-                                ))
-                ),
-                modifiedBuildPackages = listOf(
-                        BuildPackage(Paths.get("java/com/facebook/buck/model"),
-                                setOf(
-                                        createRawRule("//java/com/facebook/buck/model:model", setOf(
-                                                "//java/com/facebook/buck/base:base",
-                                                "//java/com/facebook/buck/util:util"
-                                        ))
-                                ))
-                ),
-                removedBuildPackages = listOf())
-        val commit3 = "1b522b5b47"
-        index.addCommitData(commit3, changes3)
+        assertEquals(
+                targetSet("//java/com/facebook/buck/base:base"),
+                index.getTransitiveDeps(generation2, "//java/com/facebook/buck/model:model".buildTarget())
+        )
+        assertEquals(
+                targetSet("//java/com/facebook/buck/base:base", "//java/com/facebook/buck/util:util"),
+                index.getTransitiveDeps(generation3, "//java/com/facebook/buck/model:model".buildTarget())
+        )
 
-        /* Nothing changes! */
-        val changes4 = Changes(listOf(), listOf(), listOf())
-        val commit4 = "270c3e4c42"
-        index.addCommitData(commit4, changes4)
+        val commit1baseFwdDeps = ImmutableSet.Builder<UnconfiguredBuildTarget>()
+        index.getFwdDeps(generation1, targetList("//java/com/facebook/buck/base:base"), commit1baseFwdDeps)
+        assertEquals(commit1baseFwdDeps.build(), targetSet())
 
-        /*
-         * //java/com/facebook/buck/model:model is removed.
-         */
-        val changes5 = Changes(
-                addedBuildPackages = listOf(),
-                modifiedBuildPackages = listOf(),
-                removedBuildPackages = listOf(Paths.get("java/com/facebook/buck/model")))
-        val commit5 = "c880d5b5d8"
-        index.addCommitData(commit5, changes5)
+        val commit2modelFwdDeps = ImmutableSet.Builder<UnconfiguredBuildTarget>()
+        index.getFwdDeps(generation2, targetList("//java/com/facebook/buck/model:model"), commit2modelFwdDeps)
+        assertEquals(commit2modelFwdDeps.build(), targetSet("//java/com/facebook/buck/base:base"))
 
-        index.acquireReadLock().use {
-            assertEquals(
-                    setOf(bt("//java/com/facebook/buck/base:base")),
-                    index.getTargets(it, commit1).toSet())
-            assertEquals(
-                    setOf(
-                            bt("//java/com/facebook/buck/base:base"),
-                            bt("//java/com/facebook/buck/model:model")),
-                    index.getTargets(it, commit2).toSet())
-            assertEquals(
-                    setOf(
-                            bt("//java/com/facebook/buck/base:base"),
-                            bt("//java/com/facebook/buck/model:model"),
-                            bt("//java/com/facebook/buck/util:util")),
-                    index.getTargets(it, commit3).toSet())
-            assertEquals(
-                    setOf(
-                            bt("//java/com/facebook/buck/base:base"),
-                            bt("//java/com/facebook/buck/model:model"),
-                            bt("//java/com/facebook/buck/util:util")),
-                    index.getTargets(it, commit4).toSet())
-            assertEquals(
-                    setOf(
-                            bt("//java/com/facebook/buck/base:base"),
-                            bt("//java/com/facebook/buck/util:util")),
-                    index.getTargets(it, commit5).toSet())
+        val commit3modelFwdDeps = ImmutableSet.Builder<UnconfiguredBuildTarget>()
+        index.getFwdDeps(generation3, targetList("//java/com/facebook/buck/model:model"), commit3modelFwdDeps)
+        assertEquals(commit3modelFwdDeps.build(), targetSet("//java/com/facebook/buck/base:base", "//java/com/facebook/buck/util:util"))
 
-            assertEquals(
-                    setOf(
-                            bt("//java/com/facebook/buck/base:base")
-                    ),
-                    index.getTransitiveDeps(it, commit2, bt("//java/com/facebook/buck/model:model"))
-            )
-            assertEquals(
-                    setOf(
-                            bt("//java/com/facebook/buck/base:base"),
-                            bt("//java/com/facebook/buck/util:util")
-                    ),
-                    index.getTransitiveDeps(it, commit3, bt("//java/com/facebook/buck/model:model"))
-            )
-        }
+        val commit3utilFwdDeps = ImmutableSet.Builder<UnconfiguredBuildTarget>()
+        index.getFwdDeps(generation3, targetList("//java/com/facebook/buck/util:util"), commit3utilFwdDeps)
+        assertEquals(commit3utilFwdDeps.build(), targetSet("//java/com/facebook/buck/base:base"))
     }
+
+    @Test
+    fun getTargetNodes() {
+        val (index, generations) = loadIndex("index_test_targets_and_deps.json")
+        val generation5 = generations[4]
+
+        val targetNodes = index.getTargetNodes(generation5, targetList(
+                "//java/com/facebook/buck/base:base",
+                "//java/com/facebook/buck/model:model",
+                "//java/com/facebook/buck/util:util"
+        ))
+        assertEquals(targetNodes[0]!!.targetNode.ruleType.name, "java_library")
+        assertNull("model was deleted at commit 5", targetNodes[1])
+        assertEquals(targetNodes[2]!!.deps, targetSet("//java/com/facebook/buck/base:base"))
+
+        assertEquals(targetNodes[0], index.getTargetNode(generation5, "//java/com/facebook/buck/base:base".buildTarget()))
+        assertEquals(targetNodes[1], null)
+    }
+}
+
+private fun loadIndex(resource: String): Pair<Index, List<Int>> {
+    val (index, indexAppender) = IndexFactory.createIndex()
+    val commits = populateIndexFromStream(indexAppender, IndexTest::class.java.getResourceAsStream(resource))
+    val generations = commits.map { requireNotNull(indexAppender.getGeneration(it)) }
+    return Pair(index, generations)
+}
+
+private fun targetList(vararg targets: String): List<UnconfiguredBuildTarget> =
+        targets.map(BuildTargets::parseOrThrow)
+
+private fun targetSet(vararg targets: String): Set<UnconfiguredBuildTarget> =
+        targets.asSequence().map(BuildTargets::parseOrThrow).toSet()
+
+private fun String.buildTarget(): UnconfiguredBuildTarget {
+    return BuildTargets.parseOrThrow(this)
 }

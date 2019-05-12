@@ -30,9 +30,6 @@ import com.facebook.buck.core.model.targetgraph.BuildRuleCreationContextWithTarg
 import com.facebook.buck.core.model.targetgraph.DescriptionWithTargetGraph;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.ToolchainProvider;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
 import com.facebook.buck.cxx.toolchain.CxxPlatformsProvider;
@@ -116,18 +113,16 @@ public class PythonLibraryDescription
               cxxPlatforms.getFlavorAndValue(baseTarget).orElseThrow(IllegalArgumentException::new);
           baseTarget = buildTarget.withoutFlavors(pythonPlatform.getKey(), cxxPlatform.getKey());
 
-          SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-          SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
           Path baseModule = PythonUtil.getBasePath(baseTarget, args.getBaseModule());
           PythonPackageComponents components =
               PythonPackageComponents.of(
                   PythonUtil.getModules(
                       baseTarget,
                       graphBuilder,
-                      ruleFinder,
-                      pathResolver,
                       pythonPlatform.getValue(),
-                      cxxPlatform.getValue().resolve(graphBuilder),
+                      cxxPlatform
+                          .getValue()
+                          .resolve(graphBuilder, buildTarget.getTargetConfiguration()),
                       "srcs",
                       baseModule,
                       args.getSrcs(),
@@ -137,10 +132,10 @@ public class PythonLibraryDescription
                   PythonUtil.getModules(
                       baseTarget,
                       graphBuilder,
-                      ruleFinder,
-                      pathResolver,
                       pythonPlatform.getValue(),
-                      cxxPlatform.getValue().resolve(graphBuilder),
+                      cxxPlatform
+                          .getValue()
+                          .resolve(graphBuilder, buildTarget.getTargetConfiguration()),
                       "resources",
                       baseModule,
                       args.getResources(),
@@ -165,7 +160,9 @@ public class PythonLibraryDescription
           ImmutableList<BuildTarget> depTargets =
               PythonUtil.getDeps(
                   pythonPlatform.getValue(),
-                  cxxPlatform.getValue().resolve(graphBuilder),
+                  cxxPlatform
+                      .getValue()
+                      .resolve(graphBuilder, buildTarget.getTargetConfiguration()),
                   args.getDeps(),
                   args.getPlatformDeps());
           return Optional.of(graphBuilder.getAllRules(depTargets)).map(metadataClass::cast);

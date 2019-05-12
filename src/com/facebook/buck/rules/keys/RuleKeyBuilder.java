@@ -20,6 +20,7 @@ import static com.facebook.buck.rules.keys.RuleKeyScopedHasher.ContainerScope;
 import static com.facebook.buck.rules.keys.hasher.RuleKeyHasher.Container;
 import static com.facebook.buck.rules.keys.hasher.RuleKeyHasher.Wrapper;
 
+import com.facebook.buck.core.io.ArchiveMemberPath;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.RuleType;
 import com.facebook.buck.core.rulekey.AddToRuleKey;
@@ -34,7 +35,6 @@ import com.facebook.buck.core.sourcepath.PathSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
 import com.facebook.buck.core.util.log.Logger;
-import com.facebook.buck.io.ArchiveMemberPath;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.log.thrift.ThriftRuleKeyLogger;
 import com.facebook.buck.log.thrift.rulekeys.FullRuleKey;
@@ -85,28 +85,22 @@ public abstract class RuleKeyBuilder<RULE_KEY> extends AbstractRuleKeyBuilder<RU
   private static final Logger logger = Logger.get(RuleKeyBuilder.class);
 
   private final SourcePathRuleFinder ruleFinder;
-  private final SourcePathResolver resolver;
   private final FileHashLoader hashLoader;
   private final CountingRuleKeyHasher<RULE_KEY> hasher;
 
   public RuleKeyBuilder(
       SourcePathRuleFinder ruleFinder,
-      SourcePathResolver resolver,
       FileHashLoader hashLoader,
       CountingRuleKeyHasher<RULE_KEY> hasher) {
     super(new DefaultRuleKeyScopedHasher<>(hasher));
     this.ruleFinder = ruleFinder;
-    this.resolver = resolver;
     this.hashLoader = hashLoader;
     this.hasher = hasher;
   }
 
   public RuleKeyBuilder(
-      SourcePathRuleFinder ruleFinder,
-      SourcePathResolver resolver,
-      FileHashLoader hashLoader,
-      RuleKeyHasher<RULE_KEY> hasher) {
-    this(ruleFinder, resolver, hashLoader, new CountingRuleKeyHasher<>(hasher));
+      SourcePathRuleFinder ruleFinder, FileHashLoader hashLoader, RuleKeyHasher<RULE_KEY> hasher) {
+    this(ruleFinder, hashLoader, new CountingRuleKeyHasher<>(hasher));
   }
 
   @VisibleForTesting
@@ -162,6 +156,7 @@ public abstract class RuleKeyBuilder<RULE_KEY> extends AbstractRuleKeyBuilder<RU
    * {@link #setSourcePathAsRule}.
    */
   final RuleKeyBuilder<RULE_KEY> setSourcePathDirectly(SourcePath sourcePath) throws IOException {
+    SourcePathResolver resolver = ruleFinder.getSourcePathResolver();
     if (sourcePath instanceof BuildTargetSourcePath) {
       Path relativePath = resolver.getRelativePath(sourcePath);
       Optional<HashCode> precomputedHash =
@@ -210,7 +205,6 @@ public abstract class RuleKeyBuilder<RULE_KEY> extends AbstractRuleKeyBuilder<RU
   // that's being used for compilation or some such). This does mean that if a user renames a
   // file without changing the contents, we have a cache miss. We're going to assume that this
   // doesn't happen that often in practice.
-  @Override
   public RuleKeyBuilder<RULE_KEY> setPath(Path absolutePath, Path ideallyRelative)
       throws IOException {
     // TODO(simons): Enable this precondition once setPath(Path) has been removed.
@@ -242,6 +236,7 @@ public abstract class RuleKeyBuilder<RULE_KEY> extends AbstractRuleKeyBuilder<RU
   }
 
   final RuleKeyBuilder<RULE_KEY> setNonHashingSourcePathDirectly(SourcePath sourcePath) {
+    SourcePathResolver resolver = ruleFinder.getSourcePathResolver();
     if (sourcePath instanceof BuildTargetSourcePath) {
       hasher.putNonHashingPath(resolver.getRelativePath(sourcePath).toString());
     } else if (sourcePath instanceof PathSourcePath) {

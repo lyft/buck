@@ -24,10 +24,8 @@ import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.impl.FakeBuildRule;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.FakeSourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.cxx.toolchain.DebugPathSanitizer;
-import com.facebook.buck.cxx.toolchain.MungingDebugPathSanitizer;
+import com.facebook.buck.cxx.toolchain.PrefixMapDebugPathSanitizer;
 import com.facebook.buck.rules.args.SanitizedArg;
 import com.facebook.buck.rules.args.StringArg;
 import com.facebook.buck.rules.coercer.FrameworkPath;
@@ -39,7 +37,6 @@ import com.google.common.collect.ImmutableBiMap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.hash.HashCode;
-import java.io.File;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Collection;
@@ -97,8 +94,7 @@ public class PreprocessorFlagsTest {
 
     @Test
     public void shouldAffectRuleKey() {
-      SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(new TestActionGraphBuilder());
-      SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
+      SourcePathRuleFinder ruleFinder = new TestActionGraphBuilder();
       BuildTarget target = BuildTargetFactory.newInstance("//foo:bar");
       FakeFileHashCache hashCache =
           FakeFileHashCache.createFromStrings(
@@ -107,14 +103,12 @@ public class PreprocessorFlagsTest {
 
       DefaultRuleKeyFactory.Builder<HashCode> builder;
       builder =
-          new TestDefaultRuleKeyFactory(hashCache, pathResolver, ruleFinder)
-              .newBuilderForTesting(fakeBuildRule);
+          new TestDefaultRuleKeyFactory(hashCache, ruleFinder).newBuilderForTesting(fakeBuildRule);
       builder.setReflectively("flags", defaultFlags);
       RuleKey defaultRuleKey = builder.build(RuleKey::new);
 
       builder =
-          new TestDefaultRuleKeyFactory(hashCache, pathResolver, ruleFinder)
-              .newBuilderForTesting(fakeBuildRule);
+          new TestDefaultRuleKeyFactory(hashCache, ruleFinder).newBuilderForTesting(fakeBuildRule);
       builder.setReflectively("flags", alteredFlags);
       RuleKey alteredRuleKey = builder.build(RuleKey::new);
 
@@ -129,8 +123,7 @@ public class PreprocessorFlagsTest {
   public static class OtherTests {
     @Test
     public void flagsAreSanitized() {
-      SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(new TestActionGraphBuilder());
-      SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
+      SourcePathRuleFinder ruleFinder = new TestActionGraphBuilder();
       BuildTarget target = BuildTargetFactory.newInstance("//foo:bar");
       FakeFileHashCache hashCache = FakeFileHashCache.createFromStrings(ImmutableMap.of());
       BuildRule fakeBuildRule = new FakeBuildRule(target);
@@ -138,11 +131,7 @@ public class PreprocessorFlagsTest {
       class TestData {
         public RuleKey generate(String prefix) {
           DebugPathSanitizer sanitizer =
-              new MungingDebugPathSanitizer(
-                  10,
-                  File.separatorChar,
-                  Paths.get("PWD"),
-                  ImmutableBiMap.of(Paths.get(prefix), "A"));
+              new PrefixMapDebugPathSanitizer(".", ImmutableBiMap.of(Paths.get(prefix), "A"));
 
           CxxToolFlags flags =
               CxxToolFlags.explicitBuilder()
@@ -157,7 +146,7 @@ public class PreprocessorFlagsTest {
                   .build();
 
           DefaultRuleKeyFactory.Builder<HashCode> builder =
-              new TestDefaultRuleKeyFactory(hashCache, pathResolver, ruleFinder)
+              new TestDefaultRuleKeyFactory(hashCache, ruleFinder)
                   .newBuilderForTesting(fakeBuildRule);
           builder.setReflectively(
               "flags", PreprocessorFlags.builder().setOtherFlags(flags).build());

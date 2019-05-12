@@ -22,11 +22,11 @@ import com.facebook.buck.intellij.ideabuck.api.BuckTargetLocator;
 import com.facebook.buck.intellij.ideabuck.api.BuckTargetPattern;
 import com.facebook.buck.intellij.ideabuck.highlight.BuckSyntaxHighlighter;
 import com.facebook.buck.intellij.ideabuck.lang.BuckFileType;
-import com.facebook.buck.intellij.ideabuck.lang.psi.BuckFunctionName;
+import com.facebook.buck.intellij.ideabuck.lang.psi.BuckArgument;
 import com.facebook.buck.intellij.ideabuck.lang.psi.BuckLoadArgument;
 import com.facebook.buck.intellij.ideabuck.lang.psi.BuckLoadCall;
 import com.facebook.buck.intellij.ideabuck.lang.psi.BuckLoadTargetArgument;
-import com.facebook.buck.intellij.ideabuck.lang.psi.BuckPropertyLvalue;
+import com.facebook.buck.intellij.ideabuck.lang.psi.BuckParameter;
 import com.facebook.buck.intellij.ideabuck.lang.psi.BuckSimpleExpression;
 import com.facebook.buck.intellij.ideabuck.lang.psi.BuckString;
 import com.facebook.buck.intellij.ideabuck.util.BuckPsiUtils;
@@ -47,10 +47,10 @@ public class BuckAnnotator implements Annotator {
 
   @Override
   public void annotate(@NotNull PsiElement psiElement, @NotNull AnnotationHolder annotationHolder) {
-    if (psiElement instanceof BuckFunctionName) {
-      annotateFunctionName((BuckFunctionName) psiElement, annotationHolder);
-    } else if (psiElement instanceof BuckPropertyLvalue) {
-      annotateBuckPropertyLvalue((BuckPropertyLvalue) psiElement, annotationHolder);
+    if (psiElement instanceof BuckArgument) {
+      annotateBuckArgument((BuckArgument) psiElement, annotationHolder);
+    } else if (psiElement instanceof BuckParameter) {
+      annotateBuckParameter((BuckParameter) psiElement, annotationHolder);
     } else if (psiElement instanceof BuckLoadCall) {
       annotateLoadCall((BuckLoadCall) psiElement, annotationHolder);
     } else if (psiElement instanceof BuckSimpleExpression) {
@@ -58,23 +58,24 @@ public class BuckAnnotator implements Annotator {
     }
   }
 
-  private void annotateFunctionName(
-      BuckFunctionName functionName, AnnotationHolder annotationHolder) {
-    Optional.of(functionName)
-        .map(BuckFunctionName::getIdentifier)
+  /** Colorize named arguments in function invocations. */
+  private void annotateBuckArgument(BuckArgument argument, AnnotationHolder annotationHolder) {
+    Optional.ofNullable(argument.getIdentifier())
         .ifPresent(
             identifier -> {
-              annotationHolder
-                  .createInfoAnnotation(functionName.getIdentifier(), null)
-                  .setTextAttributes(BuckSyntaxHighlighter.BUCK_FUNCTION_NAME);
+              Annotation annotation = annotationHolder.createInfoAnnotation(identifier, null);
+              annotation.setTextAttributes(BuckSyntaxHighlighter.BUCK_PROPERTY_LVALUE);
             });
   }
 
-  private void annotateBuckPropertyLvalue(
-      BuckPropertyLvalue propertyLvalue, AnnotationHolder annotationHolder) {
-    Annotation annotation =
-        annotationHolder.createInfoAnnotation(propertyLvalue.getIdentifier(), null);
-    annotation.setTextAttributes(BuckSyntaxHighlighter.BUCK_PROPERTY_LVALUE);
+  /** Colorize named parameters in function definitions. */
+  private void annotateBuckParameter(BuckParameter parameter, AnnotationHolder annotationHolder) {
+    Optional.ofNullable(parameter.getIdentifier())
+        .ifPresent(
+            identifier -> {
+              Annotation annotation = annotationHolder.createInfoAnnotation(identifier, null);
+              annotation.setTextAttributes(BuckSyntaxHighlighter.BUCK_PROPERTY_LVALUE);
+            });
   }
 
   private void annotateLoadCall(BuckLoadCall loadCall, AnnotationHolder annotationHolder) {
@@ -82,7 +83,7 @@ public class BuckAnnotator implements Annotator {
 
     BuckTarget buckTarget =
         Optional.of(loadTargetArgument.getString())
-            .map(BuckPsiUtils::getStringValueFromBuckString)
+            .map(BuckString::getValue)
             .flatMap(BuckTarget::parse)
             .orElse(null);
     if (buckTarget == null) {
@@ -132,8 +133,7 @@ public class BuckAnnotator implements Annotator {
     Set<String> availableSymbols = BuckPsiUtils.findSymbolsInPsiTree(psiFile, "").keySet();
     for (BuckLoadArgument loadArgument : loadCall.getLoadArgumentList()) {
       BuckString buckString = loadArgument.getString();
-      String symbol = BuckPsiUtils.getStringValueFromBuckString(buckString);
-      if (availableSymbols.contains(symbol)) {
+      if (availableSymbols.contains(buckString.getValue())) {
         annotationHolder
             .createInfoAnnotation(buckString, null)
             .setTextAttributes(BuckSyntaxHighlighter.BUCK_IDENTIFIER);
@@ -148,7 +148,7 @@ public class BuckAnnotator implements Annotator {
   private void annotateSimpleExpression(
       BuckSimpleExpression simpleExpression, AnnotationHolder annotationHolder) {
     Optional.of(simpleExpression)
-        .map(BuckPsiUtils::getStringValueFromExpression)
+        .map(BuckPsiUtils::getStringValueFromSimpleExpression)
         .filter(
             s ->
                 annotateStringAsTargetPattern(simpleExpression, s, annotationHolder)

@@ -22,11 +22,8 @@ import com.facebook.buck.core.model.BuildTargetFactory;
 import com.facebook.buck.core.model.targetgraph.TargetGraph;
 import com.facebook.buck.core.model.targetgraph.TestBuildRuleCreationContextFactory;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.resolver.impl.SingleThreadedActionGraphBuilder;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.TestProjectFilesystems;
 import com.facebook.buck.testutil.TemporaryPaths;
@@ -54,7 +51,7 @@ public class HttpFileDescriptionTest {
 
   @Before
   public void setUp() {
-    description = new HttpFileDescription((eventBus, uri, output) -> false);
+    description = new HttpFileDescription();
     graphBuilder = new TestActionGraphBuilder();
     filesystem = TestProjectFilesystems.createProjectFilesystem(temporaryDir.getRoot());
     targetGraph = TargetGraph.EMPTY;
@@ -73,9 +70,7 @@ public class HttpFileDescriptionTest {
 
   private Path getOutputPath(HttpFile buildRule) {
     graphBuilder.computeIfAbsent(buildRule.getBuildTarget(), t -> buildRule);
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder));
-    return pathResolver.getAbsolutePath(buildRule.getSourcePathToOutput());
+    return graphBuilder.getSourcePathResolver().getAbsolutePath(buildRule.getSourcePathToOutput());
   }
 
   @Test

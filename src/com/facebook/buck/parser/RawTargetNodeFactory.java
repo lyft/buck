@@ -17,19 +17,23 @@
 package com.facebook.buck.parser;
 
 import com.facebook.buck.core.cell.Cell;
-import com.facebook.buck.core.model.UnconfiguredBuildTarget;
-import com.facebook.buck.core.model.targetgraph.RawTargetNode;
-import com.facebook.buck.event.PerfEventId;
-import com.facebook.buck.event.SimplePerfEvent.Scope;
+import com.facebook.buck.core.model.UnconfiguredBuildTargetView;
+import com.facebook.buck.core.model.targetgraph.raw.RawTargetNode;
 import java.nio.file.Path;
-import java.util.function.Function;
 
 /** Generic factory to create {@link RawTargetNode} */
-interface RawTargetNodeFactory<T> {
+public interface RawTargetNodeFactory<T> {
+
+  /**
+   * Create new {@link RawTargetNode}
+   *
+   * @param cell {@Cell} object that current build target belongs to
+   * @param buildFile A path to a build file that has the corresponding build target; can be either
+   *     absolute or relative, only used for displaying errors
+   * @param buildTarget A build target that uniquely identifies created {@link RawTargetNode}
+   * @param rawNode Raw attributes that forms the node, usually a Map where a key is attribute name
+   *     as string and value is attribute value as object.
+   */
   RawTargetNode create(
-      Cell cell,
-      Path buildFile,
-      UnconfiguredBuildTarget buildTarget,
-      T rawNode,
-      Function<PerfEventId, Scope> perfEventScope);
+      Cell cell, Path buildFile, UnconfiguredBuildTargetView buildTarget, T rawNode);
 }

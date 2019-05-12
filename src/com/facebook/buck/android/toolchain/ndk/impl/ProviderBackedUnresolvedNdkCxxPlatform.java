@@ -20,6 +20,7 @@ import com.facebook.buck.android.toolchain.ndk.ProvidesNdkCxxPlatform;
 import com.facebook.buck.android.toolchain.ndk.UnresolvedNdkCxxPlatform;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.Flavor;
+import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleResolver;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
@@ -39,7 +40,8 @@ public class ProviderBackedUnresolvedNdkCxxPlatform implements UnresolvedNdkCxxP
     this.cxxPlatformProvider =
         new UnresolvedCxxPlatform() {
           @Override
-          public CxxPlatform resolve(BuildRuleResolver resolver) {
+          public CxxPlatform resolve(
+              BuildRuleResolver resolver, TargetConfiguration targetConfiguration) {
             return ProviderBackedUnresolvedNdkCxxPlatform.this.resolve(resolver).getCxxPlatform();
           }
 
@@ -54,19 +56,21 @@ public class ProviderBackedUnresolvedNdkCxxPlatform implements UnresolvedNdkCxxP
           }
 
           @Override
-          public Iterable<BuildTarget> getParseTimeDeps() {
-            return ProviderBackedUnresolvedNdkCxxPlatform.this.getParseTimeDeps();
+          public Iterable<BuildTarget> getParseTimeDeps(TargetConfiguration targetConfiguration) {
+            return ProviderBackedUnresolvedNdkCxxPlatform.this.getParseTimeDeps(
+                targetConfiguration);
           }
 
           @Override
-          public Iterable<? extends BuildTarget> getLinkerParseTimeDeps() {
-            return getParseTimeDeps();
+          public Iterable<? extends BuildTarget> getLinkerParseTimeDeps(
+              TargetConfiguration targetConfiguration) {
+            return getParseTimeDeps(targetConfiguration);
           }
         };
   }
 
   @Override
-  public Iterable<BuildTarget> getParseTimeDeps() {
+  public Iterable<BuildTarget> getParseTimeDeps(TargetConfiguration targetConfiguration) {
     return ImmutableList.of(buildTarget);
   }
 

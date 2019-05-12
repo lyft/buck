@@ -21,6 +21,7 @@ import com.facebook.buck.core.build.execution.context.ExecutionContext;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
+import com.facebook.buck.core.rules.BuildRuleResolver;
 import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.attr.HasRuntimeDeps;
 import com.facebook.buck.core.rules.common.BuildableSupport;
@@ -233,10 +234,10 @@ class CxxBoostTest extends CxxTest implements HasRuntimeDeps, ExternalTestRunner
   // The C++ test rules just wrap a test binary produced by another rule, so make sure that's
   // always available to run the test.
   @Override
-  public Stream<BuildTarget> getRuntimeDeps(SourcePathRuleFinder ruleFinder) {
+  public Stream<BuildTarget> getRuntimeDeps(BuildRuleResolver buildRuleResolver) {
     return Stream.concat(
-        super.getRuntimeDeps(ruleFinder),
-        BuildableSupport.getDeps(getExecutableCommand(), ruleFinder)
+        super.getRuntimeDeps(buildRuleResolver),
+        BuildableSupport.getDeps(getExecutableCommand(), buildRuleResolver)
             .map(BuildRule::getBuildTarget));
   }
 
@@ -246,6 +247,7 @@ class CxxBoostTest extends CxxTest implements HasRuntimeDeps, ExternalTestRunner
       TestRunningOptions testRunningOptions,
       BuildContext buildContext) {
     return ExternalTestRunnerTestSpec.builder()
+        .setCwd(getProjectFilesystem().getRootPath())
         .setTarget(getBuildTarget())
         .setType("boost")
         .addAllCommand(

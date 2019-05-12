@@ -20,18 +20,16 @@ import com.facebook.buck.core.cell.Cell;
 import com.facebook.buck.core.cell.CellPathResolver;
 import com.facebook.buck.core.cell.CellProvider;
 import com.facebook.buck.core.config.BuckConfig;
+import com.facebook.buck.core.config.ConfigView;
 import com.facebook.buck.core.exceptions.HumanReadableException;
 import com.facebook.buck.core.model.BuildTarget;
-import com.facebook.buck.core.model.UnconfiguredBuildTarget;
+import com.facebook.buck.core.model.UnconfiguredBuildTargetView;
 import com.facebook.buck.core.toolchain.ToolchainProvider;
 import com.facebook.buck.core.util.immutables.BuckStyleTuple;
 import com.facebook.buck.io.filesystem.PathMatcher;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.ProjectFilesystemView;
 import com.facebook.buck.io.filesystem.RecursiveFileMatcher;
-import com.facebook.buck.parser.ParserConfig;
-import com.facebook.buck.parser.exceptions.MissingBuildFileException;
-import com.facebook.buck.rules.keys.config.RuleKeyConfiguration;
 import com.facebook.buck.util.RichStream;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
@@ -39,7 +37,6 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Optional;
 import org.immutables.value.Value;
 
@@ -73,11 +70,17 @@ abstract class AbstractImmutableCell implements Cell {
         ignores.add(RecursiveFileMatcher.of(filesystem.relativize(subCellRoots)));
       }
     }
-    return filesystem.asView().withView(Paths.get(""), ignores.build());
+    return filesystem.asView().withView(filesystem.getPath(""), ignores.build());
   }
 
   @Override
   public abstract BuckConfig getBuckConfig();
+
+  /** See {@link BuckConfig#getView(Class)} */
+  @Override
+  public <T extends ConfigView<BuckConfig>> T getBuckConfigView(Class<T> cls) {
+    return getBuckConfig().getView(cls);
+  }
 
   @Override
   @Value.Auxiliary
@@ -90,33 +93,6 @@ abstract class AbstractImmutableCell implements Cell {
   @Override
   public Path getRoot() {
     return getFilesystem().getRootPath();
-  }
-
-  @Override
-  @Value.Auxiliary
-  public abstract RuleKeyConfiguration getRuleKeyConfiguration();
-
-  @Override
-  public String getBuildFileName() {
-    return getBuckConfig().getView(ParserConfig.class).getBuildFileName();
-  }
-
-  @Override
-  public boolean isEnforcingBuckPackageBoundaries(Path path) {
-    ParserConfig configView = getBuckConfig().getView(ParserConfig.class);
-    if (!configView.getEnforceBuckPackageBoundary()) {
-      return false;
-    }
-
-    Path absolutePath = getFilesystem().resolve(path);
-
-    ImmutableList<Path> exceptions = configView.getBuckPackageBoundaryExceptions();
-    for (Path exception : exceptions) {
-      if (absolutePath.startsWith(exception)) {
-        return false;
-      }
-    }
-    return true;
   }
 
   @Override
@@ -135,7 +111,7 @@ abstract class AbstractImmutableCell implements Cell {
   }
 
   @Override
-  public Cell getCell(UnconfiguredBuildTarget target) {
+  public Cell getCell(UnconfiguredBuildTargetView target) {
     return getCell(target.getCellPath());
   }
 
@@ -146,11 +122,11 @@ abstract class AbstractImmutableCell implements Cell {
 
   @Override
   public Optional<Cell> getCellIfKnown(BuildTarget target) {
-    return getCellIfKnown(target.getUnconfiguredBuildTarget());
+    return getCellIfKnown(target.getUnconfiguredBuildTargetView());
   }
 
   @Override
-  public Optional<Cell> getCellIfKnown(UnconfiguredBuildTarget target) {
+  public Optional<Cell> getCellIfKnown(UnconfiguredBuildTargetView target) {
     if (getKnownRoots().contains(target.getCellPath())) {
       return Optional.of(getCell(target));
     }
@@ -169,39 +145,6 @@ abstract class AbstractImmutableCell implements Cell {
   @Override
   public ImmutableMap<Path, Cell> getLoadedCells() {
     return getCellProvider().getLoadedCells();
-  }
-
-  @Override
-  public Path getAbsolutePathToBuildFileUnsafe(BuildTarget target) {
-    return getAbsolutePathToBuildFileUnsafe(target.getUnconfiguredBuildTarget());
-  }
-
-  @Override
-  public Path getAbsolutePathToBuildFileUnsafe(UnconfiguredBuildTarget target) {
-    Cell targetCell = getCell(target);
-    ProjectFilesystem targetFilesystem = targetCell.getFilesystem();
-    return targetFilesystem.resolve(target.getBasePath()).resolve(targetCell.getBuildFileName());
-  }
-
-  @Override
-  public Path getAbsolutePathToBuildFile(UnconfiguredBuildTarget target)
-      throws MissingBuildFileException {
-    Path buildFile = getAbsolutePathToBuildFileUnsafe(target);
-    Cell cell = getCell(target);
-    if (!cell.getFilesystem().isFile(buildFile)) {
-
-      throw new MissingBuildFileException(
-          target.getFullyQualifiedName(),
-          target
-              .getBasePath()
-              .resolve(cell.getBuckConfig().getView(ParserConfig.class).getBuildFileName()));
-    }
-    return buildFile;
-  }
-
-  @Override
-  public Path getAbsolutePathToBuildFile(BuildTarget target) throws MissingBuildFileException {
-    return getAbsolutePathToBuildFile(target.getUnconfiguredBuildTarget());
   }
 
   @Override

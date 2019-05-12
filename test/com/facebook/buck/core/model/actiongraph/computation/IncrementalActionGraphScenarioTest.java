@@ -31,7 +31,7 @@ import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
 import com.facebook.buck.core.model.FlavorDomain;
 import com.facebook.buck.core.model.InternalFlavor;
-import com.facebook.buck.core.model.UnflavoredBuildTarget;
+import com.facebook.buck.core.model.UnflavoredBuildTargetView;
 import com.facebook.buck.core.model.actiongraph.ActionGraph;
 import com.facebook.buck.core.model.actiongraph.ActionGraphAndBuilder;
 import com.facebook.buck.core.model.targetgraph.AbstractNodeBuilder;
@@ -42,12 +42,9 @@ import com.facebook.buck.core.model.targetgraph.TargetNode;
 import com.facebook.buck.core.parser.buildtargetparser.ParsingUnconfiguredBuildTargetFactory;
 import com.facebook.buck.core.rulekey.RuleKey;
 import com.facebook.buck.core.rules.BuildRule;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.sourcepath.DefaultBuildTargetSourcePath;
 import com.facebook.buck.core.sourcepath.FakeSourcePath;
 import com.facebook.buck.core.sourcepath.SourceWithFlags;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.tool.Tool;
 import com.facebook.buck.core.toolchain.tool.impl.CommandTool;
 import com.facebook.buck.core.toolchain.toolprovider.impl.ConstantToolProvider;
@@ -59,10 +56,10 @@ import com.facebook.buck.cxx.CxxTestBuilder;
 import com.facebook.buck.cxx.CxxTestUtils;
 import com.facebook.buck.cxx.PrebuiltCxxLibraryBuilder;
 import com.facebook.buck.cxx.SharedLibraryInterfacePlatforms;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatformUtils;
-import com.facebook.buck.cxx.toolchain.StaticUnresolvedCxxPlatform;
 import com.facebook.buck.cxx.toolchain.UnresolvedCxxPlatform;
+import com.facebook.buck.cxx.toolchain.impl.StaticUnresolvedCxxPlatform;
 import com.facebook.buck.cxx.toolchain.linker.Linker;
 import com.facebook.buck.cxx.toolchain.linker.Linker.LinkableDepType;
 import com.facebook.buck.event.BuckEventBus;
@@ -1220,7 +1217,7 @@ public class IncrementalActionGraphScenarioTest {
   private void assertBuildRulesSame(
       ActionGraphAndBuilder expectedActionGraph,
       ActionGraphAndBuilder actualActionGraph,
-      UnflavoredBuildTarget unflavoredTarget) {
+      UnflavoredBuildTargetView unflavoredTarget) {
     assertBuildRulesSame(
         filterRules(expectedActionGraph, unflavoredTarget),
         filterRules(actualActionGraph, unflavoredTarget));
@@ -1255,7 +1252,7 @@ public class IncrementalActionGraphScenarioTest {
   private void assertCommonBuildRulesNotSame(
       ActionGraphAndBuilder lastActionGraph,
       ActionGraphAndBuilder newActionGraph,
-      UnflavoredBuildTarget unflavoredTarget) {
+      UnflavoredBuildTargetView unflavoredTarget) {
     ImmutableMap<BuildRule, BuildRule> lastBuildRuleMap =
         buildBuildRuleMap(filterRules(lastActionGraph, unflavoredTarget));
     ImmutableMap<BuildRule, BuildRule> newBuildRuleMap =
@@ -1267,7 +1264,7 @@ public class IncrementalActionGraphScenarioTest {
   }
 
   private Iterable<BuildRule> filterRules(
-      ActionGraphAndBuilder actionGraph, UnflavoredBuildTarget unflavoredTarget) {
+      ActionGraphAndBuilder actionGraph, UnflavoredBuildTargetView unflavoredTarget) {
     return RichStream.from(actionGraph.getActionGraph().getNodes())
         .filter(
             x ->
@@ -1280,7 +1277,9 @@ public class IncrementalActionGraphScenarioTest {
 
   private void queryTransitiveDeps(ActionGraphAndBuilder result) {
     Set<BuildRule> visited = new HashSet<>();
-    RuleDepsCache depsCache = new DefaultRuleDepsCache(result.getActionGraphBuilder());
+    RuleDepsCache depsCache =
+        new DefaultRuleDepsCache(
+            result.getActionGraphBuilder(), result.getBuildEngineActionToBuildRuleResolver());
     for (BuildRule buildRule : result.getActionGraph().getNodes()) {
       queryTransitiveDeps(buildRule, depsCache, visited);
     }
@@ -1306,10 +1305,9 @@ public class IncrementalActionGraphScenarioTest {
   }
 
   private ImmutableMap<BuildRule, RuleKey> getRuleKeys(ActionGraphAndBuilder result) {
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(result.getActionGraphBuilder());
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
     ContentAgnosticRuleKeyFactory factory =
-        new ContentAgnosticRuleKeyFactory(fieldLoader, pathResolver, ruleFinder, Optional.empty());
+        new ContentAgnosticRuleKeyFactory(
+            fieldLoader, result.getActionGraphBuilder(), Optional.empty());
 
     ImmutableMap.Builder<BuildRule, RuleKey> builder = ImmutableMap.builder();
     for (BuildRule rule : result.getActionGraph().getNodes()) {

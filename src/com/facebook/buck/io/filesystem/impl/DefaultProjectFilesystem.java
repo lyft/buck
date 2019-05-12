@@ -66,7 +66,6 @@ import java.nio.file.FileVisitor;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
@@ -93,7 +92,7 @@ import javax.annotation.Nullable;
 /** An injectable service for interacting with the filesystem relative to the project root. */
 public class DefaultProjectFilesystem implements ProjectFilesystem {
 
-  private static final Path EDEN_MAGIC_PATH_ELEMENT = Paths.get(".eden");
+  private final Path edenMagicPathElement;
 
   private final Path projectRoot;
   private final BuckPaths buckPaths;
@@ -124,7 +123,6 @@ public class DefaultProjectFilesystem implements ProjectFilesystem {
       ProjectFilesystemDelegate projectFilesystemDelegate,
       @Nullable WindowsFS winFSInstance) {
     this(
-        root.getFileSystem(),
         root,
         ImmutableSet.of(),
         BuckPaths.createDefaultBuckPaths(root),
@@ -133,7 +131,6 @@ public class DefaultProjectFilesystem implements ProjectFilesystem {
   }
 
   public DefaultProjectFilesystem(
-      FileSystem vfs,
       Path root,
       ImmutableSet<PathMatcher> blackListedPaths,
       BuckPaths buckPaths,
@@ -141,7 +138,6 @@ public class DefaultProjectFilesystem implements ProjectFilesystem {
       @Nullable WindowsFS winFSInstance) {
     if (shouldVerifyConstructorArguments()) {
       Preconditions.checkArgument(Files.isDirectory(root), "%s must be a directory", root);
-      Preconditions.checkState(vfs.equals(root.getFileSystem()));
       Preconditions.checkArgument(root.isAbsolute(), "Expected absolute path. Got <%s>.", root);
     }
 
@@ -207,6 +203,7 @@ public class DefaultProjectFilesystem implements ProjectFilesystem {
     if (Platform.detect() == Platform.WINDOWS) {
       Objects.requireNonNull(this.winFSInstance);
     }
+    this.edenMagicPathElement = this.getPath(".eden");
   }
 
   public static Path getCacheDir(Path root, Optional<String> value, BuckPaths buckPaths) {
@@ -226,7 +223,7 @@ public class DefaultProjectFilesystem implements ProjectFilesystem {
 
   @Override
   public DefaultProjectFilesystemView asView() {
-    return new DefaultProjectFilesystemView(this, Paths.get(""), projectRoot, ImmutableMap.of());
+    return new DefaultProjectFilesystemView(this, getPath(""), projectRoot, ImmutableMap.of());
   }
 
   @Override
@@ -406,8 +403,7 @@ public class DefaultProjectFilesystem implements ProjectFilesystem {
         skipIgnored);
   }
 
-  @Override
-  public void walkRelativeFileTree(
+  private void walkRelativeFileTree(
       Path pathRelativeToProjectRoot,
       EnumSet<FileVisitOption> visitOptions,
       FileVisitor<Path> fileVisitor)
@@ -457,7 +453,7 @@ public class DefaultProjectFilesystem implements ProjectFilesystem {
             // properly handle cyclic symlinks in a general way.
             // Failure to perform this check will result in a java.nio.file.FileSystemLoopException
             // in Eden.
-            if (EDEN_MAGIC_PATH_ELEMENT.equals(dir.getFileName())) {
+            if (edenMagicPathElement.equals(dir.getFileName())) {
               return FileVisitResult.SKIP_SUBTREE;
             }
             return fileVisitor.preVisitDirectory(pathMapper.apply(dir), attrs);
@@ -494,8 +490,7 @@ public class DefaultProjectFilesystem implements ProjectFilesystem {
     walkFileTree(root, options, fileVisitor, true);
   }
 
-  @Override
-  public void walkFileTree(
+  private void walkFileTree(
       Path root, Set<FileVisitOption> options, FileVisitor<Path> fileVisitor, boolean skipIgnored)
       throws IOException {
     walkFileTree(
@@ -789,7 +784,7 @@ public class DefaultProjectFilesystem implements ProjectFilesystem {
    */
   @Override
   public Optional<String> readFirstLine(String pathRelativeToProjectRoot) {
-    return readFirstLine(projectRoot.getFileSystem().getPath(pathRelativeToProjectRoot));
+    return readFirstLine(getPath(pathRelativeToProjectRoot));
   }
 
   /**

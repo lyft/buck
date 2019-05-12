@@ -4,7 +4,7 @@ java_library(
         "A.java",
     ],
     target_compatible_with = [
-        "//config:linux",
+        "buck//config/constraints:linux",
     ],
 )
 
@@ -15,5 +15,44 @@ java_library(
     ],
     deps = [
         ":dep",
+    ],
+)
+
+genrule(
+    name = "platform_dependent_genrule",
+    out = "out",
+    cmd = select({
+        "//config:linux_config": "echo linux > $OUT",
+        "//config:osx_config": "echo osx > $OUT",
+        "DEFAULT": "echo unknown > $OUT",
+    }),
+)
+
+genrule(
+    name = "cpu_dependent_genrule",
+    out = "out",
+    cmd = select({
+        "//config:x86_64_config": "echo x86_64 > $OUT",
+        "DEFAULT": "echo unknown > $OUT",
+    }),
+)
+
+java_library(
+    name = "dep_with_compatible_platform",
+    srcs = [
+        "A.java",
+    ],
+    target_compatible_platforms = [
+        "//config:linux_x86-64",
+    ],
+)
+
+java_library(
+    name = "lib_with_compatible_platform",
+    srcs = [
+        "B.java",
+    ],
+    deps = [
+        ":dep_with_compatible_platform",
     ],
 )

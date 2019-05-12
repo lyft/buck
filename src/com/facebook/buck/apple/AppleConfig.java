@@ -21,7 +21,8 @@ import com.facebook.buck.core.config.BuckConfig;
 import com.facebook.buck.core.config.ConfigView;
 import com.facebook.buck.core.exceptions.HumanReadableException;
 import com.facebook.buck.core.model.BuildTarget;
-import com.facebook.buck.core.model.EmptyTargetConfiguration;
+import com.facebook.buck.core.model.TargetConfiguration;
+import com.facebook.buck.core.model.UnconfiguredBuildTargetView;
 import com.facebook.buck.core.toolchain.tool.impl.HashedFileTool;
 import com.facebook.buck.core.toolchain.toolprovider.ToolProvider;
 import com.facebook.buck.core.toolchain.toolprovider.impl.BinaryBuildRuleToolProvider;
@@ -187,16 +188,14 @@ public class AppleConfig implements ConfigView<BuckConfig> {
     return new ExecutableFinder().getOptionalExecutable(xctool, delegate.getEnvironment());
   }
 
-  public Optional<BuildTarget> getXctoolZipTarget() {
-    return delegate.getBuildTarget(
-        APPLE_SECTION, "xctool_zip_target", EmptyTargetConfiguration.INSTANCE);
+  public Optional<BuildTarget> getXctoolZipTarget(TargetConfiguration targetConfiguration) {
+    return delegate.getBuildTarget(APPLE_SECTION, "xctool_zip_target", targetConfiguration);
   }
 
   public ToolProvider getCodesignProvider() {
     String codesignField = "codesign";
-    Optional<BuildTarget> target =
-        delegate.getMaybeBuildTarget(
-            APPLE_SECTION, codesignField, EmptyTargetConfiguration.INSTANCE);
+    Optional<UnconfiguredBuildTargetView> target =
+        delegate.getMaybeUnconfiguredBuildTarget(APPLE_SECTION, codesignField);
     String source = String.format("[%s] %s", APPLE_SECTION, codesignField);
     if (target.isPresent()) {
       return new BinaryBuildRuleToolProvider(target.get(), source);
@@ -254,9 +253,8 @@ public class AppleConfig implements ConfigView<BuckConfig> {
     return getOptionalPath(APPLE_SECTION, "device_helper_path");
   }
 
-  public Optional<BuildTarget> getAppleDeviceHelperTarget() {
-    return delegate.getBuildTarget(
-        APPLE_SECTION, "device_helper_target", EmptyTargetConfiguration.INSTANCE);
+  public Optional<BuildTarget> getAppleDeviceHelperTarget(TargetConfiguration targetConfiguration) {
+    return delegate.getBuildTarget(APPLE_SECTION, "device_helper_target", targetConfiguration);
   }
 
   public Path getProvisioningProfileSearchPath() {
@@ -424,6 +422,16 @@ public class AppleConfig implements ConfigView<BuckConfig> {
    */
   public boolean useFlavoredCxxSections() {
     return delegate.getBoolean(APPLE_SECTION, "use_flavored_cxx_sections").orElse(false);
+  }
+
+  /** @return whether to add the cell path to the `-iquote` path for all compilations. */
+  public boolean addCellPathToIquotePath() {
+    return delegate.getBoolean(APPLE_SECTION, "add_cell_path_to_iquote_path").orElse(true);
+  }
+
+  public boolean shouldWorkAroundDsymutilLTOStackOverflowBug() {
+    return delegate.getBooleanValue(
+        APPLE_SECTION, "work_around_dsymutil_lto_stack_overflow_bug", false);
   }
 
   @Value.Immutable

@@ -25,13 +25,13 @@ import com.facebook.buck.core.macros.MacroException;
 import com.facebook.buck.core.macros.MacroFinder;
 import com.facebook.buck.core.macros.MacroMatchResult;
 import com.facebook.buck.core.model.BuildTarget;
+import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.model.targetgraph.BuildRuleCreationContextWithTargetGraph;
 import com.facebook.buck.core.model.targetgraph.DescriptionWithTargetGraph;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.impl.NoopBuildRuleWithDeclaredAndExtraDeps;
 import com.facebook.buck.core.sourcepath.PathSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
@@ -232,12 +232,12 @@ abstract class AbstractPrebuiltCxxLibraryGroupDescription
           CxxPlatform cxxPlatform,
           Linker.LinkableDepType type,
           boolean forceLinkWhole,
-          ActionGraphBuilder graphBuilder) {
+          ActionGraphBuilder graphBuilder,
+          TargetConfiguration targetConfiguration) {
 
         if (!isPlatformSupported(cxxPlatform)) {
           return NativeLinkableInput.of();
         }
-        SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
         NativeLinkableInput.Builder builder = NativeLinkableInput.builder();
         switch (type) {
           case STATIC:
@@ -245,7 +245,7 @@ abstract class AbstractPrebuiltCxxLibraryGroupDescription
                 getStaticLinkArgs(
                     getBuildTarget(),
                     CxxGenruleDescription.fixupSourcePaths(
-                        graphBuilder, ruleFinder, cxxPlatform, args.getStaticLibs()),
+                        graphBuilder, cxxPlatform, args.getStaticLibs()),
                     args.getStaticLink()));
             break;
           case STATIC_PIC:
@@ -253,7 +253,7 @@ abstract class AbstractPrebuiltCxxLibraryGroupDescription
                 getStaticLinkArgs(
                     getBuildTarget(),
                     CxxGenruleDescription.fixupSourcePaths(
-                        graphBuilder, ruleFinder, cxxPlatform, args.getStaticPicLibs()),
+                        graphBuilder, cxxPlatform, args.getStaticPicLibs()),
                     args.getStaticPicLink()));
             break;
           case SHARED:
@@ -262,7 +262,6 @@ abstract class AbstractPrebuiltCxxLibraryGroupDescription
                     getBuildTarget(),
                     CxxGenruleDescription.fixupSourcePaths(
                         graphBuilder,
-                        ruleFinder,
                         cxxPlatform,
                         ImmutableMap.<String, SourcePath>builder()
                             .putAll(args.getSharedLibs())

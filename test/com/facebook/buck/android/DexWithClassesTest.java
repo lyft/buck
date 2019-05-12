@@ -26,8 +26,6 @@ import com.facebook.buck.core.rules.BuildRuleParams;
 import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.TestBuildRuleParams;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
 import com.facebook.buck.jvm.core.JavaLibrary;
 import com.facebook.buck.jvm.java.FakeJavaLibrary;
@@ -64,12 +62,13 @@ public class DexWithClassesTest {
                     "com/example/Main", HashCode.fromString(Strings.repeat("cafebabe", 5))),
                 Optional.empty()));
 
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(new TestActionGraphBuilder());
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
+    SourcePathRuleFinder ruleFinder = new TestActionGraphBuilder();
     DexWithClasses dexWithClasses = DexWithClasses.TO_DEX_WITH_CLASSES.apply(dexFromJavaLibrary);
     assertEquals(
         BuildTargetPaths.getGenPath(javaLibrary.getProjectFilesystem(), buildTarget, "%s.dex.jar"),
-        pathResolver.getRelativePath(dexWithClasses.getSourcePathToDexFile()));
+        ruleFinder
+            .getSourcePathResolver()
+            .getRelativePath(dexWithClasses.getSourcePathToDexFile()));
     assertEquals(ImmutableSet.of("com/example/Main"), dexWithClasses.getClassNames());
     assertEquals(1600, dexWithClasses.getWeightEstimate());
   }

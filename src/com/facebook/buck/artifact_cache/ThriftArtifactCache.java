@@ -36,7 +36,7 @@ import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.model.TargetConfigurationSerializer;
-import com.facebook.buck.core.model.UnconfiguredBuildTarget;
+import com.facebook.buck.core.model.UnconfiguredBuildTargetView;
 import com.facebook.buck.core.rulekey.RuleKey;
 import com.facebook.buck.core.util.log.Logger;
 import com.facebook.buck.io.file.LazyPath;
@@ -81,7 +81,7 @@ public class ThriftArtifactCache extends AbstractNetworkCache {
   public static final String PROTOCOL_HEADER = "X-Thrift-Protocol";
   public static final ThriftProtocol PROTOCOL = ThriftProtocol.COMPACT;
 
-  private final Function<String, UnconfiguredBuildTarget> unconfiguredBuildTargetFactory;
+  private final Function<String, UnconfiguredBuildTargetView> unconfiguredBuildTargetFactory;
   private final TargetConfigurationSerializer targetConfigurationSerializer;
   private final String hybridThriftEndpoint;
   private final boolean distributedBuildModeEnabled;
@@ -128,6 +128,10 @@ public class ThriftArtifactCache extends AbstractNetworkCache {
     fetchRequest.setRepository(getRepository());
     fetchRequest.setScheduleType(scheduleType);
     fetchRequest.setDistributedBuildModeEnabled(distributedBuildModeEnabled);
+
+    if (target != null) {
+      fetchRequest.setBuildTarget(target.getFullyQualifiedName());
+    }
 
     BuckCacheRequest cacheRequest = newCacheRequest();
     cacheRequest.setType(BuckCacheRequestType.FETCH);
@@ -411,6 +415,11 @@ public class ThriftArtifactCache extends AbstractNetworkCache {
         RichStream.from(requests)
             .map(FetchRequest::getRuleKey)
             .collect(ImmutableList.toImmutableList());
+    ImmutableList<String> targets =
+        RichStream.from(requests)
+            .map(FetchRequest::getBuildTarget)
+            .map(t -> t != null ? t.getFullyQualifiedName() : "")
+            .collect(ImmutableList.toImmutableList());
     ImmutableList<LazyPath> outputs =
         RichStream.from(requests)
             .map(FetchRequest::getOutput)
@@ -419,7 +428,7 @@ public class ThriftArtifactCache extends AbstractNetworkCache {
     String joinedKeys = Joiner.on(", ").join(keys);
     LOG.verbose("Will fetch keys <%s>", joinedKeys);
 
-    BuckCacheRequest cacheRequest = createMultiFetchRequest(keys);
+    BuckCacheRequest cacheRequest = createMultiFetchRequest(keys, targets);
     try (HttpResponse httpResponse =
         fetchClient.makeRequest(
             hybridThriftEndpoint,
@@ -436,12 +445,14 @@ public class ThriftArtifactCache extends AbstractNetworkCache {
     return thriftRuleKey;
   }
 
-  private BuckCacheRequest createMultiFetchRequest(ImmutableList<RuleKey> keys) {
+  private BuckCacheRequest createMultiFetchRequest(
+      ImmutableList<RuleKey> keys, ImmutableList<String> targets) {
     BuckCacheMultiFetchRequest multiFetchRequest = new BuckCacheMultiFetchRequest();
     multiFetchRequest.setRepository(getRepository());
     multiFetchRequest.setScheduleType(scheduleType);
     multiFetchRequest.setDistributedBuildModeEnabled(distributedBuildModeEnabled);
     keys.forEach(k -> multiFetchRequest.addToRuleKeys(toThriftRuleKey(k)));
+    targets.forEach(t -> multiFetchRequest.addToBuildTargets(t));
 
     BuckCacheRequest cacheRequest = newCacheRequest();
     cacheRequest.setType(BuckCacheRequestType.MULTI_FETCH);
@@ -840,8 +851,7 @@ public class ThriftArtifactCache extends AbstractNetworkCache {
   @Override
   protected CacheDeleteResult deleteImpl(List<RuleKey> ruleKeys) throws IOException {
     List<com.facebook.buck.artifact_cache.thrift.RuleKey> ruleKeysThrift =
-        ruleKeys
-            .stream()
+        ruleKeys.stream()
             .map(
                 r ->
                     new com.facebook.buck.artifact_cache.thrift.RuleKey()

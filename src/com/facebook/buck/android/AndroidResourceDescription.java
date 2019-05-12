@@ -99,22 +99,18 @@ public class AndroidResourceDescription
       BuildRuleParams params,
       AndroidResourceDescriptionArg args) {
     ActionGraphBuilder graphBuilder = context.getActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
     ProjectFilesystem projectFilesystem = context.getProjectFilesystem();
     ImmutableSortedSet<Flavor> flavors = buildTarget.getFlavors();
     if (flavors.contains(RESOURCES_SYMLINK_TREE_FLAVOR)) {
-      return createSymlinkTree(buildTarget, projectFilesystem, ruleFinder, args.getRes(), "res");
+      return createSymlinkTree(buildTarget, projectFilesystem, graphBuilder, args.getRes(), "res");
     } else if (flavors.contains(ASSETS_SYMLINK_TREE_FLAVOR)) {
       return createSymlinkTree(
-          buildTarget, projectFilesystem, ruleFinder, args.getAssets(), "assets");
+          buildTarget, projectFilesystem, graphBuilder, args.getAssets(), "assets");
     }
 
     // Only allow android resource and library rules as dependencies.
     Optional<BuildRule> invalidDep =
-        params
-            .getDeclaredDeps()
-            .get()
-            .stream()
+        params.getDeclaredDeps().get().stream()
             .filter(rule -> !(rule instanceof AndroidResource || rule instanceof AndroidLibrary))
             .findFirst();
     if (invalidDep.isPresent()) {
@@ -152,7 +148,7 @@ public class AndroidResourceDescription
           buildTarget,
           projectFilesystem,
           androidPlatformTarget,
-          ImmutableSortedSet.copyOf(ruleFinder.filterBuildRuleInputs(resDir.get())),
+          ImmutableSortedSet.copyOf(graphBuilder.filterBuildRuleInputs(resDir.get())),
           resDir.get());
     }
 
@@ -161,11 +157,11 @@ public class AndroidResourceDescription
             Iterables.concat(
                 resInputs
                     .getSecond()
-                    .map(ruleFinder::filterBuildRuleInputs)
+                    .map(graphBuilder::filterBuildRuleInputs)
                     .orElse(ImmutableSet.of()),
                 assetsInputs
                     .getSecond()
-                    .map(ruleFinder::filterBuildRuleInputs)
+                    .map(graphBuilder::filterBuildRuleInputs)
                     .orElse(ImmutableSet.of())));
 
     if (flavors.contains(ANDROID_RESOURCE_INDEX_FLAVOR)) {
@@ -185,7 +181,7 @@ public class AndroidResourceDescription
         // step.
         params.withDeclaredDeps(
             AndroidResourceHelper.androidResOnly(params.getDeclaredDeps().get())),
-        ruleFinder,
+        graphBuilder,
         graphBuilder.getAllRules(args.getDeps()),
         resInputs.getSecond().orElse(null),
         resInputs.getFirst().map(SymlinkTree::getLinks).orElse(ImmutableSortedMap.of()),

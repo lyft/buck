@@ -16,11 +16,15 @@
 package com.facebook.buck.parser;
 
 import com.facebook.buck.command.config.BuildBuckConfig;
+import com.facebook.buck.core.cell.Cell;
 import com.facebook.buck.core.config.BuckConfig;
 import com.facebook.buck.core.config.ConfigView;
+import com.facebook.buck.core.model.UnconfiguredBuildTargetView;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
+import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.watchman.WatchmanWatcher;
 import com.facebook.buck.parser.api.Syntax;
+import com.facebook.buck.parser.exceptions.MissingBuildFileException;
 import com.facebook.buck.parser.implicit.ImplicitInclude;
 import com.google.common.base.Splitter;
 import com.google.common.base.Strings;
@@ -114,9 +118,7 @@ abstract class AbstractParserConfig implements ConfigView<BuckConfig> {
 
   @Value.Lazy
   public ImmutableMap<String, ImplicitInclude> getPackageImplicitIncludes() {
-    return getDelegate()
-        .getMap(BUILDFILE_SECTION_NAME, PACKAGE_INCLUDES_PROPERTY_NAME)
-        .entrySet()
+    return getDelegate().getMap(BUILDFILE_SECTION_NAME, PACKAGE_INCLUDES_PROPERTY_NAME).entrySet()
         .stream()
         .collect(
             ImmutableMap.toImmutableMap(
@@ -296,12 +298,63 @@ abstract class AbstractParserConfig implements ConfigView<BuckConfig> {
   }
 
   @Value.Lazy
-  public boolean getEnableConfigurableAttributes() {
-    return getDelegate().getBooleanValue("parser", "enable_configurable_attributes", false);
-  }
-
-  @Value.Lazy
   public boolean getEnableTargetCompatibilityChecks() {
     return getDelegate().getBooleanValue("parser", "enable_target_compatibility_checks", true);
+  }
+
+  /**
+   * For use in performance-sensitive code or if you don't care if the build file actually exists,
+   * otherwise prefer {@link #getAbsolutePathToBuildFile}.
+   *
+   * @param cell the cell where the given target is defined
+   * @param target target to look up
+   * @return path which may or may not exist.
+   */
+  public Path getAbsolutePathToBuildFileUnsafe(Cell cell, UnconfiguredBuildTargetView target) {
+    Cell targetCell = cell.getCell(target);
+    ProjectFilesystem targetFilesystem = targetCell.getFilesystem();
+    return targetFilesystem
+        .resolve(target.getBasePath())
+        .resolve(targetCell.getBuckConfigView(ParserConfig.class).getBuildFileName());
+  }
+
+  /**
+   * @param cell the cell where the given target is defined
+   * @param target target to look up
+   * @return an absolute path to a build file that contains the definition of the given target.
+   */
+  public Path getAbsolutePathToBuildFile(Cell cell, UnconfiguredBuildTargetView target)
+      throws MissingBuildFileException {
+    Path buildFile = getAbsolutePathToBuildFileUnsafe(cell, target);
+    Cell targetCell = cell.getCell(target);
+    if (!targetCell.getFilesystem().isFile(buildFile)) {
+      throw new MissingBuildFileException(
+          target.getFullyQualifiedName(),
+          target
+              .getBasePath()
+              .resolve(targetCell.getBuckConfig().getView(ParserConfig.class).getBuildFileName()));
+    }
+    return buildFile;
+  }
+
+  /**
+   * Whether the cell is enforcing buck package boundaries for the package at the passed path.
+   *
+   * @param path Path of package (or file in a package) relative to the cell root.
+   */
+  public boolean isEnforcingBuckPackageBoundaries(Path path) {
+    if (!getEnforceBuckPackageBoundary()) {
+      return false;
+    }
+
+    Path absolutePath = getDelegate().getFilesystem().resolve(path);
+
+    ImmutableList<Path> exceptions = getBuckPackageBoundaryExceptions();
+    for (Path exception : exceptions) {
+      if (absolutePath.startsWith(exception)) {
+        return false;
+      }
+    }
+    return true;
   }
 }

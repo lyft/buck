@@ -17,10 +17,11 @@ package com.facebook.buck.core.rules.platform;
 
 import static org.junit.Assert.assertEquals;
 
-import com.facebook.buck.core.model.UnconfiguredBuildTarget;
 import com.facebook.buck.core.model.UnconfiguredBuildTargetFactoryForTests;
+import com.facebook.buck.core.model.UnconfiguredBuildTargetView;
 import com.facebook.buck.core.model.platform.ConstraintSetting;
 import com.facebook.buck.core.model.platform.ConstraintValue;
+import java.util.Optional;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
@@ -55,9 +56,9 @@ public class RuleBasedConstraintResolverTest {
 
   @Test
   public void testGettingConstraintValueThrowsWithWrongConstraintSettingRuleType() {
-    UnconfiguredBuildTarget constraintSettingTarget =
+    UnconfiguredBuildTargetView constraintSettingTarget =
         UnconfiguredBuildTargetFactoryForTests.newInstance("//:setting");
-    UnconfiguredBuildTarget constraintValueTarget =
+    UnconfiguredBuildTargetView constraintValueTarget =
         UnconfiguredBuildTargetFactoryForTests.newInstance("//:value");
 
     RuleBasedConstraintResolver ruleBasedConstraintResolver =
@@ -79,16 +80,17 @@ public class RuleBasedConstraintResolverTest {
 
   @Test
   public void testGettingConstraintsReturnCorrectObject() {
-    UnconfiguredBuildTarget constraintSettingTarget =
+    UnconfiguredBuildTargetView constraintSettingTarget =
         UnconfiguredBuildTargetFactoryForTests.newInstance("//:setting");
-    UnconfiguredBuildTarget constraintValueTarget =
+    UnconfiguredBuildTargetView constraintValueTarget =
         UnconfiguredBuildTargetFactoryForTests.newInstance("//:value");
 
     RuleBasedConstraintResolver ruleBasedConstraintResolver =
         new RuleBasedConstraintResolver(
             buildTarget -> {
               if (buildTarget.equals(constraintSettingTarget)) {
-                return new ConstraintSettingRule(buildTarget, buildTarget.getShortName());
+                return new ConstraintSettingRule(
+                    buildTarget, buildTarget.getShortName(), Optional.empty());
               } else {
                 return new ConstraintValueRule(
                     buildTarget, buildTarget.getShortName(), constraintSettingTarget);

@@ -21,10 +21,9 @@ import static org.junit.Assert.assertThat;
 
 import com.facebook.buck.core.config.BuckConfig;
 import com.facebook.buck.core.config.FakeBuckConfig;
+import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.ToolchainCreationContext;
 import com.facebook.buck.core.toolchain.impl.ToolchainProviderBuilder;
 import com.facebook.buck.features.python.PythonBuckConfig;
@@ -63,12 +62,13 @@ public class PexToolProviderFactoryTest {
                     new FakeProjectFilesystem(),
                     new FakeProcessExecutor(),
                     new AlwaysFoundExecutableFinder(),
-                    TestRuleKeyConfigurationFactory.create()))
+                    TestRuleKeyConfigurationFactory.create(),
+                    () -> EmptyTargetConfiguration.INSTANCE))
             .get();
     assertThat(
         pexToolProvider
-            .getPexTool(resolver)
-            .getCommandPrefix(DefaultSourcePathResolver.from(new SourcePathRuleFinder(resolver))),
+            .getPexTool(resolver, EmptyTargetConfiguration.INSTANCE)
+            .getCommandPrefix(resolver.getSourcePathResolver()),
         hasConsecutiveItems("--hello", "--world"));
   }
 }

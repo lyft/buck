@@ -16,8 +16,8 @@
 
 package com.facebook.buck.jvm.java.abi;
 
-import com.facebook.buck.io.file.MorePaths;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
+import com.facebook.buck.io.pathformat.PathFormatter;
 import com.facebook.buck.jvm.java.lang.model.ElementsExtended;
 import com.facebook.buck.util.zip.JarBuilder;
 import java.io.IOException;
@@ -94,10 +94,8 @@ public class StubJar {
 
   private void writeTo(LibraryReader input, StubJarWriter writer) throws IOException {
     List<Path> paths =
-        input
-            .getRelativePaths()
-            .stream()
-            .sorted(Comparator.comparing(MorePaths::pathWithUnixSeparators))
+        input.getRelativePaths().stream()
+            .sorted(Comparator.comparing(PathFormatter::pathWithUnixSeparators))
             .collect(Collectors.toList());
 
     for (Path path : paths) {

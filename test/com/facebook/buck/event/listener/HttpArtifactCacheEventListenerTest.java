@@ -25,7 +25,7 @@ import com.facebook.buck.artifact_cache.HttpArtifactCacheEvent.Finished;
 import com.facebook.buck.artifact_cache.config.ArtifactCacheMode;
 import com.facebook.buck.core.model.BuildId;
 import com.facebook.buck.core.rulekey.RuleKey;
-import com.facebook.buck.support.bgtasks.TaskManagerScope;
+import com.facebook.buck.support.bgtasks.TaskManagerCommandScope;
 import com.facebook.buck.support.bgtasks.TestBackgroundTaskManager;
 import com.facebook.buck.util.network.AbstractBatchingLogger;
 import com.google.common.base.Strings;
@@ -73,13 +73,13 @@ public class HttpArtifactCacheEventListenerTest {
 
   private TestBatchingLogger fetchLogger;
   private HttpArtifactCacheEventListener listener;
-  private TaskManagerScope managerScope;
+  private TaskManagerCommandScope managerScope;
 
   @Before
   public void setUp() {
     TestBatchingLogger storeLogger = new TestBatchingLogger(1);
     fetchLogger = new TestBatchingLogger(1);
-    managerScope = new TestBackgroundTaskManager().getNewScope(new BuildId("test"));
+    managerScope = TestBackgroundTaskManager.of().getNewScope(new BuildId("test"));
     listener = new HttpArtifactCacheEventListener(storeLogger, fetchLogger, managerScope);
   }
 

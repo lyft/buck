@@ -20,14 +20,12 @@ import static org.junit.Assert.assertThat;
 
 import com.facebook.buck.core.config.BuckConfig;
 import com.facebook.buck.core.config.FakeBuckConfig;
+import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.model.Flavor;
 import com.facebook.buck.core.model.FlavorDomain;
 import com.facebook.buck.core.model.InternalFlavor;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.ToolchainCreationContext;
 import com.facebook.buck.core.toolchain.ToolchainProvider;
 import com.facebook.buck.core.toolchain.impl.ToolchainProviderBuilder;
@@ -69,31 +67,35 @@ public class RustToolchainFactoryTest {
             filesystem,
             new FakeProcessExecutor(),
             new AlwaysFoundExecutableFinder(),
-            TestRuleKeyConfigurationFactory.create());
+            TestRuleKeyConfigurationFactory.create(),
+            () -> EmptyTargetConfiguration.INSTANCE);
     RustToolchainFactory factory = new RustToolchainFactory();
     Optional<RustToolchain> toolchain =
         factory.createToolchain(toolchainProvider, toolchainCreationContext);
     assertThat(
-        toolchain.get().getDefaultRustPlatform().getCxxPlatform(),
-        Matchers.equalTo(
-            CxxPlatformUtils.DEFAULT_UNRESOLVED_PLATFORM.resolve(new TestActionGraphBuilder())));
-    assertThat(
         toolchain
             .get()
-            .getRustPlatforms()
-            .getValues()
-            .stream()
-            .map(RustPlatform::getCxxPlatform)
+            .getDefaultRustPlatform()
+            .resolve(new TestActionGraphBuilder(), EmptyTargetConfiguration.INSTANCE)
+            .getCxxPlatform(),
+        Matchers.equalTo(
+            CxxPlatformUtils.DEFAULT_UNRESOLVED_PLATFORM.resolve(
+                new TestActionGraphBuilder(), EmptyTargetConfiguration.INSTANCE)));
+    assertThat(
+        toolchain.get().getRustPlatforms().getValues().stream()
+            .map(
+                p ->
+                    p.resolve(new TestActionGraphBuilder(), EmptyTargetConfiguration.INSTANCE)
+                        .getCxxPlatform())
             .collect(ImmutableList.toImmutableList()),
         Matchers.contains(
-            CxxPlatformUtils.DEFAULT_UNRESOLVED_PLATFORM.resolve(new TestActionGraphBuilder())));
+            CxxPlatformUtils.DEFAULT_UNRESOLVED_PLATFORM.resolve(
+                new TestActionGraphBuilder(), EmptyTargetConfiguration.INSTANCE)));
   }
 
   @Test
   public void customPlatforms() {
     BuildRuleResolver resolver = new TestActionGraphBuilder();
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(resolver));
 
     Flavor custom = InternalFlavor.of("custom");
     UnresolvedCxxPlatform cxxPlatform =
@@ -127,33 +129,42 @@ public class RustToolchainFactoryTest {
             filesystem,
             processExecutor,
             executableFinder,
-            TestRuleKeyConfigurationFactory.create());
+            TestRuleKeyConfigurationFactory.create(),
+            () -> EmptyTargetConfiguration.INSTANCE);
 
     RustToolchainFactory factory = new RustToolchainFactory();
     Optional<RustToolchain> toolchain =
         factory.createToolchain(toolchainProvider, toolchainCreationContext);
-    RustPlatform platform = toolchain.get().getRustPlatforms().getValue(custom);
+    RustPlatform platform =
+        toolchain
+            .get()
+            .getRustPlatforms()
+            .getValue(custom)
+            .resolve(new TestActionGraphBuilder(), EmptyTargetConfiguration.INSTANCE);
     assertThat(
         toolchain
             .get()
             .getRustPlatforms()
             .getValue(custom)
+            .resolve(resolver, EmptyTargetConfiguration.INSTANCE)
             .getRustCompiler()
-            .resolve(resolver)
-            .getCommandPrefix(pathResolver),
+            .resolve(resolver, EmptyTargetConfiguration.INSTANCE)
+            .getCommandPrefix(resolver.getSourcePathResolver()),
         Matchers.contains(filesystem.resolve(compiler).toString()));
     assertThat(
         toolchain
             .get()
             .getRustPlatforms()
             .getValue(custom)
+            .resolve(resolver, EmptyTargetConfiguration.INSTANCE)
             .getLinker()
             .get()
-            .resolve(resolver)
-            .getCommandPrefix(pathResolver),
+            .resolve(resolver, EmptyTargetConfiguration.INSTANCE)
+            .getCommandPrefix(resolver.getSourcePathResolver()),
         Matchers.contains(filesystem.resolve(linker).toString()));
     assertThat(
         platform.getCxxPlatform(),
-        Matchers.equalTo(cxxPlatform.resolve(new TestActionGraphBuilder())));
+        Matchers.equalTo(
+            cxxPlatform.resolve(new TestActionGraphBuilder(), EmptyTargetConfiguration.INSTANCE)));
   }
 }

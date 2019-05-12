@@ -19,7 +19,6 @@ import com.facebook.buck.intellij.ideabuck.highlight.BuckSyntaxHighlighter;
 import com.facebook.buck.intellij.ideabuck.lang.BuckLanguage;
 import com.facebook.buck.intellij.ideabuck.lang.psi.BuckArgument;
 import com.facebook.buck.intellij.ideabuck.lang.psi.BuckParameter;
-import com.facebook.buck.intellij.ideabuck.lang.psi.BuckPrimary;
 import com.facebook.buck.intellij.ideabuck.lang.psi.BuckSimpleExpression;
 import com.facebook.buck.intellij.ideabuck.lang.psi.BuckStatement;
 import com.facebook.buck.intellij.ideabuck.lang.psi.BuckString;
@@ -108,18 +107,15 @@ public abstract class BuckCodeContexts {
     if (buckString == null) {
       return false;
     }
-    // Currently, BuckString also includes the '%' formatting directive :-(
-    // This is wrong, but until that gets fixed, make sure this is in the
-    // quoted part of the string and not in some other part of the string.
-    BuckPrimary primary = buckString.getPrimary();
-    if (PsiTreeUtil.isAncestor(primary, element, false)) {
-      return false;
-    }
     return Stream.of(
-            buckString.getSingleQuotedString(),
-            buckString.getDoubleQuotedString(),
-            buckString.getSingleQuotedDocString(),
-            buckString.getDoubleQuotedDocString())
+            buckString.getApostrophedString(),
+            buckString.getApostrophedRawString(),
+            buckString.getTripleApostrophedString(),
+            buckString.getTripleApostrophedRawString(),
+            buckString.getQuotedString(),
+            buckString.getQuotedRawString(),
+            buckString.getTripleQuotedString(),
+            buckString.getTripleQuotedRawString())
         .filter(Objects::nonNull)
         .findAny()
         .filter(parent -> PsiTreeUtil.isAncestor(parent, element, false))

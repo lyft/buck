@@ -38,7 +38,6 @@ import com.facebook.buck.core.sourcepath.FakeSourcePath;
 import com.facebook.buck.core.sourcepath.PathSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.tool.Tool;
 import com.facebook.buck.core.toolchain.tool.impl.CommandTool;
 import com.facebook.buck.core.toolchain.tool.impl.HashedFileTool;
@@ -48,9 +47,10 @@ import com.facebook.buck.cxx.toolchain.DefaultCompiler;
 import com.facebook.buck.cxx.toolchain.GccCompiler;
 import com.facebook.buck.cxx.toolchain.GccPreprocessor;
 import com.facebook.buck.cxx.toolchain.Preprocessor;
-import com.facebook.buck.io.file.MorePaths;
+import com.facebook.buck.cxx.toolchain.ToolType;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
+import com.facebook.buck.io.pathformat.PathFormatter;
 import com.facebook.buck.rules.args.AddsToRuleKeyFunction;
 import com.facebook.buck.rules.args.StringArg;
 import com.facebook.buck.rules.coercer.FrameworkPath;
@@ -128,6 +128,7 @@ public class CxxPreprocessAndCompileTest {
                   PathSourcePath.of(
                       projectFilesystem,
                       PathNormalizer.toWindowsPathIfNeeded(Paths.get("/root/compiler")))),
+          ToolType.CXX,
           false,
           false);
   private Preprocessor PREPROCESSOR_WITH_COLOR_SUPPORT =
@@ -147,8 +148,7 @@ public class CxxPreprocessAndCompileTest {
 
   @Test
   public void inputChangesCauseRuleKeyChangesForCompilation() {
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(new TestActionGraphBuilder());
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
+    SourcePathRuleFinder ruleFinder = new TestActionGraphBuilder();
     BuildTarget target = BuildTargetFactory.newInstance("//foo:bar");
     FakeFileHashCache hashCache =
         FakeFileHashCache.createFromStrings(
@@ -185,7 +185,7 @@ public class CxxPreprocessAndCompileTest {
     // Generate a rule key for the defaults.
 
     RuleKey defaultRuleKey =
-        new TestDefaultRuleKeyFactory(hashCache, pathResolver, ruleFinder)
+        new TestDefaultRuleKeyFactory(hashCache, ruleFinder)
             .build(
                 CxxPreprocessAndCompile.compile(
                     target,
@@ -204,7 +204,7 @@ public class CxxPreprocessAndCompileTest {
     // Verify that changing the compiler causes a rulekey change.
 
     RuleKey compilerChange =
-        new TestDefaultRuleKeyFactory(hashCache, pathResolver, ruleFinder)
+        new TestDefaultRuleKeyFactory(hashCache, ruleFinder)
             .build(
                 CxxPreprocessAndCompile.compile(
                     target,
@@ -218,6 +218,7 @@ public class CxxPreprocessAndCompileTest {
                                     projectFilesystem,
                                     PathNormalizer.toWindowsPathIfNeeded(
                                         Paths.get("/root/different")))),
+                            ToolType.CXX,
                             false),
                         DEFAULT_TOOL_FLAGS,
                         DEFAULT_USE_ARG_FILE),
@@ -230,7 +231,7 @@ public class CxxPreprocessAndCompileTest {
     // Verify that changing the operation causes a rulekey change.
 
     RuleKey operationChange =
-        new TestDefaultRuleKeyFactory(hashCache, pathResolver, ruleFinder)
+        new TestDefaultRuleKeyFactory(hashCache, ruleFinder)
             .build(
                 CxxPreprocessAndCompile.preprocessAndCompile(
                     target,
@@ -261,7 +262,7 @@ public class CxxPreprocessAndCompileTest {
     // Verify that changing the platform flags causes a rulekey change.
 
     RuleKey platformFlagsChange =
-        new TestDefaultRuleKeyFactory(hashCache, pathResolver, ruleFinder)
+        new TestDefaultRuleKeyFactory(hashCache, ruleFinder)
             .build(
                 CxxPreprocessAndCompile.compile(
                     target,
@@ -284,7 +285,7 @@ public class CxxPreprocessAndCompileTest {
     // Verify that changing the rule flags causes a rulekey change.
 
     RuleKey ruleFlagsChange =
-        new TestDefaultRuleKeyFactory(hashCache, pathResolver, ruleFinder)
+        new TestDefaultRuleKeyFactory(hashCache, ruleFinder)
             .build(
                 CxxPreprocessAndCompile.compile(
                     target,
@@ -307,7 +308,7 @@ public class CxxPreprocessAndCompileTest {
     // Verify that changing the input causes a rulekey change.
 
     RuleKey inputChange =
-        new TestDefaultRuleKeyFactory(hashCache, pathResolver, ruleFinder)
+        new TestDefaultRuleKeyFactory(hashCache, ruleFinder)
             .build(
                 CxxPreprocessAndCompile.compile(
                     target,
@@ -328,8 +329,7 @@ public class CxxPreprocessAndCompileTest {
 
   @Test
   public void preprocessorFlagsRuleKeyChangesCauseRuleKeyChangesForPreprocessing() {
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(new TestActionGraphBuilder());
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
+    SourcePathRuleFinder ruleFinder = new TestActionGraphBuilder();
     BuildTarget target = BuildTargetFactory.newInstance("//foo:bar");
     FakeFileHashCache hashCache =
         FakeFileHashCache.createFromStrings(
@@ -365,7 +365,7 @@ public class CxxPreprocessAndCompileTest {
 
     class TestData {
       public RuleKey generate(PreprocessorFlags flags) {
-        return new TestDefaultRuleKeyFactory(hashCache, pathResolver, ruleFinder)
+        return new TestDefaultRuleKeyFactory(hashCache, ruleFinder)
             .build(
                 CxxPreprocessAndCompile.preprocessAndCompile(
                     target,
@@ -407,9 +407,9 @@ public class CxxPreprocessAndCompileTest {
   @Test
   public void usesCorrectCommandForCompile() {
     // Setup some dummy values for inputs to the CxxPreprocessAndCompile.
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(new TestActionGraphBuilder());
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
-    BuildContext context = FakeBuildContext.withSourcePathResolver(pathResolver);
+    SourcePathRuleFinder ruleFinder = new TestActionGraphBuilder();
+    BuildContext context =
+        FakeBuildContext.withSourcePathResolver(ruleFinder.getSourcePathResolver());
     BuildTarget target = BuildTargetFactory.newInstance("//foo:bar");
     CxxToolFlags flags =
         CxxToolFlags.explicitBuilder()
@@ -425,14 +425,11 @@ public class CxxPreprocessAndCompileTest {
             projectFilesystem,
             ruleFinder,
             new CompilerDelegate(
-                CxxPlatformUtils.DEFAULT_COMPILER_DEBUG_PATH_SANITIZER,
-                DEFAULT_COMPILER,
-                flags,
-                DEFAULT_USE_ARG_FILE),
+                NoopDebugPathSanitizer.INSTANCE, DEFAULT_COMPILER, flags, DEFAULT_USE_ARG_FILE),
             outputName,
             FakeSourcePath.of(input.toString()),
             DEFAULT_INPUT_TYPE,
-            CxxPlatformUtils.DEFAULT_COMPILER_DEBUG_PATH_SANITIZER);
+            NoopDebugPathSanitizer.INSTANCE);
 
     ImmutableList<String> expectedCompileCommand =
         ImmutableList.<String>builder()
@@ -462,8 +459,8 @@ public class CxxPreprocessAndCompileTest {
     SourcePath compiler = FakeSourcePath.of(projectFilesystem, "compiler");
     Tool compilerTool = new CommandTool.Builder().addInput(compiler).build();
 
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(new TestActionGraphBuilder());
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
+    SourcePathRuleFinder ruleFinder = new TestActionGraphBuilder();
+    SourcePathResolver pathResolver = ruleFinder.getSourcePathResolver();
     BuildTarget target = BuildTargetFactory.newInstance("//foo:bar");
     BuildContext context = FakeBuildContext.withSourcePathResolver(pathResolver);
 
@@ -510,7 +507,7 @@ public class CxxPreprocessAndCompileTest {
             ruleFinder,
             new CompilerDelegate(
                 CxxPlatformUtils.DEFAULT_COMPILER_DEBUG_PATH_SANITIZER,
-                new GccCompiler(compilerTool, false),
+                new GccCompiler(compilerTool, ToolType.CXX, false),
                 CxxToolFlags.of(),
                 DEFAULT_USE_ARG_FILE),
             DEFAULT_OUTPUT,
@@ -525,9 +522,9 @@ public class CxxPreprocessAndCompileTest {
 
   @Test
   public void usesColorFlagForCompilationWhenRequested() {
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(new TestActionGraphBuilder());
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
-    BuildContext context = FakeBuildContext.withSourcePathResolver(pathResolver);
+    SourcePathRuleFinder ruleFinder = new TestActionGraphBuilder();
+    BuildContext context =
+        FakeBuildContext.withSourcePathResolver(ruleFinder.getSourcePathResolver());
     BuildTarget target = BuildTargetFactory.newInstance("//foo:bar");
     String output = "test.o";
     Path input = Paths.get("test.ii");
@@ -561,9 +558,9 @@ public class CxxPreprocessAndCompileTest {
 
   @Test
   public void usesColorFlagForPreprocessingWhenRequested() {
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(new TestActionGraphBuilder());
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
-    BuildContext context = FakeBuildContext.withSourcePathResolver(pathResolver);
+    SourcePathRuleFinder ruleFinder = new TestActionGraphBuilder();
+    BuildContext context =
+        FakeBuildContext.withSourcePathResolver(ruleFinder.getSourcePathResolver());
     BuildTarget target = BuildTargetFactory.newInstance("//foo:bar");
     String output = "test.ii";
     Path input = Paths.get("test.cpp");
@@ -617,12 +614,12 @@ public class CxxPreprocessAndCompileTest {
   @Test
   public void usesUnixPathSeparatorForCompile() {
     // Setup some dummy values for inputs to the CxxPreprocessAndCompile.
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(new TestActionGraphBuilder());
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
-    BuildContext context = FakeBuildContext.withSourcePathResolver(pathResolver);
+    SourcePathRuleFinder ruleFinder = new TestActionGraphBuilder();
+    BuildContext context =
+        FakeBuildContext.withSourcePathResolver(ruleFinder.getSourcePathResolver());
     BuildTarget target = BuildTargetFactory.newInstance("//foo:bar");
     Path includePath = PathNormalizer.toWindowsPathIfNeeded(Paths.get("/foo/bar/zap"));
-    String includedPathStr = MorePaths.pathWithUnixSeparators(includePath);
+    String includedPathStr = PathFormatter.pathWithUnixSeparators(includePath);
 
     CxxToolFlags flags =
         CxxToolFlags.explicitBuilder()
@@ -639,20 +636,21 @@ public class CxxPreprocessAndCompileTest {
             projectFilesystem,
             ruleFinder,
             new CompilerDelegate(
-                CxxPlatformUtils.DEFAULT_COMPILER_DEBUG_PATH_SANITIZER,
+                NoopDebugPathSanitizer.INSTANCE,
                 new GccCompiler(
                     new HashedFileTool(
                         () ->
                             PathSourcePath.of(
                                 projectFilesystem,
                                 PathNormalizer.toWindowsPathIfNeeded(Paths.get("/root/compiler")))),
+                    ToolType.CXX,
                     false),
                 flags,
                 DEFAULT_USE_ARG_FILE),
             outputName,
             FakeSourcePath.of(input.toString()),
             DEFAULT_INPUT_TYPE,
-            CxxPlatformUtils.DEFAULT_COMPILER_DEBUG_PATH_SANITIZER);
+            NoopDebugPathSanitizer.INSTANCE);
 
     ImmutableList<String> expectedCompileCommand =
         ImmutableList.<String>builder()
@@ -660,10 +658,10 @@ public class CxxPreprocessAndCompileTest {
             .add("-x", "c++")
             .add("-ffunction-sections")
             .add("-O3")
-            .add("-I " + MorePaths.pathWithUnixSeparators(includePath))
+            .add("-I " + PathFormatter.pathWithUnixSeparators(includePath))
             .add("-o", "buck-out/gen/foo/bar__/baz/test.o")
             .add("-c")
-            .add(MorePaths.pathWithUnixSeparators(input.toString()))
+            .add(PathFormatter.pathWithUnixSeparators(input.toString()))
             .build();
     ImmutableList<String> actualCompileCommand =
         buildRule.makeMainStep(context, false).getCommand();

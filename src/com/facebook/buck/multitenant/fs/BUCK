@@ -1,0 +1,15 @@
+kotlin_library(
+    name = "fs",
+    srcs = glob(["*.kt"]),
+    tests = [
+        "//test/com/facebook/buck/multitenant/fs:fs",
+    ],
+    visibility = [
+        "//src/com/facebook/buck/multitenant/...",
+        "//test/com/facebook/buck/multitenant/...",
+    ],
+    deps = [
+        "//src/com/facebook/buck/io/pathformat:pathformat",
+        "//third-party/java/guava:guava",
+    ],
+)

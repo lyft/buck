@@ -30,6 +30,7 @@
 
 package com.facebook.buck.query;
 
+import com.facebook.buck.core.model.QueryTarget;
 import com.facebook.buck.query.QueryEnvironment.Argument;
 import com.facebook.buck.query.QueryEnvironment.ArgumentType;
 import com.facebook.buck.query.QueryEnvironment.QueryFunction;
@@ -44,7 +45,7 @@ import java.util.Set;
  *
  * <pre>expr ::= LABELS '(' WORD ',' expr ')'</pre>
  */
-public class LabelsFunction implements QueryFunction {
+public class LabelsFunction implements QueryFunction<QueryTarget, QueryBuildTarget> {
 
   private static final ImmutableList<ArgumentType> ARGUMENT_TYPES =
       ImmutableList.of(ArgumentType.WORD, ArgumentType.EXPRESSION);
@@ -68,12 +69,14 @@ public class LabelsFunction implements QueryFunction {
 
   @Override
   public ImmutableSet<QueryTarget> eval(
-      QueryEvaluator evaluator, QueryEnvironment env, ImmutableList<Argument> args)
+      QueryEvaluator<QueryBuildTarget> evaluator,
+      QueryEnvironment<QueryBuildTarget> env,
+      ImmutableList<Argument<QueryBuildTarget>> args)
       throws QueryException {
     String label = CaseFormat.LOWER_UNDERSCORE.to(CaseFormat.LOWER_CAMEL, args.get(0).getWord());
-    Set<QueryTarget> inputs = evaluator.eval(args.get(1).getExpression(), env);
+    Set<QueryBuildTarget> inputs = evaluator.eval(args.get(1).getExpression(), env);
     ImmutableSet.Builder<QueryTarget> result = new ImmutableSet.Builder<>();
-    for (QueryTarget input : inputs) {
+    for (QueryBuildTarget input : inputs) {
       result.addAll(env.getTargetsInAttribute(input, label));
     }
     return result.build();

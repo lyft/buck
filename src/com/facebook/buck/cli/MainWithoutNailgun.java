@@ -15,6 +15,12 @@
  */
 package com.facebook.buck.cli;
 
+import com.facebook.buck.support.bgtasks.AsyncBackgroundTaskManager;
+import com.facebook.buck.support.bgtasks.BackgroundTaskManager;
+import com.facebook.buck.util.AnsiEnvironmentChecking;
+import com.facebook.buck.util.environment.EnvVariablesProvider;
+import com.facebook.buck.util.environment.Platform;
+import com.google.common.collect.ImmutableMap;
 import java.util.Optional;
 
 /**
@@ -24,7 +30,17 @@ import java.util.Optional;
  * state is not stored. It will also take care of error handling and shutdown procedures given that
  * we are not running as a nailgun server.
  */
-public class MainWithoutNailgun {
+public class MainWithoutNailgun extends AbstractMain {
+
+  public MainWithoutNailgun() {
+    super(
+        System.out,
+        System.err,
+        System.in,
+        getClientEnvironment(),
+        Platform.detect(),
+        Optional.empty());
+  }
 
   /**
    * The entry point of a buck command.
@@ -33,7 +49,25 @@ public class MainWithoutNailgun {
    */
   public static void main(String[] args) {
     // TODO(bobyf): add shutdown handling
-    new MainRunner(System.out, System.err, System.in, Optional.empty())
-        .runMainThenExit(args, System.nanoTime());
+
+    BackgroundTaskManager backgroundTaskManager = AsyncBackgroundTaskManager.of();
+    MainWithoutNailgun mainWithoutNailgun = new MainWithoutNailgun();
+    MainRunner mainRunner = mainWithoutNailgun.prepareMainRunner(backgroundTaskManager);
+    mainRunner.runMainThenExit(args, System.nanoTime());
+    backgroundTaskManager.shutdownNow();
+  }
+
+  private static ImmutableMap<String, String> getClientEnvironment() {
+    ImmutableMap<String, String> systemEnv = EnvVariablesProvider.getSystemEnv();
+    ImmutableMap.Builder<String, String> builder =
+        ImmutableMap.builderWithExpectedSize(systemEnv.size());
+
+    systemEnv.entrySet().stream()
+        .filter(
+            e ->
+                !AnsiEnvironmentChecking.NAILGUN_STDOUT_ISTTY_ENV.equals(e.getKey())
+                    && !AnsiEnvironmentChecking.NAILGUN_STDERR_ISTTY_ENV.equals(e.getKey()))
+        .forEach(builder::put);
+    return builder.build();
   }
 }

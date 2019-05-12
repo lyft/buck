@@ -17,6 +17,7 @@
 package com.facebook.buck.rules.modern.builders;
 
 import com.facebook.buck.core.build.engine.BuildResult;
+import com.facebook.buck.core.build.engine.BuildRuleStatus;
 import com.facebook.buck.core.build.engine.BuildStrategyContext;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.build.strategy.BuildRuleStrategy;
@@ -64,6 +65,13 @@ public class LocalFallbackStrategy implements BuildRuleStrategy {
   @Override
   public boolean canBuild(BuildRule instance) {
     return mainBuildRuleStrategy.canBuild(instance);
+  }
+
+  /** Thrown when execution needs to be halted because of cancellation */
+  public static class RemoteActionCancelledException extends Exception {
+    RemoteActionCancelledException(String message) {
+      super(message);
+    }
   }
 
   /**
@@ -126,9 +134,10 @@ public class LocalFallbackStrategy implements BuildRuleStrategy {
     }
 
     @Override
-    public boolean cancelIfNotStarted(Throwable reason) {
+    public boolean cancelIfNotComplete(Throwable reason) {
       synchronized (lock) {
-        if (!isLocalBuildAlreadyRunning() && remoteStrategyBuildResult.cancelIfNotStarted(reason)) {
+        if (!isLocalBuildAlreadyRunning()
+            && remoteStrategyBuildResult.cancelIfNotComplete(reason)) {
           hasCancellationBeenRequested = true;
           return true;
         }
@@ -168,9 +177,14 @@ public class LocalFallbackStrategy implements BuildRuleStrategy {
     }
 
     private void handleRemoteBuildFailedWithActionError(Optional<BuildResult> result) {
-      LOG.warn(
-          "Remote build failed so trying locally. The error was: [%s]", result.get().toString());
-      remoteBuildResult = Optional.of(Result.FAIL);
+      if (result.get().getStatus() == BuildRuleStatus.CANCELED || hasCancellationBeenRequested) {
+        LOG.warn("Remote build cancelled: [%s]", result.get().toString());
+        remoteBuildResult = Optional.of(Result.CANCELLED);
+      } else {
+        LOG.warn(
+            "Remote build failed so trying locally. The error was: [%s]", result.get().toString());
+        remoteBuildResult = Optional.of(Result.FAIL);
+      }
       remoteBuildErrorMessage = Optional.of(result.toString());
       fallbackBuildToLocalStrategy();
     }
@@ -185,7 +199,14 @@ public class LocalFallbackStrategy implements BuildRuleStrategy {
     }
 
     private void fallbackBuildToLocalStrategy() {
-      Preconditions.checkState(!hasCancellationBeenRequested);
+      if (hasCancellationBeenRequested) {
+        completeCombinedFutureWithException(
+            new RemoteActionCancelledException(
+                "Unable to fall back to Local Strategy, execution has been cancelled"),
+            remoteBuildResult.get(),
+            Result.NOT_RUN);
+        return;
+      }
       ListenableFuture<Optional<BuildResult>> future =
           Futures.submitAsync(
               strategyContext::runWithDefaultBehavior, strategyContext.getExecutorService());
@@ -198,6 +219,16 @@ public class LocalFallbackStrategy implements BuildRuleStrategy {
         try {
           // Remote build failed but local build finished.
           Optional<BuildResult> result = future.get();
+          result =
+              Optional.of(
+                  BuildResult.builder()
+                      .from(result.get())
+                      .setStrategyResult(
+                          "local fallback - "
+                              + (result.get().getSuccessOptional().isPresent()
+                                  ? "success"
+                                  : "fail"))
+                      .build());
           completeCombinedFuture(
               result,
               remoteBuildResult.get(),

@@ -33,12 +33,9 @@ import com.facebook.buck.core.model.BuildTargetFactory;
 import com.facebook.buck.core.model.impl.BuildTargetPaths;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.TestBuildRuleParams;
 import com.facebook.buck.core.rules.attr.BuildOutputInitializer;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.tool.impl.testutil.SimpleTool;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
@@ -69,8 +66,6 @@ public class DexProducedFromJavaLibraryThatContainsClassFilesTest {
     ProjectFilesystem filesystem = FakeProjectFilesystem.createJavaOnlyFilesystem();
 
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder();
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder));
     FakeJavaLibrary javaLibraryRule =
         new FakeJavaLibrary(
             BuildTargetFactory.newInstance(filesystem.getRootPath(), "//foo:bar"),
@@ -87,7 +82,7 @@ public class DexProducedFromJavaLibraryThatContainsClassFilesTest {
     javaLibraryRule.setOutputFile(jarOutput.toString());
 
     BuildContext context =
-        FakeBuildContext.withSourcePathResolver(pathResolver)
+        FakeBuildContext.withSourcePathResolver(graphBuilder.getSourcePathResolver())
             .withBuildCellRootPath(filesystem.getRootPath());
     FakeBuildableContext buildableContext = new FakeBuildableContext();
 
@@ -151,7 +146,7 @@ public class DexProducedFromJavaLibraryThatContainsClassFilesTest {
 
     BuildOutputInitializer<DexProducedFromJavaLibrary.BuildOutput> outputInitializer =
         preDex.getBuildOutputInitializer();
-    outputInitializer.initializeFromDisk(pathResolver);
+    outputInitializer.initializeFromDisk(graphBuilder.getSourcePathResolver());
     assertEquals(250, outputInitializer.getBuildOutput().weightEstimate);
   }
 

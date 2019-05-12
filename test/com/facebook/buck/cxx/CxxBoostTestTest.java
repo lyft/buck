@@ -21,8 +21,8 @@ import static org.junit.Assert.assertEquals;
 import com.facebook.buck.core.cell.TestCellPathResolver;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
+import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.TestBuildRuleParams;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.toolchain.tool.impl.CommandTool;
@@ -66,7 +66,6 @@ public class CxxBoostTestTest {
 
     BuildTarget target = BuildTargetFactory.newInstance("//:test");
     BuildRuleResolver ruleResolver = new TestActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(ruleResolver);
     ProjectFilesystem projectFilesystem =
         TestProjectFilesystems.createProjectFilesystem(tmp.getRoot());
     BuildTarget linkTarget = BuildTargetFactory.newInstance("//:link");
@@ -78,9 +77,11 @@ public class CxxBoostTestTest {
             new CxxLink(
                 linkTarget,
                 new FakeProjectFilesystem(),
-                ruleFinder,
+                ruleResolver,
                 TestCellPathResolver.get(projectFilesystem),
-                CxxPlatformUtils.DEFAULT_PLATFORM.getLd().resolve(ruleResolver),
+                CxxPlatformUtils.DEFAULT_PLATFORM
+                    .getLd()
+                    .resolve(ruleResolver, EmptyTargetConfiguration.INSTANCE),
                 Paths.get("output"),
                 ImmutableMap.of(),
                 ImmutableList.of(),

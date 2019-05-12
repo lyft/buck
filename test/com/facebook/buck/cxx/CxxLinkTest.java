@@ -27,13 +27,11 @@ import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.FakeSourcePath;
 import com.facebook.buck.core.sourcepath.PathSourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.tool.impl.HashedFileTool;
 import com.facebook.buck.cxx.toolchain.DebugPathSanitizer;
-import com.facebook.buck.cxx.toolchain.MungingDebugPathSanitizer;
-import com.facebook.buck.cxx.toolchain.linker.GnuLinker;
+import com.facebook.buck.cxx.toolchain.PrefixMapDebugPathSanitizer;
 import com.facebook.buck.cxx.toolchain.linker.Linker;
+import com.facebook.buck.cxx.toolchain.linker.impl.GnuLinker;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
 import com.facebook.buck.rules.args.Arg;
@@ -47,7 +45,6 @@ import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableBiMap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import java.io.File;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Optional;
@@ -74,8 +71,7 @@ public class CxxLinkTest {
 
   @Test
   public void testThatInputChangesCauseRuleKeyChanges() {
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(new TestActionGraphBuilder());
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
+    SourcePathRuleFinder ruleFinder = new TestActionGraphBuilder();
     BuildTarget target = BuildTargetFactory.newInstance("//foo:bar");
     ProjectFilesystem projectFilesystem = new FakeProjectFilesystem();
     FakeFileHashCache hashCache =
@@ -90,7 +86,7 @@ public class CxxLinkTest {
     // Generate a rule key for the defaults.
 
     RuleKey defaultRuleKey =
-        new TestDefaultRuleKeyFactory(hashCache, pathResolver, ruleFinder)
+        new TestDefaultRuleKeyFactory(hashCache, ruleFinder)
             .build(
                 new CxxLink(
                     target,
@@ -110,7 +106,7 @@ public class CxxLinkTest {
     // Verify that changing the archiver causes a rulekey change.
 
     RuleKey linkerChange =
-        new TestDefaultRuleKeyFactory(hashCache, pathResolver, ruleFinder)
+        new TestDefaultRuleKeyFactory(hashCache, ruleFinder)
             .build(
                 new CxxLink(
                     target,
@@ -133,7 +129,7 @@ public class CxxLinkTest {
     // Verify that changing the output path causes a rulekey change.
 
     RuleKey outputChange =
-        new TestDefaultRuleKeyFactory(hashCache, pathResolver, ruleFinder)
+        new TestDefaultRuleKeyFactory(hashCache, ruleFinder)
             .build(
                 new CxxLink(
                     target,
@@ -154,7 +150,7 @@ public class CxxLinkTest {
     // Verify that changing the flags causes a rulekey change.
 
     RuleKey flagsChange =
-        new TestDefaultRuleKeyFactory(hashCache, pathResolver, ruleFinder)
+        new TestDefaultRuleKeyFactory(hashCache, ruleFinder)
             .build(
                 new CxxLink(
                     target,
@@ -175,8 +171,7 @@ public class CxxLinkTest {
 
   @Test
   public void sanitizedPathsInFlagsDoNotAffectRuleKey() {
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(new TestActionGraphBuilder());
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
+    SourcePathRuleFinder ruleFinder = new TestActionGraphBuilder();
     BuildTarget target = BuildTargetFactory.newInstance("//foo:bar");
     ProjectFilesystem projectFilesystem = new FakeProjectFilesystem();
     DefaultRuleKeyFactory ruleKeyFactory =
@@ -188,23 +183,13 @@ public class CxxLinkTest {
                     "b.o", Strings.repeat("b", 40),
                     "libc.a", Strings.repeat("c", 40),
                     "different", Strings.repeat("d", 40))),
-            pathResolver,
             ruleFinder);
 
     // Set up a map to sanitize the differences in the flags.
-    int pathSize = 10;
     DebugPathSanitizer sanitizer1 =
-        new MungingDebugPathSanitizer(
-            pathSize,
-            File.separatorChar,
-            Paths.get("PWD"),
-            ImmutableBiMap.of(Paths.get("something"), "A"));
+        new PrefixMapDebugPathSanitizer(".", ImmutableBiMap.of(Paths.get("something"), "A"));
     DebugPathSanitizer sanitizer2 =
-        new MungingDebugPathSanitizer(
-            pathSize,
-            File.separatorChar,
-            Paths.get("PWD"),
-            ImmutableBiMap.of(Paths.get("different"), "A"));
+        new PrefixMapDebugPathSanitizer(".", ImmutableBiMap.of(Paths.get("different"), "A"));
 
     // Generate a rule with a path we need to sanitize to a consistent value.
     ImmutableList<Arg> args1 =

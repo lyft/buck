@@ -29,7 +29,6 @@ import com.facebook.buck.core.model.targetgraph.DescriptionWithTargetGraph;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.toolchain.ToolchainProvider;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
@@ -98,11 +97,10 @@ public class JavaBinaryDescription
       JavaBinaryDescriptionArg args) {
 
     ActionGraphBuilder graphBuilder = context.getActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
     ImmutableMap<String, SourcePath> nativeLibraries =
         JavaLibraryRules.getNativeLibraries(
             params.getBuildDeps(),
-            getCxxPlatform(args).resolve(graphBuilder),
+            getCxxPlatform(args).resolve(graphBuilder, buildTarget.getTargetConfiguration()),
             context.getActionGraphBuilder());
     BuildTarget binaryBuildTarget = buildTarget;
 
@@ -124,7 +122,9 @@ public class JavaBinaryDescription
             binaryBuildTarget,
             projectFilesystem,
             params.copyAppendingExtraDeps(transitiveClasspathDeps),
-            javaOptions.get().getJavaRuntimeLauncher(graphBuilder),
+            javaOptions
+                .get()
+                .getJavaRuntimeLauncher(graphBuilder, buildTarget.getTargetConfiguration()),
             args.getMainClass().orElse(null),
             args.getManifestFile().orElse(null),
             args.getMergeManifests().orElse(true),
@@ -152,20 +152,22 @@ public class JavaBinaryDescription
               params.copyAppendingExtraDeps(
                   Suppliers.<Iterable<BuildRule>>ofInstance(
                       Iterables.concat(
-                          ruleFinder.filterBuildRuleInputs(
+                          graphBuilder.filterBuildRuleInputs(
                               ImmutableList.<SourcePath>builder()
                                   .add(innerJar)
                                   .addAll(nativeLibraries.values())
                                   .build()),
-                          javacFactory.getBuildDeps(ruleFinder)))),
-              javacFactory.create(ruleFinder, null),
+                          javacFactory.getBuildDeps(graphBuilder)))),
+              javacFactory.create(graphBuilder, null),
               toolchainProvider
                   .getByName(JavacOptionsProvider.DEFAULT_NAME, JavacOptionsProvider.class)
                   .getJavacOptions(),
               innerJar,
               javaBinary,
               nativeLibraries,
-              javaOptions.get().getJavaRuntimeLauncher(graphBuilder));
+              javaOptions
+                  .get()
+                  .getJavaRuntimeLauncher(graphBuilder, buildTarget.getTargetConfiguration()));
     }
 
     return rule;
@@ -178,9 +180,12 @@ public class JavaBinaryDescription
       AbstractJavaBinaryDescriptionArg constructorArg,
       ImmutableCollection.Builder<BuildTarget> extraDepsBuilder,
       ImmutableCollection.Builder<BuildTarget> targetGraphOnlyDepsBuilder) {
-    targetGraphOnlyDepsBuilder.addAll(getCxxPlatform(constructorArg).getParseTimeDeps());
+    targetGraphOnlyDepsBuilder.addAll(
+        getCxxPlatform(constructorArg).getParseTimeDeps(buildTarget.getTargetConfiguration()));
     javacFactory.addParseTimeDeps(targetGraphOnlyDepsBuilder, null);
-    javaOptions.get().addParseTimeDeps(targetGraphOnlyDepsBuilder);
+    javaOptions
+        .get()
+        .addParseTimeDeps(targetGraphOnlyDepsBuilder, buildTarget.getTargetConfiguration());
   }
 
   @BuckStyleImmutable

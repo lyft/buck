@@ -32,13 +32,11 @@ import com.facebook.buck.core.model.impl.BuildTargetPaths;
 import com.facebook.buck.core.model.targetgraph.TargetGraph;
 import com.facebook.buck.core.rulekey.RuleKey;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.FakeSourcePath;
 import com.facebook.buck.core.sourcepath.PathSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.io.BuildCellRelativePath;
 import com.facebook.buck.io.file.MorePaths;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
@@ -75,7 +73,6 @@ public class HeaderSymlinkTreeWithModuleMapTest {
   private ImmutableMap<Path, SourcePath> links;
   private Path symlinkTreeRoot;
   private BuildRuleResolver ruleResolver;
-  private SourcePathRuleFinder ruleFinder;
   private SourcePathResolver resolver;
 
   @Before
@@ -108,13 +105,12 @@ public class HeaderSymlinkTreeWithModuleMapTest {
         BuildTargetPaths.getGenPath(projectFilesystem, buildTarget, "%s/symlink-tree-root");
 
     ruleResolver = new TestActionGraphBuilder(TargetGraph.EMPTY);
-    ruleFinder = new SourcePathRuleFinder(ruleResolver);
-    resolver = DefaultSourcePathResolver.from(ruleFinder);
+    resolver = ruleResolver.getSourcePathResolver();
 
     // Setup the symlink tree buildable.
     symlinkTreeBuildRule =
         HeaderSymlinkTreeWithModuleMap.create(
-            buildTarget, projectFilesystem, symlinkTreeRoot, links, ruleFinder);
+            buildTarget, projectFilesystem, symlinkTreeRoot, links, ruleResolver);
   }
 
   @Test
@@ -161,7 +157,7 @@ public class HeaderSymlinkTreeWithModuleMapTest {
             symlinkTreeRoot,
             ImmutableMap.of(
                 Paths.get("SomeModule", "SomeModule-Swift.h"), FakeSourcePath.of("SomeModule")),
-            ruleFinder);
+            ruleResolver);
 
     ImmutableList<Step> actualBuildSteps =
         linksWithSwiftHeader.getBuildSteps(buildContext, buildableContext);
@@ -188,7 +184,7 @@ public class HeaderSymlinkTreeWithModuleMapTest {
                 Paths.get("OtherModule", "Header.h"),
                 PathSourcePath.of(
                     projectFilesystem, MorePaths.relativize(tmpDir.getRoot(), aFile))),
-            ruleFinder);
+            ruleResolver);
 
     // Calculate their rule keys and verify they're different.
     DefaultFileHashCache hashCache =
@@ -197,10 +193,9 @@ public class HeaderSymlinkTreeWithModuleMapTest {
             FileHashCacheMode.DEFAULT);
     FileHashLoader hashLoader = new StackedFileHashCache(ImmutableList.of(hashCache));
     RuleKey key1 =
-        new TestDefaultRuleKeyFactory(hashLoader, resolver, ruleFinder).build(symlinkTreeBuildRule);
+        new TestDefaultRuleKeyFactory(hashLoader, ruleResolver).build(symlinkTreeBuildRule);
     RuleKey key2 =
-        new TestDefaultRuleKeyFactory(hashLoader, resolver, ruleFinder)
-            .build(modifiedSymlinkTreeBuildRule);
+        new TestDefaultRuleKeyFactory(hashLoader, ruleResolver).build(modifiedSymlinkTreeBuildRule);
     assertNotEquals(key1, key2);
   }
 }

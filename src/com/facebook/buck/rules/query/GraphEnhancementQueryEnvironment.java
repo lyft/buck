@@ -19,6 +19,7 @@ package com.facebook.buck.rules.query;
 import com.facebook.buck.core.cell.CellPathResolver;
 import com.facebook.buck.core.exceptions.BuildTargetParseException;
 import com.facebook.buck.core.model.BuildTarget;
+import com.facebook.buck.core.model.QueryTarget;
 import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.model.targetgraph.TargetGraph;
 import com.facebook.buck.core.model.targetgraph.TargetNode;
@@ -37,8 +38,6 @@ import com.facebook.buck.query.QueryBuildTarget;
 import com.facebook.buck.query.QueryEnvironment;
 import com.facebook.buck.query.QueryException;
 import com.facebook.buck.query.QueryFileTarget;
-import com.facebook.buck.query.QueryTarget;
-import com.facebook.buck.query.QueryTargetAccessor;
 import com.facebook.buck.query.RdepsFunction;
 import com.facebook.buck.rules.coercer.TypeCoercerFactory;
 import com.facebook.buck.util.RichStream;
@@ -77,7 +76,7 @@ import java.util.stream.StreamSupport;
  * aliases and other patterns (such as ...) will throw an exception. The $declared_deps macro will
  * evaluate to the declared dependencies passed into the constructor.
  */
-public class GraphEnhancementQueryEnvironment implements QueryEnvironment {
+public class GraphEnhancementQueryEnvironment implements QueryEnvironment<QueryBuildTarget> {
 
   private final Optional<ActionGraphBuilder> graphBuilder;
   private final Optional<TargetGraph> targetGraph;
@@ -110,97 +109,106 @@ public class GraphEnhancementQueryEnvironment implements QueryEnvironment {
     return targetEvaluator;
   }
 
-  private Stream<QueryTarget> getFwdDepsStream(Iterable<QueryTarget> targets) {
+  private Stream<QueryBuildTarget> getFwdDepsStream(Iterable<QueryBuildTarget> targets) {
     return RichStream.from(targets)
-        .flatMap(target -> this.getNode(target).getParseDeps().stream())
+        .flatMap(target -> this.getNodeForQueryBuildTarget(target).getParseDeps().stream())
         .map(QueryBuildTarget::of);
   }
 
   @Override
-  public ImmutableSet<QueryTarget> getFwdDeps(Iterable<QueryTarget> targets) {
+  public ImmutableSet<QueryBuildTarget> getFwdDeps(Iterable<QueryBuildTarget> targets) {
     return getFwdDepsStream(targets).collect(ImmutableSet.toImmutableSet());
   }
 
   @Override
-  public void forEachFwdDep(Iterable<QueryTarget> targets, Consumer<? super QueryTarget> action) {
+  public void forEachFwdDep(Iterable<QueryBuildTarget> targets, Consumer<QueryBuildTarget> action) {
     getFwdDepsStream(targets).forEach(action);
   }
 
   @Override
-  public Set<QueryTarget> getReverseDeps(Iterable<QueryTarget> targets) {
+  public Set<QueryBuildTarget> getReverseDeps(Iterable<QueryBuildTarget> targets) {
     Preconditions.checkState(targetGraph.isPresent());
     return StreamSupport.stream(targets.spliterator(), false)
-        .map(this::getNode)
+        .map(this::getNodeForQueryBuildTarget)
         .flatMap(targetNode -> targetGraph.get().getIncomingNodesFor(targetNode).stream())
         .map(node -> QueryBuildTarget.of(node.getBuildTarget()))
         .collect(Collectors.toSet());
   }
 
   @Override
-  public Set<QueryTarget> getInputs(QueryTarget target) {
+  public Set<QueryFileTarget> getInputs(QueryBuildTarget target) {
     TargetNode<?> node = getNode(target);
-    return node.getInputs()
-        .stream()
+    return node.getInputs().stream()
         .map(path -> PathSourcePath.of(node.getFilesystem(), path))
         .map(QueryFileTarget::of)
         .collect(Collectors.toSet());
   }
 
   @Override
-  public Set<QueryTarget> getTransitiveClosure(Set<QueryTarget> targets) {
+  public Set<QueryBuildTarget> getTransitiveClosure(Set<QueryBuildTarget> targets) {
     Preconditions.checkState(targetGraph.isPresent());
-    return targetGraph
-        .get()
-        .getSubgraph(targets.stream().map(this::getNode).collect(Collectors.toList()))
-        .getNodes()
-        .stream()
+    return targetGraph.get()
+        .getSubgraph(
+            targets.stream().map(this::getNodeForQueryBuildTarget).collect(Collectors.toList()))
+        .getNodes().stream()
         .map(TargetNode::getBuildTarget)
         .map(QueryBuildTarget::of)
         .collect(Collectors.toSet());
   }
 
   @Override
-  public void buildTransitiveClosure(Set<QueryTarget> targetNodes, int maxDepth) {
+  public void buildTransitiveClosure(Set<? extends QueryTarget> targetNodes, int maxDepth) {
     // No-op, since the closure should have already been built during parsing
   }
 
   @Override
-  public String getTargetKind(QueryTarget target) {
+  public String getTargetKind(QueryBuildTarget target) {
     return getNode(target).getRuleType().getName();
   }
 
   @Override
-  public ImmutableSet<QueryTarget> getTestsForTarget(QueryTarget target) {
+  public ImmutableSet<QueryBuildTarget> getTestsForTarget(QueryBuildTarget target) {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public ImmutableSet<QueryTarget> getBuildFiles(Set<QueryTarget> targets) {
+  public ImmutableSet<QueryFileTarget> getBuildFiles(Set<QueryBuildTarget> targets) {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public ImmutableSet<QueryTarget> getFileOwners(ImmutableList<String> files) {
+  public ImmutableSet<QueryBuildTarget> getFileOwners(ImmutableList<String> files) {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public ImmutableSet<QueryTarget> getTargetsInAttribute(QueryTarget target, String attribute) {
+  public ImmutableSet<? extends QueryTarget> getTargetsInAttribute(
+      QueryBuildTarget target, String attribute) {
     return QueryTargetAccessor.getTargetsInAttribute(
         typeCoercerFactory, getNode(target), attribute);
   }
 
   @Override
   public ImmutableSet<Object> filterAttributeContents(
-      QueryTarget target, String attribute, Predicate<Object> predicate) {
+      QueryBuildTarget target, String attribute, Predicate<Object> predicate) {
     return QueryTargetAccessor.filterAttributeContents(
         typeCoercerFactory, getNode(target), attribute, predicate);
   }
 
   private TargetNode<?> getNode(QueryTarget target) {
-    Preconditions.checkState(target instanceof QueryBuildTarget);
-    Preconditions.checkArgument(targetGraph.isPresent());
-    BuildTarget buildTarget = ((QueryBuildTarget) target).getBuildTarget();
+    if (!(target instanceof QueryBuildTarget)) {
+      throw new IllegalArgumentException(
+          String.format(
+              "Expected %s to be a build target but it was an instance of %s",
+              target, target.getClass().getName()));
+    }
+
+    return getNodeForQueryBuildTarget((QueryBuildTarget) target);
+  }
+
+  private TargetNode<?> getNodeForQueryBuildTarget(QueryBuildTarget target) {
+    Preconditions.checkState(targetGraph.isPresent());
+    BuildTarget buildTarget = target.getBuildTarget();
     return targetGraph.get().get(buildTarget);
   }
 
@@ -210,8 +218,7 @@ public class GraphEnhancementQueryEnvironment implements QueryEnvironment {
    */
   protected Stream<QueryTarget> restrictToInstancesOf(Set<QueryTarget> targets, Class<?> clazz) {
     Preconditions.checkArgument(graphBuilder.isPresent());
-    return targets
-        .stream()
+    return targets.stream()
         .map(
             queryTarget -> {
               Preconditions.checkArgument(queryTarget instanceof QueryBuildTarget);
@@ -226,8 +233,7 @@ public class GraphEnhancementQueryEnvironment implements QueryEnvironment {
 
   public Stream<QueryTarget> getFirstOrderClasspath(Set<QueryTarget> targets) {
     Preconditions.checkArgument(graphBuilder.isPresent());
-    return targets
-        .stream()
+    return targets.stream()
         .map(
             queryTarget -> {
               Preconditions.checkArgument(queryTarget instanceof QueryBuildTarget);
@@ -240,21 +246,23 @@ public class GraphEnhancementQueryEnvironment implements QueryEnvironment {
         .map(dep -> QueryBuildTarget.of(dep.getBuildTarget()));
   }
 
-  public static final Iterable<QueryEnvironment.QueryFunction> QUERY_FUNCTIONS =
-      ImmutableList.of(
-          new AttrFilterFunction(),
-          new ClasspathFunction(),
-          new DepsFunction(),
-          new DepsFunction.FirstOrderDepsFunction(),
-          new DepsFunction.LookupFunction(),
-          new KindFunction(),
-          new FilterFunction(),
-          new LabelsFunction(),
-          new InputsFunction(),
-          new RdepsFunction());
+  public static final Iterable<
+          QueryEnvironment.QueryFunction<? extends QueryTarget, QueryBuildTarget>>
+      QUERY_FUNCTIONS =
+          ImmutableList.of(
+              new AttrFilterFunction(),
+              new ClasspathFunction(),
+              new DepsFunction<>(),
+              new DepsFunction.FirstOrderDepsFunction<>(),
+              new DepsFunction.LookupFunction<QueryBuildTarget, QueryBuildTarget>(),
+              new KindFunction<>(),
+              new FilterFunction<QueryBuildTarget>(),
+              new LabelsFunction(),
+              new InputsFunction<>(),
+              new RdepsFunction());
 
   @Override
-  public Iterable<QueryEnvironment.QueryFunction> getFunctions() {
+  public Iterable<QueryEnvironment.QueryFunction<?, QueryBuildTarget>> getFunctions() {
     return QUERY_FUNCTIONS;
   }
 
@@ -281,8 +289,7 @@ public class GraphEnhancementQueryEnvironment implements QueryEnvironment {
     @Override
     public ImmutableSet<QueryTarget> evaluateTarget(String target) throws QueryException {
       if ("$declared_deps".equals(target) || "$declared".equals(target)) {
-        return declaredDeps
-            .stream()
+        return declaredDeps.stream()
             .map(QueryBuildTarget::of)
             .collect(ImmutableSet.toImmutableSet());
       }

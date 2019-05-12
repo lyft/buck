@@ -19,9 +19,7 @@ package com.facebook.buck.cxx;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
 import com.facebook.buck.core.toolchain.toolprovider.ToolProvider;
 import com.facebook.buck.core.util.immutables.BuckStylePackageVisibleTuple;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
@@ -46,16 +44,13 @@ abstract class AbstractElfSharedLibraryInterfaceFactory implements SharedLibrary
       BuildTarget target,
       ProjectFilesystem projectFilesystem,
       BuildRuleResolver resolver,
-      SourcePathResolver pathResolver,
-      SourcePathRuleFinder ruleFinder,
       CxxPlatform cxxPlatform,
       SourcePath library) {
     return ElfSharedLibraryInterface.from(
         target,
         projectFilesystem,
-        pathResolver,
-        ruleFinder,
-        getObjcopy().resolve(resolver),
+        resolver,
+        getObjcopy().resolve(resolver, target.getTargetConfiguration()),
         library,
         isRemoveUndefinedSymbols());
   }
@@ -65,25 +60,18 @@ abstract class AbstractElfSharedLibraryInterfaceFactory implements SharedLibrary
       BuildTarget target,
       ProjectFilesystem projectFilesystem,
       BuildRuleResolver resolver,
-      SourcePathResolver pathResolver,
-      SourcePathRuleFinder ruleFinder,
       String libName,
       Linker linker,
       ImmutableList<Arg> args) {
     return ElfSharedLibraryInterface.from(
         target,
         projectFilesystem,
-        ruleFinder,
-        getObjcopy().resolve(resolver),
+        resolver,
+        getObjcopy().resolve(resolver, target.getTargetConfiguration()),
         libName,
         linker,
         args,
         isRemoveUndefinedSymbols());
-  }
-
-  @Override
-  public Iterable<BuildTarget> getParseTimeDeps() {
-    return getObjcopy().getParseTimeDeps();
   }
 
   public static ElfSharedLibraryInterfaceFactory from(ElfSharedLibraryInterfaceParams params) {

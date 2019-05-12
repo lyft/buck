@@ -19,12 +19,12 @@ package com.facebook.buck.cxx;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.Flavor;
 import com.facebook.buck.core.model.InternalFlavor;
+import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.model.impl.BuildTargetPaths;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.common.BuildRules;
 import com.facebook.buck.core.rules.impl.DependencyAggregation;
 import com.facebook.buck.core.rules.impl.NoopBuildRuleWithDeclaredAndExtraDeps;
@@ -162,7 +162,8 @@ public abstract class PreInclude extends NoopBuildRuleWithDeclaredAndExtraDeps
       CxxPlatform cxxPlatform,
       Linker.LinkableDepType type,
       boolean forceLinkWhole,
-      ActionGraphBuilder graphBuilder) {
+      ActionGraphBuilder graphBuilder,
+      TargetConfiguration targetConfiguration) {
     return NativeLinkableInput.of();
   }
 
@@ -199,31 +200,29 @@ public abstract class PreInclude extends NoopBuildRuleWithDeclaredAndExtraDeps
 
   private ImmutableList<CxxHeaders> getIncludes(
       CxxPlatform cxxPlatform, ActionGraphBuilder graphBuilder) {
-    return getCxxPreprocessorInputs(cxxPlatform, graphBuilder)
-        .stream()
+    return getCxxPreprocessorInputs(cxxPlatform, graphBuilder).stream()
         .flatMap(input -> input.getIncludes().stream())
         .collect(ImmutableList.toImmutableList());
   }
 
   private ImmutableSet<FrameworkPath> getFrameworks(
       CxxPlatform cxxPlatform, ActionGraphBuilder graphBuilder) {
-    return getCxxPreprocessorInputs(cxxPlatform, graphBuilder)
-        .stream()
+    return getCxxPreprocessorInputs(cxxPlatform, graphBuilder).stream()
         .flatMap(input -> input.getFrameworks().stream())
         .collect(ImmutableSet.toImmutableSet());
   }
 
   private ImmutableSortedSet<BuildRule> getPreprocessDeps(
-      CxxPlatform cxxPlatform, ActionGraphBuilder graphBuilder, SourcePathRuleFinder ruleFinder) {
+      CxxPlatform cxxPlatform, ActionGraphBuilder graphBuilder) {
     ImmutableSortedSet.Builder<BuildRule> builder = ImmutableSortedSet.naturalOrder();
     for (CxxPreprocessorInput input : getCxxPreprocessorInputs(cxxPlatform, graphBuilder)) {
-      builder.addAll(input.getDeps(graphBuilder, ruleFinder));
+      builder.addAll(input.getDeps(graphBuilder));
     }
     for (CxxHeaders cxxHeaders : getIncludes(cxxPlatform, graphBuilder)) {
-      cxxHeaders.getDeps(ruleFinder).forEachOrdered(builder::add);
+      cxxHeaders.getDeps(graphBuilder).forEachOrdered(builder::add);
     }
     for (FrameworkPath frameworkPath : getFrameworks(cxxPlatform, graphBuilder)) {
-      builder.addAll(frameworkPath.getDeps(ruleFinder));
+      builder.addAll(frameworkPath.getDeps(graphBuilder));
     }
 
     builder.addAll(getBuildDeps());
@@ -242,7 +241,7 @@ public abstract class PreInclude extends NoopBuildRuleWithDeclaredAndExtraDeps
    * generally, those deps from the current {@link CxxPlatform}.
    */
   protected DependencyAggregation requireAggregatedDepsRule(
-      CxxPlatform cxxPlatform, ActionGraphBuilder graphBuilder, SourcePathRuleFinder ruleFinder) {
+      CxxPlatform cxxPlatform, ActionGraphBuilder graphBuilder) {
     return (DependencyAggregation)
         graphBuilder.computeIfAbsent(
             createAggregatedDepsTarget(cxxPlatform),
@@ -250,7 +249,7 @@ public abstract class PreInclude extends NoopBuildRuleWithDeclaredAndExtraDeps
                 new DependencyAggregation(
                     depAggTarget,
                     getProjectFilesystem(),
-                    getPreprocessDeps(cxxPlatform, graphBuilder, ruleFinder)));
+                    getPreprocessDeps(cxxPlatform, graphBuilder)));
   }
 
   /** @return newly-built delegate for this PCH build (if precompiling enabled) */
@@ -286,7 +285,6 @@ public abstract class PreInclude extends NoopBuildRuleWithDeclaredAndExtraDeps
       CxxSource.Type sourceType,
       ImmutableList<String> sourceFlags,
       ActionGraphBuilder graphBuilder,
-      SourcePathRuleFinder ruleFinder,
       SourcePathResolver pathResolver);
 
   /**
@@ -325,7 +323,7 @@ public abstract class PreInclude extends NoopBuildRuleWithDeclaredAndExtraDeps
                       cxxPlatform.getCompilerDebugPathSanitizer(),
                       CxxSourceTypes.getCompiler(
                               cxxPlatform, CxxSourceTypes.getPreprocessorOutputType(sourceType))
-                          .resolve(graphBuilder),
+                          .resolve(graphBuilder, buildTarget.getTargetConfiguration()),
                       compilerFlags,
                       cxxPlatform.getUseArgFile());
               depsBuilder.add(compilerDelegate);

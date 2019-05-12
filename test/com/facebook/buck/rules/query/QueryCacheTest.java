@@ -25,6 +25,7 @@ import com.facebook.buck.core.cell.TestCellPathResolver;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
 import com.facebook.buck.core.model.EmptyTargetConfiguration;
+import com.facebook.buck.core.model.QueryTarget;
 import com.facebook.buck.core.model.targetgraph.TargetGraph;
 import com.facebook.buck.core.model.targetgraph.TargetGraphFactory;
 import com.facebook.buck.core.model.targetgraph.TargetNode;
@@ -128,7 +129,10 @@ public class QueryCacheTest {
     assertFalse(cache.isPresent(targetGraph, env, q6));
 
     assertThat(
-        cache.getQueryEvaluator(targetGraph).eval(QueryExpression.parse(q1.getQuery(), env), env),
+        (ImmutableSet<QueryTarget>)
+            cache
+                .getQueryEvaluator(targetGraph)
+                .eval(QueryExpression.parse(q1.getQuery(), env), env),
         Matchers.containsInAnyOrder(
             QueryBuildTarget.of(targetA),
             QueryBuildTarget.of(targetB),
@@ -203,18 +207,20 @@ public class QueryCacheTest {
     assertFalse(cache.isPresent(targetGraph, barEnv, declared));
 
     assertThat(
-        cache
-            .getQueryEvaluator(targetGraph)
-            .eval(QueryExpression.parse(declared.getQuery(), fooEnv), fooEnv),
+        (ImmutableSet<QueryTarget>)
+            cache
+                .getQueryEvaluator(targetGraph)
+                .eval(QueryExpression.parse(declared.getQuery(), fooEnv), fooEnv),
         Matchers.contains(QueryBuildTarget.of(targetA)));
 
     assertTrue(cache.isPresent(targetGraph, fooEnv, declared));
     assertFalse(cache.isPresent(targetGraph, barEnv, declared));
 
     assertThat(
-        cache
-            .getQueryEvaluator(targetGraph)
-            .eval(QueryExpression.parse(declared.getQuery(), barEnv), barEnv),
+        (ImmutableSet<QueryTarget>)
+            cache
+                .getQueryEvaluator(targetGraph)
+                .eval(QueryExpression.parse(declared.getQuery(), barEnv), barEnv),
         Matchers.contains(QueryBuildTarget.of(targetB)));
 
     assertTrue(cache.isPresent(targetGraph, fooEnv, declared));

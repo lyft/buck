@@ -24,7 +24,6 @@ import com.facebook.buck.core.rulekey.AddToRuleKey;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.attr.HasRuntimeDeps;
 import com.facebook.buck.core.sourcepath.BuildTargetSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
@@ -67,7 +66,6 @@ public class ApkGenrule extends Genrule implements HasInstallableApk, HasRuntime
       SandboxExecutionStrategy sandboxExecutionStrategy,
       BuildRuleResolver resolver,
       BuildRuleParams params,
-      SourcePathRuleFinder ruleFinder,
       SourceSet srcs,
       Optional<Arg> cmd,
       Optional<Arg> bash,
@@ -101,7 +99,7 @@ public class ApkGenrule extends Genrule implements HasInstallableApk, HasRuntime
     // TODO(cjhopman): Disallow apk_genrule depending on an apk with exopackage enabled.
     Preconditions.checkState(apk instanceof BuildTargetSourcePath);
     this.apk = (BuildTargetSourcePath) apk;
-    BuildRule rule = ruleFinder.getRule(this.apk);
+    BuildRule rule = resolver.getRule(this.apk);
     Preconditions.checkState(rule instanceof HasInstallableApk);
     this.hasInstallableApk = (HasInstallableApk) rule;
   }
@@ -130,7 +128,7 @@ public class ApkGenrule extends Genrule implements HasInstallableApk, HasRuntime
   }
 
   @Override
-  public Stream<BuildTarget> getRuntimeDeps(SourcePathRuleFinder ruleFinder) {
-    return HasInstallableApkSupport.getRuntimeDepsForInstallableApk(this, ruleFinder);
+  public Stream<BuildTarget> getRuntimeDeps(BuildRuleResolver buildRuleResolver) {
+    return HasInstallableApkSupport.getRuntimeDepsForInstallableApk(this, buildRuleResolver);
   }
 }

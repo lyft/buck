@@ -30,17 +30,25 @@ import com.facebook.buck.core.sourcepath.NonHashableSourcePathContainer;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
 import com.facebook.buck.core.toolchain.tool.Tool;
+import com.facebook.buck.cxx.CxxDescriptionEnhancer;
+import com.facebook.buck.cxx.CxxToolFlags;
+import com.facebook.buck.cxx.PreprocessorFlags;
 import com.facebook.buck.cxx.toolchain.HeaderSymlinkTree;
+import com.facebook.buck.cxx.toolchain.PathShortener;
+import com.facebook.buck.cxx.toolchain.Preprocessor;
 import com.facebook.buck.io.BuildCellRelativePath;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
+import com.facebook.buck.rules.args.Arg;
 import com.facebook.buck.step.Step;
 import com.facebook.buck.step.fs.MakeCleanDirectoryStep;
+import com.facebook.buck.util.MoreIterables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
 import java.io.File;
 import java.nio.file.Path;
+import java.util.Optional;
 import java.util.SortedSet;
 
 public class CGoGenSource extends AbstractBuildRule {
@@ -48,6 +56,8 @@ public class CGoGenSource extends AbstractBuildRule {
   @AddToRuleKey private final Tool cgo;
   @AddToRuleKey private final GoPlatform platform;
   @AddToRuleKey private final ImmutableList<String> cgoCompilerFlags;
+  @AddToRuleKey private final PreprocessorFlags ppFlags;
+  @AddToRuleKey private final Preprocessor preprocessor;
 
   @AddToRuleKey
   private final ImmutableMap<String, NonHashableSourcePathContainer> headerLinkTreeMap;
@@ -63,23 +73,23 @@ public class CGoGenSource extends AbstractBuildRule {
       BuildTarget buildTarget,
       ProjectFilesystem projectFilesystem,
       SourcePathRuleFinder ruleFinder,
-      SourcePathResolver pathResolver,
+      Preprocessor preprocessor,
       ImmutableSet<SourcePath> cgoSrcs,
       HeaderSymlinkTree headerSymlinkTree,
       Tool cgo,
       ImmutableList<String> cgoCompilerFlags,
+      PreprocessorFlags ppFlags,
       GoPlatform platform) {
     super(buildTarget, projectFilesystem);
     this.cgoSrcs = cgoSrcs;
     this.cgo = cgo;
     this.cgoCompilerFlags = cgoCompilerFlags;
     this.platform = platform;
+    this.preprocessor = preprocessor;
     this.genDir = BuildTargetPaths.getGenPath(projectFilesystem, buildTarget, "%s/gen/");
+    this.ppFlags = ppFlags;
     this.headerLinkTreeMap =
-        headerSymlinkTree
-            .getLinks()
-            .entrySet()
-            .stream()
+        headerSymlinkTree.getLinks().entrySet().stream()
             .collect(
                 ImmutableMap.toImmutableMap(
                     e -> e.getKey().toString(),
@@ -90,7 +100,8 @@ public class CGoGenSource extends AbstractBuildRule {
     ImmutableList.Builder<SourcePath> goBuilder = ImmutableList.builder();
 
     for (SourcePath srcPath : cgoSrcs) {
-      String filename = pathResolver.getAbsolutePath(srcPath).getFileName().toString();
+      String filename =
+          ruleFinder.getSourcePathResolver().getAbsolutePath(srcPath).getFileName().toString();
       String filenameWithoutExt =
           filename.substring(0, filename.lastIndexOf('.')).replace(File.separatorChar, '_');
 
@@ -116,6 +127,7 @@ public class CGoGenSource extends AbstractBuildRule {
     this.buildDeps =
         ImmutableSortedSet.<BuildRule>naturalOrder()
             .addAll(BuildableSupport.getDepsCollection(cgo, ruleFinder))
+            .addAll(ppFlags.getDeps(ruleFinder))
             .addAll(ruleFinder.filterBuildRuleInputs(cgoSrcs))
             .add(headerSymlinkTree)
             .build();
@@ -136,8 +148,8 @@ public class CGoGenSource extends AbstractBuildRule {
             cgo.getEnvironment(context.getSourcePathResolver()),
             cgo.getCommandPrefix(context.getSourcePathResolver()),
             cgoCompilerFlags,
-            cgoSrcs
-                .stream()
+            getPreprocessorFlags(context.getSourcePathResolver()),
+            cgoSrcs.stream()
                 .map(context.getSourcePathResolver()::getRelativePath)
                 .collect(ImmutableList.toImmutableList()),
             includeDirs,
@@ -146,6 +158,17 @@ public class CGoGenSource extends AbstractBuildRule {
 
     buildableContext.recordArtifact(genDir);
     return steps.build();
+  }
+
+  private Iterable<String> getPreprocessorFlags(SourcePathResolver resolver) {
+    CxxToolFlags cxxToolFlags =
+        ppFlags.toToolFlags(
+            resolver,
+            PathShortener.identity(),
+            CxxDescriptionEnhancer.frameworkPathToSearchPath(platform.getCxxPlatform(), resolver),
+            preprocessor,
+            /* pch */ Optional.empty());
+    return MoreIterables.zipAndConcat(Arg.stringify(cxxToolFlags.getAllFlags(), resolver));
   }
 
   @Override

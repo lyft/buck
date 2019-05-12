@@ -26,19 +26,17 @@ import com.facebook.buck.core.model.BuildTargetFactory;
 import com.facebook.buck.core.model.InternalFlavor;
 import com.facebook.buck.core.model.impl.BuildTargetPaths;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.impl.DependencyAggregation;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.FakeSourcePath;
 import com.facebook.buck.core.sourcepath.PathSourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.tool.impl.HashedFileTool;
 import com.facebook.buck.cxx.toolchain.CxxPlatformUtils;
 import com.facebook.buck.cxx.toolchain.GccCompiler;
 import com.facebook.buck.cxx.toolchain.GccPreprocessor;
 import com.facebook.buck.cxx.toolchain.HeaderSymlinkTree;
 import com.facebook.buck.cxx.toolchain.HeaderVisibility;
+import com.facebook.buck.cxx.toolchain.ToolType;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
 import com.facebook.buck.rules.args.AddsToRuleKeyFunction;
@@ -71,14 +69,11 @@ public class CxxCompilationDatabaseTest {
     ProjectFilesystem filesystem = new FakeProjectFilesystem(fakeRoot);
 
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver testSourcePathResolver = DefaultSourcePathResolver.from(ruleFinder);
 
     HeaderSymlinkTree privateSymlinkTree =
         CxxDescriptionEnhancer.createHeaderSymlinkTree(
             testBuildTarget,
             filesystem,
-            ruleFinder,
             graphBuilder,
             CxxPlatformUtils.DEFAULT_PLATFORM,
             ImmutableMap.of(),
@@ -89,7 +84,6 @@ public class CxxCompilationDatabaseTest {
         CxxDescriptionEnhancer.createHeaderSymlinkTree(
             testBuildTarget,
             filesystem,
-            ruleFinder,
             graphBuilder,
             CxxPlatformUtils.DEFAULT_PLATFORM,
             ImmutableMap.of(),
@@ -120,7 +114,7 @@ public class CxxCompilationDatabaseTest {
             CxxPreprocessAndCompile.preprocessAndCompile(
                 compileTarget,
                 filesystem,
-                ruleFinder,
+                graphBuilder,
                 new PreprocessorDelegate(
                     CxxPlatformUtils.DEFAULT_PLATFORM.getHeaderVerification(),
                     FakeSourcePath.of(filesystem.getRootPath()),
@@ -140,6 +134,7 @@ public class CxxCompilationDatabaseTest {
                     CxxPlatformUtils.DEFAULT_COMPILER_DEBUG_PATH_SANITIZER,
                     new GccCompiler(
                         new HashedFileTool(PathSourcePath.of(filesystem, Paths.get("compiler"))),
+                        ToolType.CXX,
                         false),
                     CxxToolFlags.of(),
                     Optional.empty()),
@@ -155,17 +150,19 @@ public class CxxCompilationDatabaseTest {
     graphBuilder.addToIndex(compilationDatabase);
 
     assertThat(
-        compilationDatabase.getRuntimeDeps(ruleFinder).collect(ImmutableSet.toImmutableSet()),
+        compilationDatabase.getRuntimeDeps(graphBuilder).collect(ImmutableSet.toImmutableSet()),
         Matchers.contains(aggregatedDeps));
 
     assertEquals(
         "getPathToOutput() should be a function of the build target.",
         BuildTargetPaths.getGenPath(filesystem, testBuildTarget, "__%s/compile_commands.json"),
-        testSourcePathResolver.getRelativePath(compilationDatabase.getSourcePathToOutput()));
+        graphBuilder
+            .getSourcePathResolver()
+            .getRelativePath(compilationDatabase.getSourcePathToOutput()));
 
     List<Step> buildSteps =
         compilationDatabase.getBuildSteps(
-            FakeBuildContext.withSourcePathResolver(testSourcePathResolver),
+            FakeBuildContext.withSourcePathResolver(graphBuilder.getSourcePathResolver()),
             new FakeBuildableContext());
     assertEquals(2, buildSteps.size());
     assertTrue(buildSteps.get(0) instanceof MkdirStep);
@@ -188,6 +185,8 @@ public class CxxCompilationDatabaseTest {
                     "/foo/bar",
                     "-isystem",
                     "/test",
+                    "-fdebug-prefix-map=/Users/user/src=.",
+                    "-gno-record-gcc-switches",
                     "-o",
                     "buck-out/gen/foo/baz#compile-test.cpp/test.o",
                     "-c",

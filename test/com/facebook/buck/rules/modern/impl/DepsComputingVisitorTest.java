@@ -177,6 +177,12 @@ public class DepsComputingVisitorTest extends AbstractValueVisitorTest {
     apply(new WithWildcards());
   }
 
+  @Override
+  @Test
+  public void withExcludeFromRuleKey() {
+    apply(new WithExcludeFromRuleKey());
+  }
+
   static class WithSourcePathList implements FakeBuildable {
     @AddToRuleKey private final ImmutableList<SourcePath> inputs;
 
@@ -249,6 +255,12 @@ public class DepsComputingVisitorTest extends AbstractValueVisitorTest {
     apply(new WithBuildTargetWithEmptyConfiguration());
   }
 
+  @Test
+  @Override
+  public void buildTargetWithHostConfiguration() {
+    apply(new WithBuildTargetWithHostConfiguration());
+  }
+
   private static final BuildRule otherRule =
       new FakeBuildRule(someBuildTarget.withFlavors(InternalFlavor.of("other")));
 
@@ -269,7 +281,7 @@ public class DepsComputingVisitorTest extends AbstractValueVisitorTest {
   @Test
   public void customDeps() {
     WithCustomDeps withCustomDeps = new WithCustomDeps();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(new TestActionGraphBuilder());
+    SourcePathRuleFinder ruleFinder = new TestActionGraphBuilder();
     InputRuleResolver ruleResolver =
         new InputRuleResolver() {
           @Override

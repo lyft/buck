@@ -27,18 +27,15 @@ import com.facebook.buck.core.model.FlavorConvertible;
 import com.facebook.buck.core.model.FlavorDomain;
 import com.facebook.buck.core.model.Flavored;
 import com.facebook.buck.core.model.InternalFlavor;
-import com.facebook.buck.core.model.UnflavoredBuildTarget;
+import com.facebook.buck.core.model.UnflavoredBuildTargetView;
 import com.facebook.buck.core.model.impl.BuildTargetPaths;
 import com.facebook.buck.core.model.targetgraph.BuildRuleCreationContextWithTargetGraph;
 import com.facebook.buck.core.model.targetgraph.DescriptionWithTargetGraph;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.common.BuildableSupport;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.ToolchainProvider;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
 import com.facebook.buck.cxx.CxxDescriptionEnhancer;
@@ -51,7 +48,7 @@ import com.facebook.buck.cxx.CxxPreprocessorInput;
 import com.facebook.buck.cxx.CxxToolFlags;
 import com.facebook.buck.cxx.DepsBuilder;
 import com.facebook.buck.cxx.PreprocessorFlags;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.CxxPlatformsProvider;
 import com.facebook.buck.cxx.toolchain.LinkerMapMode;
@@ -158,7 +155,7 @@ public class SwiftLibraryDescription
         LinkerMapMode.FLAVOR_DOMAIN.getValue(buildTarget);
     buildTarget =
         LinkerMapMode.removeLinkerMapModeFlavorInTarget(buildTarget, flavoredLinkerMapMode);
-    UnflavoredBuildTarget unflavoredBuildTarget = buildTarget.getUnflavoredBuildTarget();
+    UnflavoredBuildTargetView unflavoredBuildTargetView = buildTarget.getUnflavoredBuildTarget();
 
     // See if we're building a particular "type" and "platform" of this library, and if so, extract
     // them from the flavors attached to the build target.
@@ -166,16 +163,13 @@ public class SwiftLibraryDescription
         getCxxPlatforms().getFlavorAndValue(buildTarget);
     ImmutableSortedSet<Flavor> buildFlavors = buildTarget.getFlavors();
     ImmutableSortedSet<BuildRule> filteredExtraDeps =
-        params
-            .getExtraDeps()
-            .get()
-            .stream()
+        params.getExtraDeps().get().stream()
             .filter(
                 input ->
                     !input
                         .getBuildTarget()
                         .getUnflavoredBuildTarget()
-                        .equals(unflavoredBuildTarget))
+                        .equals(unflavoredBuildTargetView))
             .collect(ImmutableSortedSet.toImmutableSortedSet(Ordering.natural()));
     params = params.withExtraDeps(filteredExtraDeps);
 
@@ -191,7 +185,8 @@ public class SwiftLibraryDescription
     ActionGraphBuilder graphBuilder = context.getActionGraphBuilder();
     if (!buildFlavors.contains(SWIFT_COMPANION_FLAVOR) && platform.isPresent()) {
       // TODO(cjhopman): This doesn't properly handle parse time deps...
-      CxxPlatform cxxPlatform = platform.get().getValue().resolve(graphBuilder);
+      CxxPlatform cxxPlatform =
+          platform.get().getValue().resolve(graphBuilder, buildTarget.getTargetConfiguration());
       Optional<SwiftPlatform> swiftPlatform = swiftPlatformFlavorDomain.getValue(buildTarget);
       if (!swiftPlatform.isPresent()) {
         throw new HumanReadableException("Platform %s is missing swift compiler", cxxPlatform);
@@ -272,8 +267,8 @@ public class SwiftLibraryDescription
                       headers -> headers.getIncludeType() != CxxPreprocessables.IncludeType.SYSTEM)
                   .toImmutableSet(),
               inputs.getFrameworks());
-      Preprocessor preprocessor = cxxPlatform.getCpp().resolve(graphBuilder);
-      SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
+      Preprocessor preprocessor =
+          cxxPlatform.getCpp().resolve(graphBuilder, buildTarget.getTargetConfiguration());
 
       BuildTarget buildTargetCopy = buildTarget;
       return new SwiftCompile(
@@ -286,10 +281,10 @@ public class SwiftLibraryDescription
                   ImmutableSet.<BuildRule>builder()
                       .addAll(swiftCompileRules)
                       .addAll(implicitSwiftCompileRules)
-                      .addAll(cxxDeps.getDeps(ruleFinder))
+                      .addAll(cxxDeps.getDeps(graphBuilder))
                       // This is only used for generating include args and may not be actually
                       // needed.
-                      .addAll(BuildableSupport.getDepsCollection(preprocessor, ruleFinder))
+                      .addAll(BuildableSupport.getDepsCollection(preprocessor, graphBuilder))
                       .build()),
           swiftPlatform.get().getSwiftc(),
           args.getFrameworks(),
@@ -299,9 +294,9 @@ public class SwiftLibraryDescription
           args.getVersion(),
           RichStream.from(args.getCompilerFlags())
               .map(
-                  f ->
-                      CxxDescriptionEnhancer.toStringWithMacrosArgs(
-                          buildTargetCopy, cellRoots, graphBuilder, cxxPlatform, f))
+                  CxxDescriptionEnhancer.getStringWithMacrosArgsConverter(
+                          buildTargetCopy, cellRoots, graphBuilder, cxxPlatform)
+                      ::convert)
               .toImmutableList(),
           args.getEnableObjcInterop(),
           args.getBridgingHeader(),
@@ -337,8 +332,6 @@ public class SwiftLibraryDescription
       CxxPlatform cxxPlatform,
       Optional<String> soname) {
 
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver sourcePathResolver = DefaultSourcePathResolver.from(ruleFinder);
     String sharedLibrarySoname =
         CxxDescriptionEnhancer.getSharedLibrarySoname(
             soname, buildTarget.withoutFlavors(SUPPORTED_FLAVORS), cxxPlatform);
@@ -346,7 +339,8 @@ public class SwiftLibraryDescription
         CxxDescriptionEnhancer.getSharedLibraryPath(
             projectFilesystem, buildTarget, sharedLibrarySoname);
 
-    SwiftRuntimeNativeLinkable swiftRuntimeLinkable = new SwiftRuntimeNativeLinkable(swiftPlatform);
+    SwiftRuntimeNativeLinkable swiftRuntimeLinkable =
+        new SwiftRuntimeNativeLinkable(swiftPlatform, buildTarget.getTargetConfiguration());
 
     BuildTarget requiredBuildTarget =
         buildTarget
@@ -359,7 +353,10 @@ public class SwiftLibraryDescription
         NativeLinkableInput.builder()
             .from(
                 swiftRuntimeLinkable.getNativeLinkableInput(
-                    cxxPlatform, Linker.LinkableDepType.SHARED, graphBuilder))
+                    cxxPlatform,
+                    Linker.LinkableDepType.SHARED,
+                    graphBuilder,
+                    buildTarget.getTargetConfiguration()))
             .addAllArgs(rule.getAstLinkArgs())
             .addAllArgs(rule.getFileListLinkArg());
     return graphBuilder.addToIndex(
@@ -368,8 +365,6 @@ public class SwiftLibraryDescription
             cxxPlatform,
             projectFilesystem,
             graphBuilder,
-            sourcePathResolver,
-            ruleFinder,
             buildTarget,
             Linker.LinkType.SHARED,
             Optional.of(sharedLibrarySoname),
@@ -399,8 +394,7 @@ public class SwiftLibraryDescription
     if (!isSwiftTarget(buildTarget)) {
       boolean hasSwiftSource =
           !SwiftDescriptions.filterSwiftSources(
-                  DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder)),
-                  args.getSrcs())
+                  graphBuilder.getSourcePathResolver(), args.getSrcs())
               .isEmpty();
       return hasSwiftSource
           ? Optional.of(
@@ -411,7 +405,7 @@ public class SwiftLibraryDescription
     SwiftLibraryDescriptionArg.Builder delegateArgsBuilder = SwiftLibraryDescriptionArg.builder();
     SwiftDescriptions.populateSwiftLibraryDescriptionArg(
         swiftBuckConfig,
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder)),
+        graphBuilder.getSourcePathResolver(),
         delegateArgsBuilder,
         args,
         buildTarget);
@@ -431,7 +425,6 @@ public class SwiftLibraryDescription
       BuildTarget buildTarget,
       BuildRuleParams params,
       ActionGraphBuilder graphBuilder,
-      SourcePathRuleFinder ruleFinder,
       CellPathResolver cellRoots,
       ProjectFilesystem projectFilesystem,
       SwiftLibraryDescriptionArg args,
@@ -439,7 +432,7 @@ public class SwiftLibraryDescription
       PreprocessorFlags preprocessFlags,
       boolean importUnderlyingModule) {
 
-    DepsBuilder srcsDepsBuilder = new DepsBuilder(ruleFinder);
+    DepsBuilder srcsDepsBuilder = new DepsBuilder(graphBuilder);
     args.getSrcs().forEach(src -> srcsDepsBuilder.add(src));
     BuildRuleParams paramsWithSrcDeps = params.copyAppendingExtraDeps(srcsDepsBuilder.build());
 
@@ -457,9 +450,9 @@ public class SwiftLibraryDescription
         args.getVersion(),
         RichStream.from(args.getCompilerFlags())
             .map(
-                f ->
-                    CxxDescriptionEnhancer.toStringWithMacrosArgs(
-                        buildTarget, cellRoots, graphBuilder, cxxPlatform, f))
+                CxxDescriptionEnhancer.getStringWithMacrosArgsConverter(
+                        buildTarget, cellRoots, graphBuilder, cxxPlatform)
+                    ::convert)
             .toImmutableList(),
         args.getEnableObjcInterop(),
         args.getBridgingHeader(),

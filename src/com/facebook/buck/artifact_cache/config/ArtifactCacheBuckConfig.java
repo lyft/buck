@@ -91,7 +91,7 @@ public class ArtifactCacheBuckConfig implements ConfigView<BuckConfig> {
 
   private static final URI DEFAULT_HTTP_URL = URI.create("http://localhost:8080/");
   private static final String DEFAULT_HTTP_CACHE_MODE = CacheReadMode.READWRITE.name();
-  private static final long DEFAULT_HTTP_CACHE_TIMEOUT_SECONDS = 3L;
+  private static final long DEFAULT_HTTP_CACHE_TIMEOUT_SECONDS = 30L;
   private static final String DEFAULT_HTTP_MAX_CONCURRENT_WRITES = "1";
   private static final String DEFAULT_HTTP_WRITE_SHUTDOWN_TIMEOUT_SECONDS = "1800"; // 30 minutes
   private static final String DEFAULT_HTTP_CACHE_ERROR_MESSAGE =
@@ -250,8 +250,7 @@ public class ArtifactCacheBuckConfig implements ConfigView<BuckConfig> {
   }
 
   public boolean hasAtLeastOneWriteableRemoteCache() {
-    return getHttpCacheEntries()
-        .stream()
+    return getHttpCacheEntries().stream()
         .anyMatch(entry -> entry.getCacheReadMode().equals(CacheReadMode.READWRITE));
   }
 
@@ -269,8 +268,7 @@ public class ArtifactCacheBuckConfig implements ConfigView<BuckConfig> {
   }
 
   public ImmutableSet<ArtifactCacheMode> getArtifactCacheModes() {
-    return getArtifactCacheModesRaw()
-        .stream()
+    return getArtifactCacheModesRaw().stream()
         .map(
             input -> {
               try {
@@ -300,8 +298,7 @@ public class ArtifactCacheBuckConfig implements ConfigView<BuckConfig> {
 
     // Enforce some sanity checks on the config:
     //  - we don't want multiple writeable dir caches pointing to the same directory
-    dirCacheEntries
-        .stream()
+    dirCacheEntries.stream()
         .filter(isDirCacheEntryWriteable)
         .collect(Collectors.groupingBy(DirCacheEntry::getCacheDir))
         .forEach(

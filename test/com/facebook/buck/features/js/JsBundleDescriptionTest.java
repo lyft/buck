@@ -29,12 +29,10 @@ import com.facebook.buck.core.model.BuildTargetFactory;
 import com.facebook.buck.core.model.Flavor;
 import com.facebook.buck.core.rulekey.RuleKey;
 import com.facebook.buck.core.rules.BuildRule;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.sourcepath.DefaultBuildTargetSourcePath;
 import com.facebook.buck.core.sourcepath.FakeSourcePath;
 import com.facebook.buck.core.sourcepath.PathSourcePath;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.rules.keys.TestDefaultRuleKeyFactory;
 import com.facebook.buck.rules.macros.LocationMacro;
 import com.facebook.buck.testutil.FakeFileHashCache;
@@ -156,8 +154,7 @@ public class JsBundleDescriptionTest {
           scenario.graphBuilder.getRuleWithType(
               bundleTarget.withFlavors(JsFlavors.IOS), JsBundleOutputs.class);
 
-      DefaultSourcePathResolver pathResolver =
-          DefaultSourcePathResolver.from(new SourcePathRuleFinder(scenario.graphBuilder));
+      SourcePathResolver pathResolver = scenario.graphBuilder.getSourcePathResolver();
       assertEquals(
           pathResolver.getRelativePath(map.getSourcePathToOutput()),
           pathResolver.getRelativePath(bundle.getSourcePathToSourceMap()));
@@ -219,16 +216,17 @@ public class JsBundleDescriptionTest {
               "//:bundle",
               builder -> builder.setExtraJson("[\"1 %s 2\"]", LocationMacro.of(referencedTarget)));
 
-      SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(scenario.graphBuilder);
-      SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
-
       Function<HashCode, RuleKey> calc =
           (refHash) ->
               new TestDefaultRuleKeyFactory(
                       new FakeFileHashCache(
-                          ImmutableMap.of(pathResolver.getAbsolutePath(referencedSource), refHash)),
-                      pathResolver,
-                      ruleFinder)
+                          ImmutableMap.of(
+                              scenario
+                                  .graphBuilder
+                                  .getSourcePathResolver()
+                                  .getAbsolutePath(referencedSource),
+                              refHash)),
+                      scenario.graphBuilder)
                   .build(bundle);
 
       assertThat(
@@ -280,8 +278,7 @@ public class JsBundleDescriptionTest {
           RichStream.from(rule.getBuildDeps()).filter(JsBundle.class).findFirst().get();
       return dependencyTargets(jsBundle);
     } else {
-      return rule.getBuildDeps()
-          .stream()
+      return rule.getBuildDeps().stream()
           .map(BuildRule::getBuildTarget)
           .collect(Collectors.toSet());
     }

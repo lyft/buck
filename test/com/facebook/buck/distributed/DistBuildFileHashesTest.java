@@ -24,13 +24,13 @@ import com.facebook.buck.core.cell.Cell;
 import com.facebook.buck.core.cell.TestCellBuilder;
 import com.facebook.buck.core.config.BuckConfig;
 import com.facebook.buck.core.config.FakeBuckConfig;
+import com.facebook.buck.core.io.ArchiveMemberPath;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
 import com.facebook.buck.core.model.actiongraph.ActionGraph;
 import com.facebook.buck.core.rulekey.AddToRuleKey;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.TestBuildRuleParams;
 import com.facebook.buck.core.rules.impl.NoopBuildRuleWithDeclaredAndExtraDeps;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
@@ -38,12 +38,10 @@ import com.facebook.buck.core.sourcepath.ArchiveMemberSourcePath;
 import com.facebook.buck.core.sourcepath.PathSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.tool.Tool;
 import com.facebook.buck.distributed.testutil.FakeFileContentsProvider;
 import com.facebook.buck.distributed.thrift.BuildJobStateFileHashEntry;
 import com.facebook.buck.distributed.thrift.BuildJobStateFileHashes;
-import com.facebook.buck.io.ArchiveMemberPath;
 import com.facebook.buck.io.file.MostFiles;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.TestProjectFilesystems;
@@ -98,8 +96,6 @@ public class DistBuildFileHashesTest {
 
     protected final ActionGraph actionGraph;
     protected final ActionGraphBuilder graphBuilder;
-    protected final SourcePathRuleFinder ruleFinder;
-    protected final SourcePathResolver sourcePathResolver;
     protected final DistBuildFileHashes distributedBuildFileHashes;
 
     public Fixture(ProjectFilesystem first, ProjectFilesystem second)
@@ -111,9 +107,7 @@ public class DistBuildFileHashesTest {
       secondJavaFs = secondProjectFilesystem.getRootPath().getFileSystem();
 
       graphBuilder = new TestActionGraphBuilder();
-      ruleFinder = new SourcePathRuleFinder(graphBuilder);
-      sourcePathResolver = DefaultSourcePathResolver.from(ruleFinder);
-      setUpRules(graphBuilder, sourcePathResolver);
+      setUpRules(graphBuilder, graphBuilder.getSourcePathResolver());
       actionGraph = new ActionGraph(graphBuilder.getBuildRules());
       BuckConfig buckConfig = createBuckConfig();
       Cell rootCell =
@@ -122,8 +116,7 @@ public class DistBuildFileHashesTest {
       distributedBuildFileHashes =
           new DistBuildFileHashes(
               actionGraph,
-              sourcePathResolver,
-              ruleFinder,
+              graphBuilder,
               createFileHashCache(),
               new DistBuildCellIndexer(rootCell),
               MoreExecutors.newDirectExecutorService(),
@@ -131,8 +124,7 @@ public class DistBuildFileHashesTest {
               rootCell);
     }
 
-    public Fixture(TemporaryFolder tempDir)
-        throws InterruptedException, IOException, NoSuchBuildTargetException {
+    public Fixture(TemporaryFolder tempDir) throws IOException, NoSuchBuildTargetException {
       this(
           TestProjectFilesystems.createProjectFilesystem(
               tempDir.newFolder("first").toPath().toRealPath()),
@@ -354,7 +346,7 @@ public class DistBuildFileHashesTest {
     protected HashCode archiveMemberHash;
 
     private ArchiveFilesFixture(Path firstFolder, Path secondFolder)
-        throws InterruptedException, IOException, NoSuchBuildTargetException {
+        throws IOException, NoSuchBuildTargetException {
       super(
           TestProjectFilesystems.createProjectFilesystem(firstFolder),
           TestProjectFilesystems.createProjectFilesystem(secondFolder));
@@ -518,8 +510,7 @@ public class DistBuildFileHashesTest {
       List<BuildJobStateFileHashes> recordedHashes, int index) {
     Preconditions.checkArgument(index >= 0);
     Preconditions.checkArgument(index < recordedHashes.size());
-    return recordedHashes
-        .stream()
+    return recordedHashes.stream()
         .filter(hashes -> hashes.getCellIndex() == index)
         .findFirst()
         .get();
@@ -533,8 +524,7 @@ public class DistBuildFileHashesTest {
   private static String toDebugStringForAssert(List<BuildJobStateFileHashes> recordedHashes) {
     return Joiner.on("\n")
         .join(
-            recordedHashes
-                .stream()
+            recordedHashes.stream()
                 .map(ThriftUtil::thriftToDebugJson)
                 .collect(ImmutableList.toImmutableList()));
   }

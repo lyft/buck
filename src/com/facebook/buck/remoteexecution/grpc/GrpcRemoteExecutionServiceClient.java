@@ -21,6 +21,7 @@ import build.bazel.remote.execution.v2.ExecuteRequest;
 import build.bazel.remote.execution.v2.ExecuteResponse;
 import build.bazel.remote.execution.v2.ExecutedActionMetadata;
 import build.bazel.remote.execution.v2.ExecutionGrpc.ExecutionStub;
+import com.facebook.buck.core.exceptions.BuckUncheckedExecutionException;
 import com.facebook.buck.core.util.log.Logger;
 import com.facebook.buck.remoteexecution.RemoteExecutionServiceClient;
 import com.facebook.buck.remoteexecution.event.RemoteExecutionActionEvent;
@@ -34,16 +35,15 @@ import com.facebook.buck.remoteexecution.interfaces.Protocol.Digest;
 import com.facebook.buck.remoteexecution.interfaces.Protocol.OutputDirectory;
 import com.facebook.buck.remoteexecution.interfaces.Protocol.OutputFile;
 import com.facebook.buck.remoteexecution.proto.RemoteExecutionMetadata;
-import com.facebook.buck.util.exceptions.BuckUncheckedExecutionException;
 import com.google.bytestream.ByteStreamGrpc.ByteStreamStub;
-import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.SettableFuture;
 import com.google.longrunning.Operation;
 import com.google.protobuf.ByteString;
-import com.google.protobuf.InvalidProtocolBufferException;
-import io.grpc.stub.StreamObserver;
+import io.grpc.stub.ClientCallStreamObserver;
+import io.grpc.stub.ClientResponseObserver;
 import java.io.IOException;
 import java.util.List;
 import java.util.Objects;
@@ -59,24 +59,81 @@ public class GrpcRemoteExecutionServiceClient implements RemoteExecutionServiceC
   private final ExecutionStub executionStub;
   private final ByteStreamStub byteStreamStub;
   private final String instanceName;
-  private final MetadataProvider metadataProvider;
   private final Protocol protocol;
 
   public GrpcRemoteExecutionServiceClient(
       ExecutionStub executionStub,
       ByteStreamStub byteStreamStub,
       String instanceName,
-      MetadataProvider metadataProvider,
       Protocol protocol) {
     this.executionStub = executionStub;
     this.byteStreamStub = byteStreamStub;
     this.instanceName = instanceName;
-    this.metadataProvider = metadataProvider;
     this.protocol = protocol;
   }
 
+  private class ExecutionState {
+    private final RemoteExecutionMetadata metadata;
+
+    @Nullable Operation currentOp;
+
+    SettableFuture<ClientCallStreamObserver<?>> clientObserver = SettableFuture.create();
+
+    SettableFuture<ExecutionResult> future = SettableFuture.create();
+
+    public ExecutionState(RemoteExecutionMetadata metadata) {
+      this.metadata = metadata;
+    }
+
+    public void onCompleted() {
+      try {
+        Operation operation = Objects.requireNonNull(currentOp);
+        if (operation.hasError()) {
+          throw new RuntimeException(
+              String.format(
+                  "Execution failed due to an infra error with Status=[%s].",
+                  operation.getError().toString()));
+        }
+
+        if (!operation.hasResponse()) {
+          throw new RuntimeException(
+              String.format(
+                  "Invalid operation response: missing ExecutionResponse object. "
+                      + "Response=[%s].",
+                  operation.toString()));
+        }
+
+        future.set(
+            getExecutionResult(operation.getResponse().unpack(ExecuteResponse.class).getResult()));
+      } catch (Exception e) {
+        future.setException(
+            new BuckUncheckedExecutionException(
+                e, "For execution result with Metadata=[%s].", metadata));
+      }
+    }
+
+    public void cancel() {
+      clientObserver.addCallback(
+          new FutureCallback<ClientCallStreamObserver<?>>() {
+            @Override
+            public void onSuccess(@Nullable ClientCallStreamObserver<?> result) {
+              Objects.requireNonNull(result).cancel("Cancelled by client.", null);
+            }
+
+            @Override
+            public void onFailure(Throwable ignored) {}
+          },
+          MoreExecutors.directExecutor());
+    }
+
+    public void registerClientObserver(ClientCallStreamObserver<?> requestStream) {
+      clientObserver.set(requestStream);
+    }
+  }
+
   @Override
-  public ListenableFuture<ExecutionResult> execute(Protocol.Digest actionDigest, String ruleName)
+  public ExecutionHandle execute(
+      Digest actionDigest, String ruleName, MetadataProvider metadataProvider)
       throws IOException, InterruptedException {
     SettableFuture<Operation> future = SettableFuture.create();
 
@@ -85,6 +142,9 @@ public class GrpcRemoteExecutionServiceClient implements RemoteExecutionServiceC
             executionStub,
             metadataProvider.getForAction(
                 RemoteExecutionActionEvent.actionDigestToString(actionDigest), ruleName));
+
+    ExecutionState state = new ExecutionState(stubAndMetadata.getMetadata());
+
     stubAndMetadata
         .getStub()
         .execute(
@@ -93,12 +153,15 @@ public class GrpcRemoteExecutionServiceClient implements RemoteExecutionServiceC
                 .setActionDigest(GrpcProtocol.get(actionDigest))
                 .setSkipCacheLookup(false)
                 .build(),
-            new StreamObserver<Operation>() {
-              @Nullable Operation op = null;
+            new ClientResponseObserver<ExecuteRequest, Operation>() {
+              @Override
+              public void beforeStart(ClientCallStreamObserver<ExecuteRequest> requestStream) {
+                state.registerClientObserver(requestStream);
+              }
 
               @Override
               public void onNext(Operation value) {
-                op = value;
+                state.currentOp = value;
               }
 
               @Override
@@ -107,51 +170,30 @@ public class GrpcRemoteExecutionServiceClient implements RemoteExecutionServiceC
                     String.format(
                         "Failed execution request with metadata=[%s] and exception=[%s].",
                         stubAndMetadata.getMetadata(), t.toString());
-                LOG.error(msg);
+                LOG.error(t, msg);
                 future.setException(new IOException(msg, t));
               }
 
               @Override
               public void onCompleted() {
-                future.set(op);
+                state.onCompleted();
               }
             });
 
-    return Futures.transform(
-        future,
-        operation -> {
-          Objects.requireNonNull(operation);
-          if (operation.hasError()) {
-            throw new RuntimeException(
-                String.format(
-                    "Execution failed due to an infra error with Status=[%s] Metadata=[%s].",
-                    operation.getError().toString(), stubAndMetadata.getMetadata()));
-          }
+    return new ExecutionHandle() {
+      @Override
+      public ListenableFuture<ExecutionResult> getResult() {
+        return state.future;
+      }
 
-          if (!operation.hasResponse()) {
-            throw new RuntimeException(
-                String.format(
-                    "Invalid operation response: missing ExecutionResponse object. "
-                        + "Response=[%s] Metadata=[%s].",
-                    operation.toString(), stubAndMetadata.getMetadata()));
-          }
-
-          try {
-            return getExecutionResult(
-                operation.getResponse().unpack(ExecuteResponse.class).getResult(),
-                stubAndMetadata.getMetadata());
-          } catch (InvalidProtocolBufferException e) {
-            throw new BuckUncheckedExecutionException(
-                e,
-                "Exception getting execution result with Metadata=[%s].",
-                stubAndMetadata.getMetadata());
-          }
-        },
-        MoreExecutors.directExecutor());
+      @Override
+      public void cancel() {
+        state.cancel();
+      }
+    };
   }
 
-  private ExecutionResult getExecutionResult(
-      ActionResult actionResult, RemoteExecutionMetadata metadata) {
+  private ExecutionResult getExecutionResult(ActionResult actionResult) {
     if (actionResult.getExitCode() != 0) {
       LOG.debug(
           "Got failed action from worker %s", actionResult.getExecutionMetadata().getWorker());
@@ -159,18 +201,14 @@ public class GrpcRemoteExecutionServiceClient implements RemoteExecutionServiceC
     return new ExecutionResult() {
       @Override
       public List<OutputDirectory> getOutputDirectories() {
-        return actionResult
-            .getOutputDirectoriesList()
-            .stream()
+        return actionResult.getOutputDirectoriesList().stream()
             .map(GrpcOutputDirectory::new)
             .collect(Collectors.toList());
       }
 
       @Override
       public List<OutputFile> getOutputFiles() {
-        return actionResult
-            .getOutputFilesList()
-            .stream()
+        return actionResult.getOutputFilesList().stream()
             .map(GrpcOutputFile::new)
             .collect(Collectors.toList());
       }
@@ -186,18 +224,7 @@ public class GrpcRemoteExecutionServiceClient implements RemoteExecutionServiceC
         if (stdoutRaw == null
             || (stdoutRaw.isEmpty() && actionResult.getStdoutDigest().getSizeBytes() > 0)) {
           LOG.debug("Got stdout digest.");
-          try {
-            ByteString data = ByteString.EMPTY;
-            GrpcRemoteExecutionClients.readByteStream(
-                    instanceName,
-                    new GrpcDigest(actionResult.getStdoutDigest()),
-                    byteStreamStub,
-                    data::concat)
-                .get();
-            return Optional.of(data.toStringUtf8());
-          } catch (InterruptedException | ExecutionException e) {
-            throw new RuntimeException(e);
-          }
+          return Optional.of(fetch(new GrpcDigest(actionResult.getStdoutDigest())));
         } else {
           LOG.debug("Got raw stdout: " + stdoutRaw.toStringUtf8());
           return Optional.of(stdoutRaw.toStringUtf8());
@@ -210,27 +237,11 @@ public class GrpcRemoteExecutionServiceClient implements RemoteExecutionServiceC
         if (stderrRaw == null
             || (stderrRaw.isEmpty() && actionResult.getStderrDigest().getSizeBytes() > 0)) {
           LOG.debug("Got stderr digest.");
-          try {
-            ByteString data = ByteString.EMPTY;
-            GrpcRemoteExecutionClients.readByteStream(
-                    instanceName,
-                    new GrpcDigest(actionResult.getStderrDigest()),
-                    byteStreamStub,
-                    data::concat)
-                .get();
-            return Optional.of(data.toStringUtf8());
-          } catch (InterruptedException | ExecutionException e) {
-            throw new RuntimeException(e);
-          }
+          return Optional.of(fetch(new GrpcDigest(actionResult.getStderrDigest())));
         } else {
           LOG.debug("Got raw stderr: " + stderrRaw.toStringUtf8());
           return Optional.of(stderrRaw.toStringUtf8());
         }
-      }
-
-      @Override
-      public RemoteExecutionMetadata getMetadata() {
-        return metadata;
       }
 
       @Override
@@ -241,6 +252,26 @@ public class GrpcRemoteExecutionServiceClient implements RemoteExecutionServiceC
       @Override
       public ExecutedActionMetadata getActionMetadata() {
         return actionResult.getExecutionMetadata();
+      }
+
+      private String fetch(Protocol.Digest digest) {
+        /** Payload received on a fetch request. */
+        class Data {
+          ByteString data = ByteString.EMPTY;
+
+          public void concat(ByteString bytes) {
+            data = data.concat(bytes);
+          }
+        }
+        Data data = new Data();
+        try {
+          GrpcRemoteExecutionClients.readByteStream(
+                  instanceName, digest, byteStreamStub, data::concat)
+              .get();
+        } catch (InterruptedException | ExecutionException e) {
+          throw new RuntimeException(e);
+        }
+        return data.data.toStringUtf8();
       }
     };
   }

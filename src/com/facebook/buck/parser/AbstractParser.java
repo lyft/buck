@@ -132,7 +132,11 @@ abstract class AbstractParser implements Parser {
     Cell owningCell = cell.getCell(targetNode.getBuildTarget());
     BuildFileManifest buildFileManifest =
         getTargetNodeRawAttributes(
-            state, owningCell, cell.getAbsolutePathToBuildFile(targetNode.getBuildTarget()));
+            state,
+            owningCell,
+            cell.getBuckConfigView(ParserConfig.class)
+                .getAbsolutePathToBuildFile(
+                    cell, targetNode.getBuildTarget().getUnconfiguredBuildTargetView()));
     return getTargetFromManifest(targetNode, buildFileManifest);
   }
 
@@ -142,7 +146,10 @@ abstract class AbstractParser implements Parser {
     Cell owningCell = cell.getCell(targetNode.getBuildTarget());
     ListenableFuture<BuildFileManifest> buildFileManifestFuture =
         state.getBuildFileManifestJob(
-            owningCell, cell.getAbsolutePathToBuildFile(targetNode.getBuildTarget()));
+            owningCell,
+            cell.getBuckConfigView(ParserConfig.class)
+                .getAbsolutePathToBuildFile(
+                    cell, targetNode.getBuildTarget().getUnconfiguredBuildTargetView()));
     return Futures.transform(
         buildFileManifestFuture,
         buildFileManifest -> getTargetFromManifest(targetNode, buildFileManifest),
@@ -162,9 +169,7 @@ abstract class AbstractParser implements Parser {
         new TreeMap<>(buildFileManifest.getTargets().get(shortName));
     attributes.put(
         InternalTargetAttributeNames.DIRECT_DEPENDENCIES,
-        targetNode
-            .getParseDeps()
-            .stream()
+        targetNode.getParseDeps().stream()
             .map(Object::toString)
             .collect(ImmutableList.toImmutableList()));
     return attributes;

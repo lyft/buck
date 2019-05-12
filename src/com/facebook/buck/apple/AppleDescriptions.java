@@ -45,7 +45,6 @@ import com.facebook.buck.core.sourcepath.PathSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.SourceWithFlags;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.tool.Tool;
 import com.facebook.buck.cxx.CxxBinaryDescriptionArg;
 import com.facebook.buck.cxx.CxxCompilationDatabase;
@@ -65,7 +64,6 @@ import com.facebook.buck.rules.coercer.PatternMatchedCollection;
 import com.facebook.buck.rules.coercer.SourceSortedSet;
 import com.facebook.buck.rules.macros.StringWithMacros;
 import com.facebook.buck.shell.AbstractGenruleDescription;
-import com.facebook.buck.util.Optionals;
 import com.facebook.buck.util.RichStream;
 import com.facebook.buck.util.types.Either;
 import com.google.common.annotations.VisibleForTesting;
@@ -161,17 +159,14 @@ public class AppleDescriptions {
             .putAll(
                 Stream.of(
                         AppleDescriptions.parseAppleHeadersForUseFromTheSameTarget(
-                                buildTarget, pathResolver, arg.getHeaders())
-                            .entrySet()
-                            .stream(),
+                            buildTarget, pathResolver, arg.getHeaders())
+                            .entrySet().stream(),
                         AppleDescriptions.parseAppleHeadersForUseFromTheSameTarget(
-                                buildTarget, pathResolver, arg.getExportedHeaders())
-                            .entrySet()
-                            .stream(),
+                            buildTarget, pathResolver, arg.getExportedHeaders())
+                            .entrySet().stream(),
                         AppleDescriptions.parseAppleHeadersForUseFromOtherTargets(
-                                buildTarget, pathResolver, headerPathPrefix, arg.getHeaders())
-                            .entrySet()
-                            .stream())
+                            buildTarget, pathResolver, headerPathPrefix, arg.getHeaders())
+                            .entrySet().stream())
                     .reduce(Stream::concat)
                     .orElse(Stream.empty())
                     .distinct() // allow duplicate entries as long as they map to the same path
@@ -197,17 +192,14 @@ public class AppleDescriptions {
             .putAll(
                 Stream.of(
                         AppleDescriptions.parseAppleHeadersForUseFromTheSameTarget(
-                                buildTarget, pathResolver, privateSourceSet)
-                            .entrySet()
-                            .stream(),
+                            buildTarget, pathResolver, privateSourceSet)
+                            .entrySet().stream(),
                         AppleDescriptions.parseAppleHeadersForUseFromTheSameTarget(
-                                buildTarget, pathResolver, publicSourceSet)
-                            .entrySet()
-                            .stream(),
+                            buildTarget, pathResolver, publicSourceSet)
+                            .entrySet().stream(),
                         AppleDescriptions.parseAppleHeadersForUseFromOtherTargets(
-                                buildTarget, pathResolver, headerPathPrefix, privateSourceSet)
-                            .entrySet()
-                            .stream())
+                            buildTarget, pathResolver, headerPathPrefix, privateSourceSet)
+                            .entrySet().stream())
                     .reduce(Stream::concat)
                     .orElse(Stream.empty())
                     .distinct() // allow duplicate entries as long as they map to the same path
@@ -300,13 +292,11 @@ public class AppleDescriptions {
             .putAll(
                 Stream.concat(
                         convertAppleHeadersToPublicCxxHeaders(
-                                buildTarget, resolver::getRelativePath, headerPathPrefix, arg)
-                            .entrySet()
-                            .stream(),
+                            buildTarget, resolver::getRelativePath, headerPathPrefix, arg)
+                            .entrySet().stream(),
                         convertAppleHeadersToPrivateCxxHeaders(
-                                buildTarget, resolver::getRelativePath, headerPathPrefix, arg)
-                            .entrySet()
-                            .stream())
+                            buildTarget, resolver::getRelativePath, headerPathPrefix, arg)
+                            .entrySet().stream())
                     .distinct() // allow duplicate entries as long as they map to the same path
                     .collect(
                         ImmutableSortedMap.toImmutableSortedMap(
@@ -379,7 +369,6 @@ public class AppleDescriptions {
       TargetGraph targetGraph,
       BuildTarget buildTarget,
       ProjectFilesystem projectFilesystem,
-      SourcePathResolver sourcePathResolver,
       SourcePathRuleFinder ruleFinder,
       ApplePlatform applePlatform,
       String targetSDKVersion,
@@ -435,7 +424,7 @@ public class AppleDescriptions {
         assetCatalogDirs,
         buildTarget,
         projectFilesystem,
-        sourcePathResolver,
+        ruleFinder.getSourcePathResolver(),
         assetCatalogValidation);
 
     BuildTarget assetCatalogBuildTarget = buildTarget.withAppendedFlavors(AppleAssetCatalog.FLAVOR);
@@ -491,8 +480,7 @@ public class AppleDescriptions {
               params.withoutDeclaredDeps().withoutExtraDeps(),
               appleCxxPlatform,
               moduleName,
-              coreDataModelArgs
-                  .stream()
+              coreDataModelArgs.stream()
                   .map(input -> PathSourcePath.of(projectFilesystem, input.getPath()))
                   .collect(ImmutableSet.toImmutableSet())));
     }
@@ -527,8 +515,7 @@ public class AppleDescriptions {
               projectFilesystem,
               params.withoutDeclaredDeps().withoutExtraDeps(),
               appleCxxPlatform,
-              sceneKitAssetsArgs
-                  .stream()
+              sceneKitAssetsArgs.stream()
                   .map(input -> PathSourcePath.of(projectFilesystem, input.getPath()))
                   .collect(ImmutableSet.toImmutableSet())));
     }
@@ -598,7 +585,7 @@ public class AppleDescriptions {
               return new AppleDsym(
                   dsymBuildTarget,
                   projectFilesystem,
-                  new SourcePathRuleFinder(graphBuilder),
+                  graphBuilder,
                   appleCxxPlatform.getDsymutil(),
                   appleCxxPlatform.getLldb(),
                   unstrippedBinaryRule.getSourcePathToOutput(),
@@ -710,8 +697,6 @@ public class AppleDescriptions {
     }
     ImmutableSet<SourcePath> frameworks = frameworksBuilder.build();
 
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver sourcePathResolver = DefaultSourcePathResolver.from(ruleFinder);
     BuildTarget buildTargetWithoutBundleSpecificFlavors = stripBundleSpecificFlavors(buildTarget);
 
     Optional<AppleAssetCatalog> assetCatalog =
@@ -720,8 +705,7 @@ public class AppleDescriptions {
             targetGraph,
             buildTargetWithoutBundleSpecificFlavors,
             projectFilesystem,
-            sourcePathResolver,
-            ruleFinder,
+            graphBuilder,
             appleCxxPlatform.getAppleSdk().getApplePlatform(),
             appleCxxPlatform.getMinVersion(),
             appleCxxPlatform.getActool(),
@@ -825,9 +809,9 @@ public class AppleDescriptions {
             binaryTarget,
             ImmutableSet.<BuildRule>builder()
                 .add(targetDebuggableBinaryRule)
-                .addAll(Optionals.toStream(assetCatalog).iterator())
-                .addAll(Optionals.toStream(coreDataModel).iterator())
-                .addAll(Optionals.toStream(sceneKitAssets).iterator())
+                .addAll(RichStream.from(assetCatalog).iterator())
+                .addAll(RichStream.from(coreDataModel).iterator())
+                .addAll(RichStream.from(sceneKitAssets).iterator())
                 .addAll(
                     BuildRules.toBuildRulesFor(
                         buildTarget,
@@ -837,7 +821,7 @@ public class AppleDescriptions {
                             .filter(BuildTargetSourcePath.class)
                             .map(BuildTargetSourcePath::getTarget)
                             .collect(ImmutableSet.toImmutableSet())))
-                .addAll(Optionals.toStream(appleDsym).iterator())
+                .addAll(RichStream.from(appleDsym).iterator())
                 .addAll(extraBinaries)
                 .build());
 
@@ -1015,10 +999,7 @@ public class AppleDescriptions {
                 .append(newDeps)
                 .toSortedSet(Ordering.natural()))
         .withExtraDeps(
-            params
-                .getExtraDeps()
-                .get()
-                .stream()
+            params.getExtraDeps().get().stream()
                 .filter(notOriginalBinaryRule)
                 .collect(ImmutableSortedSet.toImmutableSortedSet(Ordering.natural())));
   }

@@ -34,12 +34,10 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Objects;
-import java.util.TreeMap;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import javax.annotation.Nullable;
 
 /**
  * MerkleTreeNodeCache is used to create and merge merkle trees for action inputs. The nodes are
@@ -49,10 +47,7 @@ import java.util.function.Consumer;
  * (these values are cached once computed for a node).
  */
 public class MerkleTreeNodeCache {
-  private final Interner<MerkleTreeNode> nodeInterner = Interners.newStrongInterner();
-
-  private final ConcurrentHashMap<Reference<MerkleTreeNode>, NodeData> directoryCache =
-      new ConcurrentHashMap<>();
+  private final Interner<MerkleTreeNode> nodeInterner = Interners.newWeakInterner();
 
   private final Protocol protocol;
 
@@ -72,6 +67,7 @@ public class MerkleTreeNodeCache {
               pathFragment);
           Preconditions.checkState(
               !pathFragment.isAbsolute(), "Expected relative path. Got %s.", pathFragment);
+          checkName(fileNode.getName());
           rootBuilder.addFile(pathFragment, fileNode);
         });
     symlinks.forEach(
@@ -83,6 +79,7 @@ public class MerkleTreeNodeCache {
               pathFragment);
           Preconditions.checkState(
               !pathFragment.isAbsolute(), "Expected relative path. Got %s.", pathFragment);
+          checkName(target.getName());
           rootBuilder.addSymlink(pathFragment, target);
         });
     return rootBuilder.build(nodeInterner);
@@ -115,63 +112,46 @@ public class MerkleTreeNodeCache {
 
   /** Gets the {@link Protocol} encoded data for the provided tree. */
   public NodeData getData(MerkleTreeNode node) {
-    Reference<MerkleTreeNode> nodeRef = new Reference<>(node);
-    NodeData nodeData = directoryCache.get(nodeRef);
-    if (nodeData != null) {
-      return nodeData;
-    }
-
-    Map<String, NodeData> childrenData = new TreeMap<>();
-    node.children.forEach((k, v) -> childrenData.put(k, getData(v)));
-    return directoryCache.computeIfAbsent(
-        nodeRef,
-        ignored -> {
-          List<DirectoryNode> childNodes = new ArrayList<>();
-          childrenData.forEach((k, v) -> childNodes.add(protocol.newDirectoryNode(k, v.digest)));
-          Directory directory =
-              protocol.newDirectory(childNodes, node.files.values(), node.symlinks.values());
-          return new NodeData(directory, protocol.computeDigest(directory));
-        });
+    return node.getData(protocol);
   }
 
   /** Represents a node in the merkle tree of files and symlinks. */
   public static class MerkleTreeNode {
+    @Nullable private volatile NodeData data;
+
     private final int hashCode;
 
-    private final ImmutableSortedMap<String, MerkleTreeNode> children;
-    private final ImmutableSortedMap<String, FileNode> files;
-    private final ImmutableSortedMap<String, SymlinkNode> symlinks;
+    @Nullable private final Path path;
+    private final ImmutableSortedMap<Path, MerkleTreeNode> children;
+    private final ImmutableSortedMap<Path, FileNode> files;
+    private final ImmutableSortedMap<Path, SymlinkNode> symlinks;
 
     MerkleTreeNode(
-        ImmutableSortedMap<String, MerkleTreeNode> children,
-        ImmutableSortedMap<String, FileNode> files,
-        ImmutableSortedMap<String, SymlinkNode> symlinks) {
+        @Nullable Path path,
+        ImmutableSortedMap<Path, MerkleTreeNode> children,
+        ImmutableSortedMap<Path, FileNode> files,
+        ImmutableSortedMap<Path, SymlinkNode> symlinks) {
+      this.path = path;
       this.children = children;
       this.files = files;
       this.symlinks = symlinks;
 
-      this.hashCode = Objects.hash(children, files, symlinks);
+      this.hashCode = Objects.hash(path, children, files, symlinks);
     }
 
     /**
      * Iterate over the files in the tree rooted at this node. The consumer will be called with the
      * fall path resolved against root.
      */
-    public void forAllFiles(Path root, BiConsumer<Path, FileNode> nodeConsumer) {
-      for (FileNode value : files.values()) {
-        nodeConsumer.accept(root.resolve(value.getName()), value);
-      }
-      for (Entry<String, MerkleTreeNode> child : children.entrySet()) {
-        child.getValue().forAllFiles(root.resolve(child.getKey()), nodeConsumer);
-      }
+    public void forAllFiles(BiConsumer<Path, FileNode> nodeConsumer) {
+      files.forEach(nodeConsumer::accept);
+      children.forEach((key, value) -> value.forAllFiles(nodeConsumer));
     }
 
     /** Iterate over the nodes in the tree rooted at this node. */
     public void forAllNodes(Consumer<MerkleTreeNode> nodeConsumer) {
       nodeConsumer.accept(this);
-      for (Entry<String, MerkleTreeNode> child : children.entrySet()) {
-        child.getValue().forAllNodes(nodeConsumer);
-      }
+      children.values().forEach(child -> child.forAllNodes(nodeConsumer));
     }
 
     @Override
@@ -191,32 +171,67 @@ public class MerkleTreeNodeCache {
 
       MerkleTreeNode other = (MerkleTreeNode) obj;
 
-      return Objects.equals(children, other.children)
+      return Objects.equals(path, other.path)
+          && Objects.equals(children, other.children)
           && Objects.equals(files, other.files)
           && Objects.equals(symlinks, other.symlinks);
+    }
+
+    private NodeData getData(Protocol protocol) {
+      if (data != null) {
+        return data;
+      }
+
+      // It's unlikely, but possible that multiple threads get here... that's okay they'll all
+      // compute the same thing.
+      List<DirectoryNode> childNodes = new ArrayList<>();
+      long totalInputsSize = 0;
+      for (Map.Entry<Path, MerkleTreeNode> entry : children.entrySet()) {
+        MerkleTreeNode child = entry.getValue();
+        NodeData childData = child.getData(protocol);
+        totalInputsSize += childData.totalInputsSize;
+        childNodes.add(
+            protocol.newDirectoryNode(entry.getKey().getFileName().toString(), childData.digest));
+      }
+      for (FileNode value : files.values()) {
+        totalInputsSize += value.getDigest().getSize();
+      }
+      Directory directory = protocol.newDirectory(childNodes, files.values(), symlinks.values());
+      NodeData nodeData =
+          new NodeData(directory, protocol.computeDigest(directory), totalInputsSize);
+      this.data = nodeData;
+      return nodeData;
     }
   }
 
   private static class TreeNodeBuilder {
-    private final Map<String, Either<MerkleTreeNode, TreeNodeBuilder>> childrenBuilder =
+    @Nullable private final Path path;
+    private final Map<Path, Either<MerkleTreeNode, TreeNodeBuilder>> childrenBuilder =
         new HashMap<>();
-    private final Map<String, FileNode> filesBuilder = new HashMap<>();
-    private final Map<String, SymlinkNode> symlinksBuilder = new HashMap<>();
+    private final Map<Path, FileNode> filesBuilder = new HashMap<>();
+    private final Map<Path, SymlinkNode> symlinksBuilder = new HashMap<>();
 
-    public TreeNodeBuilder() {}
+    public TreeNodeBuilder() {
+      this((Path) null);
+    }
+
+    public TreeNodeBuilder(Path path) {
+      this.path = path;
+      if (path != null) checkName(path.getFileName().toString());
+    }
 
     public TreeNodeBuilder(MerkleTreeNode from) {
+      this(from.path);
       merge(from);
     }
 
     private void addFile(Path pathFragment, FileNode fileNode) {
       Verify.verify(pathFragment.getNameCount() > 0);
-      getMutableParentDirectory(pathFragment)
-          .addFileImpl(pathFragment.getFileName().toString(), fileNode);
+      getMutableParentDirectory(pathFragment).addFileImpl(pathFragment, fileNode);
     }
 
-    private void addFileImpl(String name, FileNode fileNode) {
-      checkName(name);
+    private void addFileImpl(Path name, FileNode fileNode) {
+      checkName(fileNode.getName());
       Verify.verify(!childrenBuilder.containsKey(name));
       Verify.verify(!symlinksBuilder.containsKey(name));
       FileNode previous = filesBuilder.putIfAbsent(name, fileNode);
@@ -225,25 +240,27 @@ public class MerkleTreeNodeCache {
 
     private void addSymlink(Path pathFragment, SymlinkNode target) {
       Verify.verify(pathFragment.getNameCount() > 0);
-      getMutableParentDirectory(pathFragment)
-          .addSymlinkImpl(pathFragment.getFileName().toString(), target);
+      getMutableParentDirectory(pathFragment).addSymlinkImpl(pathFragment, target);
     }
 
-    private void addSymlinkImpl(String name, SymlinkNode target) {
-      checkName(name);
-      Verify.verify(!childrenBuilder.containsKey(name));
-      Verify.verify(!filesBuilder.containsKey(name));
-      SymlinkNode previous = symlinksBuilder.putIfAbsent(name, target);
+    private void addSymlinkImpl(Path path, SymlinkNode target) {
+      checkName(target.getName());
+      Verify.verify(!childrenBuilder.containsKey(path));
+      Verify.verify(!filesBuilder.containsKey(path));
+      SymlinkNode previous = symlinksBuilder.putIfAbsent(path, target);
       Verify.verify(previous == null || previous.equals(target));
     }
 
     private TreeNodeBuilder getMutableParentDirectory(Path pathFragment) {
       int segments = pathFragment.getNameCount();
-      if (segments == 1) {
+      if (segments == getPathSegments() + 1) {
         return this;
       }
-      return getMutableDirectory(pathFragment.getName(0).toString())
-          .getMutableParentDirectory(pathFragment.subpath(1, segments));
+      return getMutableDirectory(pathFragment).getMutableParentDirectory(pathFragment);
+    }
+
+    private int getPathSegments() {
+      return path == null ? 0 : path.getNameCount();
     }
 
     private void merge(MerkleTreeNode node) {
@@ -276,52 +293,54 @@ public class MerkleTreeNodeCache {
 
     // TODO(cjhopman): Should this only make a child mutable if that child doesn't contain the item
     // we are about to add?
-    private TreeNodeBuilder getMutableDirectory(String name) {
-      checkName(name);
-      Verify.verify(!symlinksBuilder.containsKey(name));
-      Verify.verify(!filesBuilder.containsKey(name));
+    private TreeNodeBuilder getMutableDirectory(Path dir) {
+      Preconditions.checkArgument(dir.getNameCount() > getPathSegments());
+      Path subPath = dir.subpath(0, getPathSegments() + 1);
+
+      Verify.verify(!symlinksBuilder.containsKey(subPath));
+      Verify.verify(!filesBuilder.containsKey(subPath));
       return childrenBuilder
           .compute(
-              name,
+              subPath,
               (ignored, value) ->
                   Either.ofRight(
                       value == null
-                          ? new TreeNodeBuilder()
+                          ? new TreeNodeBuilder(subPath)
                           : value.transform(TreeNodeBuilder::new, right -> right)))
           .getRight();
     }
 
-    private void checkName(String name) {
-      Verify.verify(!name.equals("."));
-      Verify.verify(!name.equals(".."));
-    }
-
     public MerkleTreeNode build(Interner<MerkleTreeNode> nodeInterner) {
-      ImmutableSortedMap.Builder<String, MerkleTreeNode> children =
-          ImmutableSortedMap.naturalOrder();
-      for (Entry<String, Either<MerkleTreeNode, TreeNodeBuilder>> entry :
-          childrenBuilder.entrySet()) {
-        children.put(
-            entry.getKey(),
-            entry.getValue().transform(left -> left, builder -> builder.build(nodeInterner)));
-      }
+      ImmutableSortedMap.Builder<Path, MerkleTreeNode> children = ImmutableSortedMap.naturalOrder();
+      childrenBuilder.forEach(
+          (key, value) ->
+              children.put(
+                  key, value.transform(left -> left, builder -> builder.build(nodeInterner))));
 
       return nodeInterner.intern(
           new MerkleTreeNode(
+              this.path,
               children.build(),
               ImmutableSortedMap.copyOf(filesBuilder),
               ImmutableSortedMap.copyOf(symlinksBuilder)));
     }
   }
 
+  private static void checkName(String name) {
+    Verify.verify(!name.equals("."));
+    Verify.verify(!name.equals(".."));
+  }
+
   /** NodeData is the {@link Protocol} encoded data for a node. */
   public static class NodeData {
     private final Directory directory;
     private final Digest digest;
+    private final long totalInputsSize;
 
-    NodeData(Directory directory, Digest digest) {
+    NodeData(Directory directory, Digest digest, long totalInputsSize) {
       this.directory = directory;
       this.digest = digest;
+      this.totalInputsSize = totalInputsSize;
     }
 
     public Digest getDigest() {
@@ -331,27 +350,9 @@ public class MerkleTreeNodeCache {
     public Directory getDirectory() {
       return directory;
     }
-  }
 
-  /** Used to get reference equality for interned objects. */
-  private static class Reference<T> {
-    private final T object;
-
-    Reference(T object) {
-      this.object = object;
-    }
-
-    @Override
-    public int hashCode() {
-      return object.hashCode();
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-      if (!(obj instanceof Reference)) {
-        return false;
-      }
-      return this.object == ((Reference<?>) obj).object;
+    public long getTotalSize() {
+      return totalInputsSize;
     }
   }
 }

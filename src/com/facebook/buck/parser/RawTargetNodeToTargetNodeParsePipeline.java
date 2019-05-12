@@ -20,8 +20,9 @@ import com.facebook.buck.core.cell.Cell;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.model.TargetConfiguration;
-import com.facebook.buck.core.model.targetgraph.RawTargetNode;
+import com.facebook.buck.core.model.impl.ImmutableUnconfiguredBuildTargetView;
 import com.facebook.buck.core.model.targetgraph.TargetNode;
+import com.facebook.buck.core.model.targetgraph.raw.RawTargetNode;
 import com.facebook.buck.core.util.log.Logger;
 import com.facebook.buck.event.BuckEventBus;
 import com.facebook.buck.event.PerfEventId;
@@ -72,7 +73,8 @@ public class RawTargetNodeToTargetNodeParsePipeline
       Path buildFile,
       TargetConfiguration targetConfiguration,
       RawTargetNode from) {
-    return from.getBuildTarget().configure(targetConfiguration);
+    return ImmutableUnconfiguredBuildTargetView.of(root, from.getBuildTarget())
+        .configure(targetConfiguration);
   }
 
   @Override
@@ -86,7 +88,8 @@ public class RawTargetNodeToTargetNodeParsePipeline
     TargetNode<?> targetNode =
         rawTargetNodeToTargetNodeFactory.createTargetNode(
             cell,
-            cell.getAbsolutePathToBuildFile(buildTarget),
+            cell.getBuckConfigView(ParserConfig.class)
+                .getAbsolutePathToBuildFile(cell, buildTarget.getUnconfiguredBuildTargetView()),
             buildTarget,
             rawNode,
             perfEventScopeFunction);

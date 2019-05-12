@@ -30,7 +30,6 @@ import com.facebook.buck.core.rulekey.AddToRuleKey;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.attr.SupportsInputBasedRuleKey;
 import com.facebook.buck.core.rules.common.BuildableSupport;
 import com.facebook.buck.core.rules.impl.AbstractBuildRuleWithDeclaredAndExtraDeps;
@@ -233,8 +232,7 @@ public class Genrule extends AbstractBuildRuleWithDeclaredAndExtraDeps
       SourcePathResolver pathResolver, Builder<String, String> environmentVariablesBuilder) {
     environmentVariablesBuilder.put(
         "SRCS",
-        srcs.getPaths()
-            .stream()
+        srcs.getPaths().stream()
             .map(pathResolver::getAbsolutePath)
             .map(Object::toString)
             .collect(Collectors.joining(this.environmentExpansionSeparator)));
@@ -339,8 +337,7 @@ public class Genrule extends AbstractBuildRuleWithDeclaredAndExtraDeps
     SandboxProperties.Builder builder = SandboxProperties.builder();
     return builder
         .addAllAllowedToReadPaths(
-            srcs.getPaths()
-                .stream()
+            srcs.getPaths().stream()
                 .map(sourcePathResolver::getAbsolutePath)
                 .map(Object::toString)
                 .collect(Collectors.toList()))
@@ -374,8 +371,7 @@ public class Genrule extends AbstractBuildRuleWithDeclaredAndExtraDeps
 
   private ImmutableList<String> collectExistingArgInputs(
       SourcePathResolver sourcePathResolver, Arg arg) {
-    Collection<BuildRule> buildRules =
-        BuildableSupport.getDepsCollection(arg, new SourcePathRuleFinder(buildRuleResolver));
+    Collection<BuildRule> buildRules = BuildableSupport.getDepsCollection(arg, buildRuleResolver);
     ImmutableList.Builder<String> inputs = ImmutableList.builder();
     for (BuildRule buildRule : buildRules) {
       SourcePath inputPath = buildRule.getSourcePathToOutput();
@@ -387,12 +383,13 @@ public class Genrule extends AbstractBuildRuleWithDeclaredAndExtraDeps
   }
 
   private WorkerShellStep createWorkerShellStep(BuildContext context) {
+    ProjectFilesystem filesystem = getProjectFilesystem();
     return new WorkerShellStep(
         getBuildTarget(),
-        convertToWorkerJobParams(context.getSourcePathResolver(), cmd),
-        convertToWorkerJobParams(context.getSourcePathResolver(), bash),
-        convertToWorkerJobParams(context.getSourcePathResolver(), cmdExe),
-        new WorkerProcessPoolFactory(getProjectFilesystem())) {
+        convertToWorkerJobParams(filesystem, context.getSourcePathResolver(), cmd),
+        convertToWorkerJobParams(filesystem, context.getSourcePathResolver(), bash),
+        convertToWorkerJobParams(filesystem, context.getSourcePathResolver(), cmdExe),
+        new WorkerProcessPoolFactory(filesystem)) {
       @Override
       protected ImmutableMap<String, String> getEnvironmentVariables() {
         Builder<String, String> envVarBuilder = ImmutableMap.builder();
@@ -403,14 +400,14 @@ public class Genrule extends AbstractBuildRuleWithDeclaredAndExtraDeps
   }
 
   private static Optional<WorkerJobParams> convertToWorkerJobParams(
-      SourcePathResolver resolver, Optional<Arg> arg) {
+      ProjectFilesystem filesystem, SourcePathResolver resolver, Optional<Arg> arg) {
     return arg.map(
         arg1 -> {
           WorkerMacroArg workerMacroArg = (WorkerMacroArg) arg1;
           return WorkerJobParams.of(
               workerMacroArg.getJobArgs(resolver),
               WorkerProcessParams.of(
-                  workerMacroArg.getTempDir(),
+                  workerMacroArg.getTempDir(filesystem),
                   workerMacroArg.getStartupCommand(),
                   workerMacroArg.getEnvironment(),
                   workerMacroArg.getMaxWorkers(),
@@ -572,8 +569,7 @@ public class Genrule extends AbstractBuildRuleWithDeclaredAndExtraDeps
   }
 
   @Override
-  public void updateBuildRuleResolver(
-      BuildRuleResolver ruleResolver, SourcePathRuleFinder ruleFinder) {
+  public void updateBuildRuleResolver(BuildRuleResolver ruleResolver) {
     this.buildRuleResolver = ruleResolver;
   }
 }

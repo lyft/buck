@@ -16,7 +16,7 @@
 
 package com.facebook.buck.skylark.parser;
 
-import com.facebook.buck.core.exceptions.handler.HumanReadableExceptionAugmentor;
+import com.facebook.buck.core.exceptions.HumanReadableExceptionAugmentor;
 import com.facebook.buck.event.BuckEventBus;
 import com.facebook.buck.event.BuckEventBusForTests;
 import com.facebook.buck.event.ConsoleEvent;
@@ -182,23 +182,17 @@ public class ConsoleEventHandlerTest {
     }
 
     Assert.assertEquals(
-        expectedEvents
-            .stream()
+        expectedEvents.stream()
             .map(ConsoleEvent::getLevel)
             .collect(ImmutableList.toImmutableList()),
-        listener
-            .getEvents()
-            .stream()
+        listener.getEvents().stream()
             .map(e -> ((ConsoleEvent) e).getLevel())
             .collect(ImmutableList.toImmutableList()));
     Assert.assertEquals(
-        expectedEvents
-            .stream()
+        expectedEvents.stream()
             .map(ConsoleEvent::getMessage)
             .collect(ImmutableList.toImmutableList()),
-        listener
-            .getEvents()
-            .stream()
+        listener.getEvents().stream()
             .map(e -> ((ConsoleEvent) e).getMessage())
             .collect(ImmutableList.toImmutableList()));
   }
@@ -233,16 +227,12 @@ public class ConsoleEventHandlerTest {
 
     Assert.assertEquals(
         ImmutableList.of("ERROR: foo/bar:2:1: Testing"),
-        listener
-            .getEvents()
-            .stream()
+        listener.getEvents().stream()
             .map(e -> ((ConsoleEvent) e).getMessage())
             .collect(ImmutableList.toImmutableList()));
     Assert.assertEquals(
         ImmutableList.of(Level.SEVERE),
-        listener
-            .getEvents()
-            .stream()
+        listener.getEvents().stream()
             .map(e -> ((ConsoleEvent) e).getLevel())
             .collect(ImmutableList.toImmutableList()));
   }

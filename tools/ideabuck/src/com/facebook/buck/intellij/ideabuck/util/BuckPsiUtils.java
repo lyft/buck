@@ -17,27 +17,42 @@
 package com.facebook.buck.intellij.ideabuck.util;
 
 import com.facebook.buck.intellij.ideabuck.lang.BuckFile;
+import com.facebook.buck.intellij.ideabuck.lang.psi.BuckAndExpression;
 import com.facebook.buck.intellij.ideabuck.lang.psi.BuckArgument;
+import com.facebook.buck.intellij.ideabuck.lang.psi.BuckArithmeticExpression;
+import com.facebook.buck.intellij.ideabuck.lang.psi.BuckAtomicExpression;
+import com.facebook.buck.intellij.ideabuck.lang.psi.BuckBitwiseAndExpression;
+import com.facebook.buck.intellij.ideabuck.lang.psi.BuckComparisonExpression;
 import com.facebook.buck.intellij.ideabuck.lang.psi.BuckCompoundStatement;
+import com.facebook.buck.intellij.ideabuck.lang.psi.BuckComprehensionFor;
 import com.facebook.buck.intellij.ideabuck.lang.psi.BuckExpression;
 import com.facebook.buck.intellij.ideabuck.lang.psi.BuckExpressionList;
+import com.facebook.buck.intellij.ideabuck.lang.psi.BuckExpressionListOrComprehension;
 import com.facebook.buck.intellij.ideabuck.lang.psi.BuckExpressionStatement;
-import com.facebook.buck.intellij.ideabuck.lang.psi.BuckFunctionCall;
-import com.facebook.buck.intellij.ideabuck.lang.psi.BuckFunctionCallSuffix;
+import com.facebook.buck.intellij.ideabuck.lang.psi.BuckFactorExpression;
+import com.facebook.buck.intellij.ideabuck.lang.psi.BuckForStatement;
 import com.facebook.buck.intellij.ideabuck.lang.psi.BuckFunctionDefinition;
+import com.facebook.buck.intellij.ideabuck.lang.psi.BuckFunctionTrailer;
+import com.facebook.buck.intellij.ideabuck.lang.psi.BuckIdentifier;
 import com.facebook.buck.intellij.ideabuck.lang.psi.BuckIfStatement;
 import com.facebook.buck.intellij.ideabuck.lang.psi.BuckLoadArgument;
 import com.facebook.buck.intellij.ideabuck.lang.psi.BuckLoadCall;
-import com.facebook.buck.intellij.ideabuck.lang.psi.BuckPrimary;
-import com.facebook.buck.intellij.ideabuck.lang.psi.BuckPrimaryWithSuffix;
-import com.facebook.buck.intellij.ideabuck.lang.psi.BuckPropertyLvalue;
+import com.facebook.buck.intellij.ideabuck.lang.psi.BuckNotExpression;
+import com.facebook.buck.intellij.ideabuck.lang.psi.BuckOrExpression;
+import com.facebook.buck.intellij.ideabuck.lang.psi.BuckParameter;
+import com.facebook.buck.intellij.ideabuck.lang.psi.BuckParameterList;
+import com.facebook.buck.intellij.ideabuck.lang.psi.BuckPowerExpression;
+import com.facebook.buck.intellij.ideabuck.lang.psi.BuckShiftExpression;
 import com.facebook.buck.intellij.ideabuck.lang.psi.BuckSimpleExpression;
+import com.facebook.buck.intellij.ideabuck.lang.psi.BuckSimpleExpressionList;
 import com.facebook.buck.intellij.ideabuck.lang.psi.BuckSimpleStatement;
 import com.facebook.buck.intellij.ideabuck.lang.psi.BuckSmallStatement;
 import com.facebook.buck.intellij.ideabuck.lang.psi.BuckStatement;
 import com.facebook.buck.intellij.ideabuck.lang.psi.BuckString;
 import com.facebook.buck.intellij.ideabuck.lang.psi.BuckSuite;
+import com.facebook.buck.intellij.ideabuck.lang.psi.BuckTermExpression;
 import com.facebook.buck.intellij.ideabuck.lang.psi.BuckTypes;
+import com.facebook.buck.intellij.ideabuck.lang.psi.BuckXorExpression;
 import com.intellij.lang.ASTNode;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.TextRange;
@@ -47,6 +62,7 @@ import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.tree.TokenSet;
 import com.intellij.psi.util.PsiTreeUtil;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
@@ -59,10 +75,14 @@ public final class BuckPsiUtils {
 
   public static final TokenSet STRING_LITERALS =
       TokenSet.create(
-          BuckTypes.SINGLE_QUOTED_STRING,
-          BuckTypes.DOUBLE_QUOTED_STRING,
-          BuckTypes.SINGLE_QUOTED_DOC_STRING,
-          BuckTypes.DOUBLE_QUOTED_DOC_STRING);
+          BuckTypes.APOSTROPHED_STRING,
+          BuckTypes.APOSTROPHED_RAW_STRING,
+          BuckTypes.TRIPLE_APOSTROPHED_STRING,
+          BuckTypes.TRIPLE_APOSTROPHED_RAW_STRING,
+          BuckTypes.QUOTED_STRING,
+          BuckTypes.QUOTED_RAW_STRING,
+          BuckTypes.TRIPLE_QUOTED_STRING,
+          BuckTypes.TRIPLE_QUOTED_RAW_STRING);
 
   private BuckPsiUtils() {}
 
@@ -77,17 +97,17 @@ public final class BuckPsiUtils {
     return set.contains(node.getElementType());
   }
 
-  /** @see #hasElementType(com.intellij.lang.ASTNode, com.intellij.psi.tree.TokenSet) */
+  /** @see #hasElementType(ASTNode, TokenSet) */
   public static boolean hasElementType(ASTNode node, IElementType... types) {
     return hasElementType(node, TokenSet.create(types));
   }
 
-  /** @see #hasElementType(com.intellij.lang.ASTNode, com.intellij.psi.tree.TokenSet) */
+  /** @see #hasElementType(ASTNode, TokenSet) */
   public static boolean hasElementType(PsiElement element, TokenSet set) {
     return element.getNode() != null && hasElementType(element.getNode(), set);
   }
 
-  /** @see #hasElementType(com.intellij.lang.ASTNode, com.intellij.psi.tree.IElementType...) */
+  /** @see #hasElementType(ASTNode, IElementType...) */
   public static boolean hasElementType(PsiElement element, IElementType... types) {
     return element.getNode() != null && hasElementType(element.getNode(), types);
   }
@@ -139,15 +159,55 @@ public final class BuckPsiUtils {
    * this expression has multiple values, for example: "a" + "b"
    */
   @Nullable
-  public static String getStringValueFromExpression(BuckSimpleExpression expression) {
+  public static String getStringValueFromExpression(BuckExpression expression) {
     return Optional.of(expression)
-        .filter(e -> e.getSimpleExpressionList().isEmpty())
-        .map(BuckSimpleExpression::getPrimaryWithSuffix)
-        .filter(e -> e.getDotSuffixList().isEmpty()) // "stri{}".format("ng") unsupported
-        .filter(e -> e.getSliceSuffixList().isEmpty()) // "<<slices>>"[2:-2] unsupported
-        .map(BuckPrimaryWithSuffix::getPrimary)
-        .map(BuckPrimary::getString)
-        .map(BuckPsiUtils::getStringValueFromBuckString)
+        .map(BuckExpression::getOrExpressionList)
+        .filter(list -> list.size() == 1)
+        .map(list -> list.get(0))
+        .map(BuckOrExpression::getAndExpressionList)
+        .filter(list -> list.size() == 1)
+        .map(list -> list.get(0))
+        .map(BuckAndExpression::getNotExpressionList)
+        .filter(list -> list.size() == 1)
+        .map(list -> list.get(0))
+        .map(BuckNotExpression::getComparisonExpression)
+        .map(BuckComparisonExpression::getSimpleExpressionList)
+        .filter(list -> list.size() == 1)
+        .map(list -> list.get(0))
+        .map(BuckPsiUtils::getStringValueFromSimpleExpression)
+        .orElse(null);
+  }
+  /**
+   * Return the text content if the given BuckSimpleExpression has only one string value. Return
+   * null if this expression has multiple values, for example: "a" + "b"
+   */
+  @Nullable
+  public static String getStringValueFromSimpleExpression(BuckSimpleExpression expression) {
+    return Optional.of(expression)
+        .map(BuckSimpleExpression::getXorExpressionList)
+        .filter(list -> list.size() == 1)
+        .map(list -> list.get(0))
+        .map(BuckXorExpression::getBitwiseAndExpressionList)
+        .filter(list -> list.size() == 1)
+        .map(list -> list.get(0))
+        .map(BuckBitwiseAndExpression::getShiftExpressionList)
+        .filter(list -> list.size() == 1)
+        .map(list -> list.get(0))
+        .map(BuckShiftExpression::getArithmeticExpressionList)
+        .filter(list -> list.size() == 1)
+        .map(list -> list.get(0))
+        .map(BuckArithmeticExpression::getTermExpressionList)
+        .filter(list -> list.size() == 1)
+        .map(list -> list.get(0))
+        .map(BuckTermExpression::getFactorExpressionList)
+        .filter(list -> list.size() == 1)
+        .map(list -> list.get(0))
+        .map(BuckFactorExpression::getPowerExpression)
+        .filter(e -> e.getExpressionTrailerList().isEmpty())
+        .filter(e -> e.getFactorExpression() == null)
+        .map(BuckPowerExpression::getAtomicExpression)
+        .map(BuckAtomicExpression::getString)
+        .map(BuckString::getValue)
         .orElse(null);
   }
 
@@ -165,41 +225,20 @@ public final class BuckPsiUtils {
     if (hasElementType(stringElement, STRING_LITERALS)) {
       stringElement = stringElement.getParent();
     }
-    if (!hasElementType(stringElement, BuckTypes.STRING)) {
-      return null;
+    if (stringElement instanceof BuckString) {
+      return ((BuckString) stringElement).getValue();
     }
-    return getStringValueFromBuckString((BuckString) stringElement);
+    return null;
   }
 
   /**
    * Returns the text content of the given string (without the appropriate quoting).
    *
-   * <p>Note that this method is currently underdeveloped and hacky. It does not apply percent-style
-   * formatting (if such formatting is used, this method returns null), nor does it process escape
-   * sequences (these sequences currently appear in their raw form in the string).
+   * <p>Note that this method is currently underdeveloped and hacky. It does not process escape
+   * sequences correctly.
    */
   public static String getStringValueFromBuckString(BuckString buckString) {
-    if (buckString.getPrimary() != null) {
-      return null; // "%s %s" % ("percent", "formatting")
-    }
-    PsiElement quotedElement = buckString.getSingleQuotedString();
-    if (quotedElement == null) {
-      quotedElement = buckString.getDoubleQuotedString();
-    }
-    if (quotedElement != null) {
-      String text = quotedElement.getText();
-      return text.length() >= 2 ? text.substring(1, text.length() - 1) : null;
-    }
-
-    PsiElement tripleQuotedElement = buckString.getSingleQuotedDocString();
-    if (tripleQuotedElement == null) {
-      tripleQuotedElement = buckString.getDoubleQuotedDocString();
-    }
-    if (tripleQuotedElement != null) {
-      String text = tripleQuotedElement.getText();
-      return text.length() >= 6 ? text.substring(3, text.length() - 3) : null;
-    }
-    return null;
+    return buckString.getValue();
   }
 
   /**
@@ -207,20 +246,20 @@ public final class BuckPsiUtils {
    * if it cannot be found.
    */
   @Nullable
-  public static BuckFunctionCall findTargetInPsiTree(PsiElement root, String name) {
-    for (BuckFunctionCall buckRuleBlock :
-        PsiTreeUtil.findChildrenOfType(root, BuckFunctionCall.class)) {
-      BuckFunctionCallSuffix buckRuleBody = buckRuleBlock.getFunctionCallSuffix();
-      for (BuckArgument buckProperty :
+  public static BuckFunctionTrailer findTargetInPsiTree(PsiElement root, String name) {
+    for (BuckFunctionTrailer buckRuleBody :
+        PsiTreeUtil.findChildrenOfType(root, BuckFunctionTrailer.class)) {
+      for (BuckArgument buckArgument :
           PsiTreeUtil.findChildrenOfType(buckRuleBody, BuckArgument.class)) {
-        if (!Optional.ofNullable(buckProperty.getPropertyLvalue())
-            .map(lvalue -> lvalue.getIdentifier().getText())
+        if (!Optional.ofNullable(buckArgument.getIdentifier())
+            .map(BuckIdentifier::getIdentifierToken)
+            .map(PsiElement::getText)
             .filter("name"::equals)
             .isPresent()) {
           continue;
         }
-        if (name.equals(getStringValueFromExpression(buckProperty.getSimpleExpression()))) {
-          return buckRuleBlock;
+        if (name.equals(getStringValueFromExpression(buckArgument.getExpression()))) {
+          return buckRuleBody;
         }
       }
     }
@@ -232,19 +271,18 @@ public final class BuckPsiUtils {
    */
   public static Map<String, PsiElement> findTargetsInPsiTree(PsiFile psiFile, String namePrefix) {
     Map<String, PsiElement> targetsByName = new HashMap<>();
-    for (BuckFunctionCall buckRuleBlock :
-        PsiTreeUtil.findChildrenOfType(psiFile, BuckFunctionCall.class)) {
-      BuckFunctionCallSuffix buckRuleBody = buckRuleBlock.getFunctionCallSuffix();
+    for (BuckFunctionTrailer buckRuleBody :
+        PsiTreeUtil.findChildrenOfType(psiFile, BuckFunctionTrailer.class)) {
       for (BuckArgument buckArgument :
           PsiTreeUtil.findChildrenOfType(buckRuleBody, BuckArgument.class)) {
-        BuckPropertyLvalue propertyLvalue = buckArgument.getPropertyLvalue();
-        if (propertyLvalue == null || !"name".equals(propertyLvalue.getText())) {
+        BuckIdentifier buckIdentifier = buckArgument.getIdentifier();
+        if (buckIdentifier == null || !"name".equals(buckIdentifier.getName())) {
           continue;
         }
-        String name = BuckPsiUtils.getStringValueFromExpression(buckArgument.getSimpleExpression());
+        String name = BuckPsiUtils.getStringValueFromExpression(buckArgument.getExpression());
         if (name != null) {
           if (name.startsWith(namePrefix)) {
-            targetsByName.put(name, buckRuleBlock);
+            targetsByName.put(name, buckRuleBody);
           }
           break;
         }
@@ -276,32 +314,41 @@ public final class BuckPsiUtils {
     Consumer<PsiElement> recurse = e -> visitSymbols(e, visitor);
     if (psiElement instanceof BuckFile) {
       Stream.of(((BuckFile) psiElement).getChildren()).forEach(recurse);
-    } else if (psiElement.getNode().getElementType() == BuckTypes.IDENTIFIER) {
-      visitor.visit(psiElement.getText(), psiElement);
+    } else if (psiElement instanceof BuckIdentifier) {
+      visitor.visit(((BuckIdentifier) psiElement).getName(), psiElement);
     } else if (psiElement instanceof BuckLoadCall) {
       ((BuckLoadCall) psiElement).getLoadArgumentList().forEach(recurse);
     } else if (psiElement instanceof BuckLoadArgument) {
-      PsiElement identifier = ((BuckLoadArgument) psiElement).getIdentifier();
+      BuckIdentifier identifier = ((BuckLoadArgument) psiElement).getIdentifier();
       if (identifier != null) {
         recurse.accept(identifier);
       } else {
         BuckString nameElement = ((BuckLoadArgument) psiElement).getString();
-        visitor.visit(getStringValueFromBuckString(nameElement), nameElement);
+        visitor.visit(nameElement.getValue(), nameElement);
       }
     } else if (psiElement instanceof BuckFunctionDefinition) {
       recurse.accept(((BuckFunctionDefinition) psiElement).getIdentifier());
+    } else if (psiElement instanceof BuckParameterList) {
+      ((BuckParameterList) psiElement).getParameterList().forEach(recurse::accept);
+    } else if (psiElement instanceof BuckParameter) {
+      recurse.accept(((BuckParameter) psiElement).getIdentifier());
     } else if (psiElement instanceof BuckStatement) {
       recurse.accept(((BuckStatement) psiElement).getSimpleStatement());
       recurse.accept(((BuckStatement) psiElement).getCompoundStatement());
     } else if (psiElement instanceof BuckIfStatement) {
-      ((BuckIfStatement) psiElement).getSimpleExpressionList().forEach(recurse);
-      ((BuckIfStatement) psiElement).getSuiteList().forEach(recurse);
+      List<BuckExpression> expressionList = ((BuckIfStatement) psiElement).getExpressionList();
+      expressionList.forEach(recurse);
+      List<BuckSuite> suiteList = ((BuckIfStatement) psiElement).getSuiteList();
+      suiteList.forEach(recurse);
     } else if (psiElement instanceof BuckSimpleStatement) {
       ((BuckSimpleStatement) psiElement).getSmallStatementList().forEach(recurse);
     } else if (psiElement instanceof BuckCompoundStatement) {
       recurse.accept(((BuckCompoundStatement) psiElement).getForStatement());
       recurse.accept(((BuckCompoundStatement) psiElement).getIfStatement());
       recurse.accept(((BuckCompoundStatement) psiElement).getFunctionDefinition());
+    } else if (psiElement instanceof BuckForStatement) {
+      recurse.accept(((BuckForStatement) psiElement).getSimpleExpressionList());
+      recurse.accept(((BuckForStatement) psiElement).getSuite());
     } else if (psiElement instanceof BuckSmallStatement) {
       recurse.accept(((BuckSmallStatement) psiElement).getExpressionStatement());
       recurse.accept(((BuckSmallStatement) psiElement).getLoadCall());
@@ -309,17 +356,86 @@ public final class BuckPsiUtils {
       recurse.accept(((BuckSuite) psiElement).getSimpleStatement());
       ((BuckSuite) psiElement).getStatementList().forEach(recurse);
     } else if (psiElement instanceof BuckExpressionStatement) {
-      ((BuckExpressionStatement) psiElement)
-          .getExpressionListList()
-          .stream()
-          .findFirst()
-          .ifPresent(recurse);
+      List<BuckExpressionList> list =
+          ((BuckExpressionStatement) psiElement).getExpressionListList();
+      list.subList(0, list.size() - 1).forEach(recurse::accept);
     } else if (psiElement instanceof BuckExpressionList) {
       ((BuckExpressionList) psiElement).getExpressionList().forEach(recurse);
+    } else if (psiElement instanceof BuckExpressionListOrComprehension) {
+      BuckExpressionListOrComprehension beloc = ((BuckExpressionListOrComprehension) psiElement);
+      if (beloc.getComprehensionFor() == null) {
+        recurse.accept(((BuckExpressionListOrComprehension) psiElement).getComprehensionFor());
+      }
+    } else if (psiElement instanceof BuckComprehensionFor) {
+      recurse.accept(((BuckComprehensionFor) psiElement).getSimpleExpressionList());
     } else if (psiElement instanceof BuckExpression) {
-      ((BuckExpression) psiElement).getSimpleExpressionList().forEach(recurse);
+      recurse.accept(((BuckExpression) psiElement).getOrExpressionList().get(0));
+      recurse.accept(((BuckExpression) psiElement).getExpression());
+    } else if (psiElement instanceof BuckOrExpression) {
+      List<BuckAndExpression> list = ((BuckOrExpression) psiElement).getAndExpressionList();
+      if (list.size() == 1) {
+        recurse.accept(list.get(0));
+      }
+    } else if (psiElement instanceof BuckAndExpression) {
+      List<BuckNotExpression> list = ((BuckAndExpression) psiElement).getNotExpressionList();
+      if (list.size() == 1) {
+        recurse.accept(list.get(0));
+      }
+    } else if (psiElement instanceof BuckNotExpression) {
+      recurse.accept(((BuckNotExpression) psiElement).getComparisonExpression());
+    } else if (psiElement instanceof BuckComparisonExpression) {
+      List<BuckSimpleExpression> list =
+          ((BuckComparisonExpression) psiElement).getSimpleExpressionList();
+      if (list.size() == 1) {
+        recurse.accept(list.get(0));
+      }
+    } else if (psiElement instanceof BuckSimpleExpressionList) {
+      (((BuckSimpleExpressionList) psiElement).getSimpleExpressionList()).forEach(recurse);
     } else if (psiElement instanceof BuckSimpleExpression) {
-      recurse.accept(((BuckSimpleExpression) psiElement).getPrimaryWithSuffix());
+      List<BuckXorExpression> list = ((BuckSimpleExpression) psiElement).getXorExpressionList();
+      if (list.size() == 1) {
+        recurse.accept(list.get(0));
+      }
+    } else if (psiElement instanceof BuckXorExpression) {
+      List<BuckBitwiseAndExpression> list =
+          ((BuckXorExpression) psiElement).getBitwiseAndExpressionList();
+      if (list.size() == 1) {
+        recurse.accept(list.get(0));
+      }
+    } else if (psiElement instanceof BuckBitwiseAndExpression) {
+      List<BuckShiftExpression> list =
+          ((BuckBitwiseAndExpression) psiElement).getShiftExpressionList();
+      if (list.size() == 1) {
+        recurse.accept(list.get(0));
+      }
+    } else if (psiElement instanceof BuckShiftExpression) {
+      List<BuckArithmeticExpression> list =
+          ((BuckShiftExpression) psiElement).getArithmeticExpressionList();
+      if (list.size() == 1) {
+        recurse.accept(list.get(0));
+      }
+    } else if (psiElement instanceof BuckArithmeticExpression) {
+      List<BuckTermExpression> list =
+          ((BuckArithmeticExpression) psiElement).getTermExpressionList();
+      if (list.size() == 1) {
+        recurse.accept(list.get(0));
+      }
+    } else if (psiElement instanceof BuckTermExpression) {
+      List<BuckFactorExpression> list = ((BuckTermExpression) psiElement).getFactorExpressionList();
+      if (list.size() == 1) {
+        recurse.accept(list.get(0));
+      }
+    } else if (psiElement instanceof BuckFactorExpression) {
+      recurse.accept(((BuckFactorExpression) psiElement).getPowerExpression());
+    } else if (psiElement instanceof BuckPowerExpression) {
+      BuckPowerExpression powerExpression = (BuckPowerExpression) psiElement;
+      if (powerExpression.getExpressionTrailerList().isEmpty()
+          && powerExpression.getFactorExpression() == null) {
+        recurse.accept(powerExpression.getAtomicExpression());
+      }
+    } else if (psiElement instanceof BuckAtomicExpression) {
+      recurse.accept(((BuckAtomicExpression) psiElement).getExpressionListOrComprehension());
+      recurse.accept(((BuckAtomicExpression) psiElement).getIdentifier());
     } else {
       LOG.info("Unparsed: " + psiElement.getNode().getElementType());
     }

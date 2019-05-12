@@ -16,8 +16,7 @@
 
 package com.facebook.buck.core.cell;
 
-import com.facebook.buck.core.model.BuildTarget;
-import com.facebook.buck.core.model.UnflavoredBuildTarget;
+import com.facebook.buck.core.model.UnflavoredBuildTargetView;
 import com.google.common.collect.ImmutableSortedSet;
 import java.nio.file.Path;
 import java.util.Optional;
@@ -41,12 +40,7 @@ public abstract class AbstractCellPathResolver implements CellPathResolver {
   }
 
   @Override
-  public Path getCellPathOrThrow(BuildTarget buildTarget) {
-    return getCellPathOrThrow(buildTarget.getCell());
-  }
-
-  @Override
-  public Path getCellPathOrThrow(UnflavoredBuildTarget buildTarget) {
+  public Path getCellPathOrThrow(UnflavoredBuildTargetView buildTarget) {
     return getCellPathOrThrow(buildTarget.getCell());
   }
 }

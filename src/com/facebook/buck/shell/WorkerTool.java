@@ -16,14 +16,18 @@
 
 package com.facebook.buck.shell;
 
+import com.facebook.buck.core.rulekey.AddsToRuleKey;
 import com.facebook.buck.core.toolchain.tool.Tool;
+import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.google.common.hash.HashCode;
 import java.nio.file.Path;
 
-public interface WorkerTool {
+/** Worker tool definition */
+public interface WorkerTool extends AddsToRuleKey {
   Tool getTool();
 
-  Path getTempDir();
+  /** Returns temp dir for this WorkerTool and provided filesystem */
+  Path getTempDir(ProjectFilesystem filesystem);
 
   int getMaxWorkers();
 

@@ -33,6 +33,7 @@ import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.rulekey.AddToRuleKey;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
+import com.facebook.buck.core.rules.BuildRuleResolver;
 import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.attr.HasDeclaredAndExtraDeps;
 import com.facebook.buck.core.rules.attr.HasInstallHelpers;
@@ -151,7 +152,8 @@ public class AndroidBundle extends AbstractBuildRule
       NativeFilesInfo nativeFilesInfo,
       ResourceFilesInfo resourceFilesInfo,
       ImmutableSortedSet<APKModule> apkModules,
-      Optional<ExopackageInfo> exopackageInfo) {
+      Optional<ExopackageInfo> exopackageInfo,
+      Optional<SourcePath> bundleConfigFilePath) {
     super(buildTarget, projectFilesystem);
     Preconditions.checkArgument(params.getExtraDeps().get().isEmpty());
     this.ruleFinder = ruleFinder;
@@ -223,6 +225,7 @@ public class AndroidBundle extends AbstractBuildRule
             resourceFilesInfo,
             apkModules,
             enhancementResult.getModuleResourceApkPaths(),
+            bundleConfigFilePath,
             false);
     this.exopackageInfo = exopackageInfo;
 
@@ -365,10 +368,8 @@ public class AndroidBundle extends AbstractBuildRule
   @Override
   public ImmutableSet<JavaLibrary> getTransitiveClasspathDeps() {
     return JavaLibraryClasspathProvider.getClasspathDeps(
-        enhancementResult
-            .getClasspathEntriesToDex()
-            .stream()
-            .flatMap(ruleFinder.FILTER_BUILD_RULE_INPUTS)
+        ruleFinder
+            .filterBuildRuleInputs(enhancementResult.getClasspathEntriesToDex().stream())
             .collect(ImmutableSet.toImmutableSet()));
   }
 
@@ -384,9 +385,9 @@ public class AndroidBundle extends AbstractBuildRule
   }
 
   @Override
-  public Stream<BuildTarget> getRuntimeDeps(SourcePathRuleFinder ruleFinder) {
+  public Stream<BuildTarget> getRuntimeDeps(BuildRuleResolver buildRuleResolver) {
     return RichStream.from(moduleVerification)
         .map(BuildRule::getBuildTarget)
-        .concat(HasInstallableApkSupport.getRuntimeDepsForInstallableApk(this, ruleFinder));
+        .concat(HasInstallableApkSupport.getRuntimeDepsForInstallableApk(this, buildRuleResolver));
   }
 }

@@ -23,8 +23,26 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 
+/**
+ * Indicates that a field or method of a class should be added to rulekeys when an instance of that
+ * class is added to a rulekey.
+ *
+ * <p>This annotation also indicates that we should derive inputs, deps and serialization
+ * automatically from this field/method.
+ *
+ * <p>Annotating a method with @AddToRuleKey should only be used for Immutable objects.
+ *
+ * <p>In general, this should be added to all fields unless there's a good reason not to add it. In
+ * that case, annotated the field/method with @{@link ExcludeFromRuleKey} to indicate that not
+ * adding it to the keys is intentional.
+ */
 @Retention(RUNTIME)
 @Target({FIELD, METHOD})
 public @interface AddToRuleKey {
+
+  /**
+   * This causes us to add the value to the rulekey in its stringified form (i.e. we call toString()
+   * on it).
+   */
   boolean stringify() default false;
 }

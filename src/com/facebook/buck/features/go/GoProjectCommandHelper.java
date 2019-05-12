@@ -31,10 +31,8 @@ import com.facebook.buck.core.model.targetgraph.NoSuchTargetException;
 import com.facebook.buck.core.model.targetgraph.TargetGraph;
 import com.facebook.buck.core.model.targetgraph.TargetNode;
 import com.facebook.buck.core.model.targetgraph.impl.TargetGraphAndTargets;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.sourcepath.BuildTargetSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.cxx.CxxConstructorArg;
 import com.facebook.buck.event.BuckEventBus;
 import com.facebook.buck.event.ConsoleEvent;
@@ -142,9 +140,7 @@ public class GoProjectCommandHelper {
     ImmutableSet<BuildTarget> graphRoots;
     if (passedInTargetsSet.isEmpty()) {
       graphRoots =
-          projectGraph
-              .getNodes()
-              .stream()
+          projectGraph.getNodes().stream()
               .map(TargetNode::getBuildTarget)
               .collect(ImmutableSet.toImmutableSet());
     } else {
@@ -208,9 +204,7 @@ public class GoProjectCommandHelper {
     // Run code generation targets
     ExitCode exitCode =
         runBuild(
-            generatedPackages
-                .keySet()
-                .stream()
+            generatedPackages.keySet().stream()
                 .map(BuildTargetSourcePath::getTarget)
                 .collect(ImmutableSet.toImmutableSet()));
     if (exitCode != ExitCode.SUCCESS) {
@@ -244,8 +238,6 @@ public class GoProjectCommandHelper {
     }
     ActionGraphAndBuilder result =
         Objects.requireNonNull(getActionGraph(targetGraphAndTargets.getTargetGraph()));
-    DefaultSourcePathResolver sourcePathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(result.getActionGraphBuilder()));
 
     // cleanup files from previous runs
     for (BuildTargetSourcePath sourcePath : generatedPackages.keySet()) {
@@ -265,7 +257,8 @@ public class GoProjectCommandHelper {
     // copy files generated in current run
     for (BuildTargetSourcePath sourcePath : generatedPackages.keySet()) {
       Path desiredPath = vendorPath.resolve(generatedPackages.get(sourcePath));
-      Path generatedSrc = sourcePathResolver.getAbsolutePath(sourcePath);
+      Path generatedSrc =
+          result.getActionGraphBuilder().getSourcePathResolver().getAbsolutePath(sourcePath);
 
       if (projectFilesystem.isDirectory(generatedSrc)) {
         projectFilesystem.copyFolder(generatedSrc, desiredPath);
@@ -306,10 +299,7 @@ public class GoProjectCommandHelper {
         generatedPackages.putAll(getSrcsMap(getSrcAndHeaderTargets(cgoArgs), pkgName));
         generatedPackages.putAll(getSrcsMap(filterBuildTargets(cgoArgs.getGoSrcs()), pkgName));
         List<CxxConstructorArg> cxxLibs =
-            cgoArgs
-                .getCxxDeps()
-                .getDeps()
-                .stream()
+            cgoArgs.getCxxDeps().getDeps().stream()
                 .filter(
                     target ->
                         targetGraphAndTargets.getTargetGraph().get(target).getConstructorArg()
@@ -339,9 +329,7 @@ public class GoProjectCommandHelper {
     List<BuildTargetSourcePath> targets = new ArrayList<>();
     targets.addAll(
         filterBuildTargets(
-                constructorArg
-                    .getSrcs()
-                    .stream()
+                constructorArg.getSrcs().stream()
                     .map(srcWithFlags -> srcWithFlags.getSourcePath())
                     .collect(Collectors.toSet()))
             .collect(Collectors.toList()));
@@ -355,8 +343,7 @@ public class GoProjectCommandHelper {
 
   @Nonnull
   private Stream<BuildTargetSourcePath> filterBuildTargets(Set<SourcePath> paths) {
-    return paths
-        .stream()
+    return paths.stream()
         .filter(srcPath -> srcPath instanceof BuildTargetSourcePath)
         .map(src -> (BuildTargetSourcePath) src);
   }
@@ -414,7 +401,8 @@ public class GoProjectCommandHelper {
               buckConfig,
               params.getTypeCoercerFactory(),
               params.getUnconfiguredBuildTargetFactory(),
-              explicitTestTargets);
+              explicitTestTargets,
+              targetConfiguration);
     }
     return targetGraphAndTargets;
   }

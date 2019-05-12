@@ -18,8 +18,8 @@ package com.facebook.buck.rules.tool.config;
 
 import com.facebook.buck.core.config.BuckConfig;
 import com.facebook.buck.core.config.ConfigView;
-import com.facebook.buck.core.model.BuildTarget;
-import com.facebook.buck.core.model.EmptyTargetConfiguration;
+import com.facebook.buck.core.model.TargetConfiguration;
+import com.facebook.buck.core.model.UnconfiguredBuildTargetView;
 import com.facebook.buck.core.rules.BuildRuleResolver;
 import com.facebook.buck.core.toolchain.tool.Tool;
 import com.facebook.buck.core.toolchain.tool.impl.HashedFileTool;
@@ -50,8 +50,8 @@ abstract class AbstractToolConfig implements ConfigView<BuckConfig> {
     if (!value.isPresent()) {
       return Optional.empty();
     }
-    Optional<BuildTarget> target =
-        getDelegate().getMaybeBuildTarget(section, field, EmptyTargetConfiguration.INSTANCE);
+    Optional<UnconfiguredBuildTargetView> target =
+        getDelegate().getMaybeUnconfiguredBuildTarget(section, field);
     if (target.isPresent()) {
       return Optional.of(
           new BinaryBuildRuleToolProvider(target.get(), String.format("[%s] %s", section, field)));
@@ -78,13 +78,21 @@ abstract class AbstractToolConfig implements ConfigView<BuckConfig> {
                                 String.format("Overridden %s:%s path not found", section, field))));
   }
 
-  public Optional<Tool> getTool(String section, String field, BuildRuleResolver resolver) {
+  public Optional<Tool> getTool(
+      String section,
+      String field,
+      BuildRuleResolver resolver,
+      TargetConfiguration targetConfiguration) {
     Optional<ToolProvider> provider = getToolProvider(section, field);
-    return provider.map(toolProvider -> toolProvider.resolve(resolver));
+    return provider.map(toolProvider -> toolProvider.resolve(resolver, targetConfiguration));
   }
 
-  public Tool getRequiredTool(String section, String field, BuildRuleResolver resolver) {
-    Optional<Tool> path = getTool(section, field, resolver);
+  public Tool getRequiredTool(
+      String section,
+      String field,
+      BuildRuleResolver resolver,
+      TargetConfiguration targetConfiguration) {
+    Optional<Tool> path = getTool(section, field, resolver, targetConfiguration);
     return getDelegate().getOrThrow(section, field, path);
   }
 }

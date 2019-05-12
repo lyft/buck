@@ -21,6 +21,8 @@ import com.facebook.buck.core.build.engine.cache.manager.BuildInfoStoreManager;
 import com.facebook.buck.core.build.engine.config.CachingBuildEngineBuckConfig;
 import com.facebook.buck.core.cell.Cell;
 import com.facebook.buck.core.config.BuckConfig;
+import com.facebook.buck.core.graph.transformation.executor.DepsAwareExecutor;
+import com.facebook.buck.core.graph.transformation.model.ComputeResult;
 import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.model.TargetConfigurationSerializer;
 import com.facebook.buck.core.model.actiongraph.computation.ActionGraphProvider;
@@ -62,7 +64,6 @@ import java.io.InputStream;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Supplier;
 import org.immutables.value.Value;
@@ -180,7 +181,8 @@ public abstract class AbstractCommandRunnerParams {
   public abstract BuckModuleManager getBuckModuleManager();
 
   @Value.Parameter
-  public abstract CloseableMemoizedSupplier<ForkJoinPool> getPoolSupplier();
+  public abstract CloseableMemoizedSupplier<DepsAwareExecutor<? super ComputeResult, ?>>
+      getDepsAwareExecutorSupplier();
 
   @Value.Parameter
   public abstract MetadataProvider getMetadataProvider();

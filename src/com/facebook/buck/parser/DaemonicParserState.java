@@ -28,6 +28,7 @@ import com.facebook.buck.counters.IntegerCounter;
 import com.facebook.buck.counters.TagSetCounter;
 import com.facebook.buck.event.BuckEventBus;
 import com.facebook.buck.event.ParsingEvent;
+import com.facebook.buck.io.watchman.WatchmanEvent.Kind;
 import com.facebook.buck.io.watchman.WatchmanOverflowEvent;
 import com.facebook.buck.io.watchman.WatchmanPathEvent;
 import com.facebook.buck.parser.api.BuildFileManifest;
@@ -107,7 +108,9 @@ public class DaemonicParserState {
     public Optional<T> lookupComputedNode(Cell cell, BuildTarget target, BuckEventBus eventBus)
         throws BuildTargetException {
       invalidateIfProjectBuildFileParserStateChanged(cell);
-      Path buildFile = cell.getAbsolutePathToBuildFileUnsafe(target);
+      Path buildFile =
+          cell.getBuckConfigView(ParserConfig.class)
+              .getAbsolutePathToBuildFileUnsafe(cell, target.getUnconfiguredBuildTargetView());
       invalidateIfBuckConfigOrEnvHasChanged(cell, buildFile, eventBus);
 
       DaemonicCellState.Cache<T> state = getCache(cell);
@@ -129,7 +132,9 @@ public class DaemonicParserState {
           "Unexpected invalidation due to build file parser state change for %s %s",
           cell.getRoot(),
           target);
-      Path buildFile = cell.getAbsolutePathToBuildFileUnsafe(target);
+      Path buildFile =
+          cell.getBuckConfigView(ParserConfig.class)
+              .getAbsolutePathToBuildFileUnsafe(cell, target.getUnconfiguredBuildTargetView());
       Preconditions.checkState(
           !invalidateIfBuckConfigOrEnvHasChanged(cell, buildFile, eventBus),
           "Unexpected invalidation due to config/env change for %s %s",
@@ -298,7 +303,8 @@ public class DaemonicParserState {
                   @Override
                   public BuildFileTree load(Cell cell) {
                     return new FilesystemBackedBuildFileTree(
-                        cell.getFilesystem(), cell.getBuildFileName());
+                        cell.getFilesystem(),
+                        cell.getBuckConfigView(ParserConfig.class).getBuildFileName());
                   }
                 });
     this.cachedIncludes = new ConcurrentHashMap<>();
@@ -381,7 +387,7 @@ public class DaemonicParserState {
             Cell cell = state.getCell();
             BuildFileTree buildFiles = buildFileTrees.get(cell);
 
-            if (fullPath.endsWith(cell.getBuildFileName())) {
+            if (fullPath.endsWith(cell.getBuckConfigView(ParserConfig.class).getBuildFileName())) {
               LOG.debug(
                   "Build file %s changed, invalidating build file tree for cell %s",
                   fullPath, cell);
@@ -445,7 +451,7 @@ public class DaemonicParserState {
 
     // If we're *not* enforcing package boundary checks, it's possible for multiple ancestor
     // packages to reference the same file
-    if (!cell.isEnforcingBuckPackageBoundaries(path)) {
+    if (!cell.getBuckConfigView(ParserConfig.class).isEnforcingBuckPackageBoundaries(path)) {
       while (packageBuildFile.isPresent() && packageBuildFile.get().getParent() != null) {
         packageBuildFile =
             buildFiles.getBasePathOfAncestorTarget(packageBuildFile.get().getParent());
@@ -471,7 +477,8 @@ public class DaemonicParserState {
     }
     // Invalidate all the packages we found.
     for (Path buildFile : packageBuildFiles) {
-      invalidatePath(state, buildFile.resolve(cell.getBuildFileName()));
+      invalidatePath(
+          state, buildFile.resolve(cell.getBuckConfigView(ParserConfig.class).getBuildFileName()));
     }
   }
 
@@ -491,8 +498,7 @@ public class DaemonicParserState {
   }
 
   public static boolean isPathCreateOrDeleteEvent(WatchmanPathEvent event) {
-    return event.getKind() == WatchmanPathEvent.Kind.CREATE
-        || event.getKind() == WatchmanPathEvent.Kind.DELETE;
+    return event.getKind() == Kind.CREATE || event.getKind() == Kind.DELETE;
   }
 
   private boolean invalidateIfBuckConfigOrEnvHasChanged(

@@ -29,10 +29,7 @@ import com.facebook.buck.android.toolchain.ndk.NdkCxxPlatform;
 import com.facebook.buck.android.toolchain.ndk.impl.AndroidNdkHelper;
 import com.facebook.buck.android.toolchain.ndk.impl.AndroidNdkHelper.SymbolGetter;
 import com.facebook.buck.android.toolchain.ndk.impl.AndroidNdkHelper.SymbolsAndDtNeeded;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.TestProjectFilesystems;
 import com.facebook.buck.jvm.java.testutil.AbiCompilationModeTest;
@@ -68,7 +65,7 @@ public class AndroidBinaryNativeIntegrationTest extends AbiCompilationModeTest {
   private ProjectFilesystem filesystem;
 
   @Before
-  public void setUp() throws InterruptedException, IOException {
+  public void setUp() throws IOException {
     AssumeAndroidPlatform.assumeSdkIsAvailable();
     AssumeAndroidPlatform.assumeNdkIsAvailable();
     workspace =
@@ -195,7 +192,7 @@ public class AndroidBinaryNativeIntegrationTest extends AbiCompilationModeTest {
   }
 
   @Test
-  public void throwIfLibMergedIntoTwoTargets() throws IOException {
+  public void throwIfLibMergedIntoTwoTargets() {
     ProcessResult processResult =
         workspace.runBuckBuild("//apps/sample:app_with_merge_lib_into_two_targets");
     processResult.assertFailure();
@@ -205,7 +202,7 @@ public class AndroidBinaryNativeIntegrationTest extends AbiCompilationModeTest {
   }
 
   @Test
-  public void throwIfLibMergedContainsAssetsAndNonAssets() throws IOException {
+  public void throwIfLibMergedContainsAssetsAndNonAssets() {
     ProcessResult processResult =
         workspace.runBuckBuild("//apps/sample:app_with_cross_asset_merged_libs");
     processResult.assertFailure();
@@ -214,7 +211,7 @@ public class AndroidBinaryNativeIntegrationTest extends AbiCompilationModeTest {
   }
 
   @Test
-  public void throwIfMergeHasCircularDependency() throws IOException {
+  public void throwIfMergeHasCircularDependency() {
     ProcessResult processResult =
         workspace.runBuckBuild("//apps/sample:app_with_circular_merged_libs");
     processResult.assertFailure();
@@ -235,7 +232,7 @@ public class AndroidBinaryNativeIntegrationTest extends AbiCompilationModeTest {
   }
 
   @Test
-  public void throwIfMergedHasCircularDependencyIncludeRoot() throws IOException {
+  public void throwIfMergedHasCircularDependencyIncludeRoot() {
     ProcessResult processResult =
         workspace.runBuckBuild("//apps/sample:app_with_circular_merged_libs_including_root");
     processResult.assertFailure();
@@ -243,7 +240,7 @@ public class AndroidBinaryNativeIntegrationTest extends AbiCompilationModeTest {
   }
 
   @Test
-  public void throwIfMergedWithInvalidGlue() throws IOException {
+  public void throwIfMergedWithInvalidGlue() {
     ProcessResult processResult =
         workspace.runBuckBuild("//apps/sample:app_with_invalid_native_lib_merge_glue");
     processResult.assertExitCode(ExitCode.FATAL_GENERIC);
@@ -397,8 +394,7 @@ public class AndroidBinaryNativeIntegrationTest extends AbiCompilationModeTest {
   }
 
   @Test
-  public void canBuildNativeMergedLibraryWithPrecompiledHeader()
-      throws IOException, InterruptedException {
+  public void canBuildNativeMergedLibraryWithPrecompiledHeader() {
     AssumeAndroidPlatform.assumeSdkIsAvailable();
     ProcessResult result = workspace.runBuckBuild("//apps/sample:native_merge_lib_with_pch");
     result.assertSuccess();
@@ -406,10 +402,11 @@ public class AndroidBinaryNativeIntegrationTest extends AbiCompilationModeTest {
 
   private SymbolGetter getSymbolGetter() throws IOException {
     NdkCxxPlatform platform = AndroidNdkHelper.getNdkCxxPlatform(filesystem);
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(new TestActionGraphBuilder()));
     Path tmpDir = tmpFolder.newFolder("symbols_tmp");
     return new SymbolGetter(
-        new DefaultProcessExecutor(new TestConsole()), tmpDir, platform.getObjdump(), pathResolver);
+        new DefaultProcessExecutor(new TestConsole()),
+        tmpDir,
+        platform.getObjdump(),
+        new TestActionGraphBuilder().getSourcePathResolver());
   }
 }

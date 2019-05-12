@@ -16,11 +16,13 @@
 
 package com.facebook.buck.query;
 
+import com.facebook.buck.core.model.QueryTarget;
 import com.google.common.collect.ImmutableSet;
 
-public class NoopQueryEvaluator implements QueryEvaluator {
+public class NoopQueryEvaluator<ENV_NODE_TYPE> implements QueryEvaluator<ENV_NODE_TYPE> {
   @Override
-  public ImmutableSet<QueryTarget> eval(QueryExpression exp, QueryEnvironment env)
+  public <OUTPUT_TYPE extends QueryTarget> ImmutableSet<OUTPUT_TYPE> eval(
+      QueryExpression<ENV_NODE_TYPE> exp, QueryEnvironment<ENV_NODE_TYPE> env)
       throws QueryException {
     return exp.eval(this, env);
   }

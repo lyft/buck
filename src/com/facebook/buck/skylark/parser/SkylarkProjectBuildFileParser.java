@@ -19,9 +19,10 @@ package com.facebook.buck.skylark.parser;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
 import com.facebook.buck.core.util.log.Logger;
 import com.facebook.buck.event.BuckEventBus;
-import com.facebook.buck.io.file.MorePaths;
+import com.facebook.buck.io.pathformat.PathFormatter;
 import com.facebook.buck.parser.api.BuildFileManifest;
 import com.facebook.buck.parser.api.BuildFileManifestPojoizer;
+import com.facebook.buck.parser.api.ImmutableBuildFileManifest;
 import com.facebook.buck.parser.api.PojoTransformer;
 import com.facebook.buck.parser.api.ProjectBuildFileParser;
 import com.facebook.buck.parser.events.ParseBuckFileEvent;
@@ -71,7 +72,6 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayDeque;
 import java.util.HashSet;
 import java.util.Map;
@@ -172,7 +172,7 @@ public class SkylarkProjectBuildFileParser implements ProjectBuildFileParser {
         (ImmutableMap<String, Map<String, Object>>)
             getBuildFileManifestPojoizer().convertToPojo(parseResult.getRawRules());
 
-    return BuildFileManifest.of(
+    return ImmutableBuildFileManifest.of(
         targets,
         ImmutableSortedSet.copyOf(parseResult.getLoadedPaths()),
         parseResult.getReadConfigurationOptions(),
@@ -243,10 +243,10 @@ public class SkylarkProjectBuildFileParser implements ProjectBuildFileParser {
     return parseResult;
   }
 
-  private ImplicitlyLoadedExtension loadImplicitExtension(String basePath, Label containingLabel)
+  private ImplicitlyLoadedExtension loadImplicitExtension(Path basePath, Label containingLabel)
       throws IOException, InterruptedException {
     Optional<ImplicitInclude> implicitInclude =
-        packageImplicitIncludeFinder.findIncludeForBuildFile(Paths.get(basePath));
+        packageImplicitIncludeFinder.findIncludeForBuildFile(basePath);
     if (!implicitInclude.isPresent()) {
       return ImplicitlyLoadedExtension.empty();
     }
@@ -277,7 +277,8 @@ public class SkylarkProjectBuildFileParser implements ProjectBuildFileParser {
 
     String basePath = getBasePath(buildFile);
     Label containingLabel = createContainingLabel(basePath);
-    ImplicitlyLoadedExtension implicitLoad = loadImplicitExtension(basePath, containingLabel);
+    ImplicitlyLoadedExtension implicitLoad =
+        loadImplicitExtension(buildFile.getFileSystem().getPath(basePath), containingLabel);
 
     BuildFileAST buildFileAst = parseBuildFile(buildFilePath, containingLabel);
     CachingGlobber globber = newGlobber(buildFile);
@@ -446,7 +447,7 @@ public class SkylarkProjectBuildFileParser implements ProjectBuildFileParser {
       }
       if (result.containsErrors()) {
         throw BuildFileParseException.createForUnknownParseError(
-            "Cannot parse %s.  It was referenced form %s", path, containingLabel);
+            "Cannot parse %s.  It was referenced from %s", path, containingLabel);
       }
       astCache.put(path, result);
     }
@@ -863,7 +864,7 @@ public class SkylarkProjectBuildFileParser implements ProjectBuildFileParser {
    */
   private String getBasePath(Path buildFile) {
     return Optional.ofNullable(options.getProjectRoot().relativize(buildFile).getParent())
-        .map(MorePaths::pathWithUnixSeparators)
+        .map(PathFormatter::pathWithUnixSeparators)
         .orElse("");
   }
 
@@ -880,7 +881,8 @@ public class SkylarkProjectBuildFileParser implements ProjectBuildFileParser {
 
     String basePath = getBasePath(buildFile);
     Label containingLabel = createContainingLabel(basePath);
-    ImplicitlyLoadedExtension implicitLoad = loadImplicitExtension(basePath, containingLabel);
+    ImplicitlyLoadedExtension implicitLoad =
+        loadImplicitExtension(buildFile.getFileSystem().getPath(basePath), containingLabel);
     BuildFileAST buildFileAst = parseBuildFile(buildFilePath, containingLabel);
     ImmutableList<IncludesData> dependencies =
         loadIncludes(containingLabel, buildFileAst.getImports());

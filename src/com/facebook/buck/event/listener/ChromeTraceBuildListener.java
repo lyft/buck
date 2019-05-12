@@ -38,22 +38,26 @@ import com.facebook.buck.event.RuleKeyCalculationEvent;
 import com.facebook.buck.event.SimplePerfEvent;
 import com.facebook.buck.event.StartActivityEvent;
 import com.facebook.buck.event.UninstallEvent;
+import com.facebook.buck.event.WatchmanStatusEvent;
 import com.facebook.buck.event.chrome_trace.ChromeTraceBuckConfig;
 import com.facebook.buck.event.chrome_trace.ChromeTraceEvent;
 import com.facebook.buck.event.chrome_trace.ChromeTraceEvent.Phase;
 import com.facebook.buck.event.chrome_trace.ChromeTraceWriter;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
-import com.facebook.buck.io.watchman.WatchmanOverflowEvent;
 import com.facebook.buck.jvm.java.AnnotationProcessingEvent;
 import com.facebook.buck.jvm.java.tracing.JavacPhaseEvent;
 import com.facebook.buck.log.GlobalStateManager;
 import com.facebook.buck.log.InvocationInfo;
 import com.facebook.buck.parser.ParseEvent;
 import com.facebook.buck.parser.events.ParseBuckFileEvent;
+import com.facebook.buck.remoteexecution.event.RemoteExecutionActionEvent;
+import com.facebook.buck.remoteexecution.event.RemoteExecutionActionEvent.State;
+import com.facebook.buck.remoteexecution.event.RemoteExecutionSessionEvent;
+import com.facebook.buck.remoteexecution.event.RemoteExecutionStatsProvider;
 import com.facebook.buck.step.StepEvent;
 import com.facebook.buck.support.bgtasks.BackgroundTask;
 import com.facebook.buck.support.bgtasks.ImmutableBackgroundTask;
-import com.facebook.buck.support.bgtasks.TaskManagerScope;
+import com.facebook.buck.support.bgtasks.TaskManagerCommandScope;
 import com.facebook.buck.test.external.ExternalTestRunEvent;
 import com.facebook.buck.test.external.ExternalTestSpecCalculationEvent;
 import com.facebook.buck.util.Optionals;
@@ -124,16 +128,19 @@ public class ChromeTraceBuildListener implements BuckEventListener {
   private final ThreadMXBean threadMXBean;
 
   private final ExecutorService outputExecutor;
-  private final TaskManagerScope managerScope;
+  private final TaskManagerCommandScope managerScope;
 
   private final BuildId buildId;
+
+  private final Optional<RemoteExecutionStatsProvider> reStatsProvider;
 
   public ChromeTraceBuildListener(
       ProjectFilesystem projectFilesystem,
       InvocationInfo invocationInfo,
       Clock clock,
       ChromeTraceBuckConfig config,
-      TaskManagerScope managerScope)
+      TaskManagerCommandScope managerScope,
+      Optional<RemoteExecutionStatsProvider> reStatsProvider)
       throws IOException {
     this(
         projectFilesystem,
@@ -143,7 +150,8 @@ public class ChromeTraceBuildListener implements BuckEventListener {
         TimeZone.getDefault(),
         ManagementFactory.getThreadMXBean(),
         config,
-        managerScope);
+        managerScope,
+        reStatsProvider);
   }
 
   @VisibleForTesting
@@ -155,12 +163,14 @@ public class ChromeTraceBuildListener implements BuckEventListener {
       TimeZone timeZone,
       ThreadMXBean threadMXBean,
       ChromeTraceBuckConfig config,
-      TaskManagerScope managerScope)
+      TaskManagerCommandScope managerScope,
+      Optional<RemoteExecutionStatsProvider> reStatsProvider)
       throws IOException {
     this.logDirectoryPath = invocationInfo.getLogDirectoryPath();
     this.projectFilesystem = projectFilesystem;
     this.clock = clock;
     this.buildId = invocationInfo.getBuildId();
+    this.reStatsProvider = reStatsProvider;
     this.dateFormat =
         new ThreadLocal<SimpleDateFormat>() {
           @Override
@@ -714,10 +724,7 @@ public class ChromeTraceBuildListener implements BuckEventListener {
                 "time_spent_in_gc_sec",
                 Long.toString(TimeUnit.MILLISECONDS.toSeconds(memory.getTimeSpentInGcMs())))
             .putAll(
-                memory
-                    .getCurrentMemoryBytesUsageByPool()
-                    .entrySet()
-                    .stream()
+                memory.getCurrentMemoryBytesUsageByPool().entrySet().stream()
                     .map(
                         e ->
                             Maps.immutableEntry(
@@ -825,10 +832,53 @@ public class ChromeTraceBuildListener implements BuckEventListener {
   }
 
   @Subscribe
-  public void onWatchmanOverflow(WatchmanOverflowEvent event) {
+  public void onWatchmanOverflow(WatchmanStatusEvent.Overflow event) {
     writeChromeTraceMetadataEvent(
         "watchman_overflow",
         ImmutableMap.of("cellPath", event.getCellPath().toString(), "reason", event.getReason()));
+  }
+
+  private void writeRemoteExecutionStateTraceEvents(RemoteExecutionActionEvent event) {
+    if (reStatsProvider.isPresent()) {
+      for (ImmutableMap.Entry<State, Integer> entry :
+          reStatsProvider.get().getActionsPerState().entrySet()) {
+        writeChromeTraceEvent(
+            "remote_execution",
+            String.format("re_%s", entry.getKey().toString().toLowerCase()),
+            ChromeTraceEvent.Phase.COUNTER,
+            ImmutableMap.of(entry.getKey().getAbbreviateName(), Integer.toString(entry.getValue())),
+            event);
+      }
+    }
+  }
+
+  /** Add metadata for actions in each Remote Execution state */
+  @Subscribe
+  public void onActionEventStarted(RemoteExecutionActionEvent.Started event) {
+    writeRemoteExecutionStateTraceEvents(event);
+  }
+
+  /** Add metadata for actions in each Remote Execution state */
+  @Subscribe
+  public void onActionEventFinished(RemoteExecutionActionEvent.Finished event) {
+    writeRemoteExecutionStateTraceEvents(event);
+  }
+
+  /** Mark the start of a Remote Execution session */
+  @Subscribe
+  public void onRemoteExecutionSessionStarted(RemoteExecutionSessionEvent.Started event) {
+    writeChromeTraceEvent("buck", event.getCategory(), Phase.BEGIN, ImmutableMap.of(), event);
+  }
+
+  /** Mark the end of a Remote Execution session and write down the related telemetry. */
+  @Subscribe
+  public void onRemoteExecutionSessionFinished(RemoteExecutionSessionEvent.Finished event) {
+    writeChromeTraceEvent(
+        "buck",
+        event.getCategory(),
+        Phase.END,
+        reStatsProvider.isPresent() ? reStatsProvider.get().exportFieldsToMap() : ImmutableMap.of(),
+        event);
   }
 
   @VisibleForTesting

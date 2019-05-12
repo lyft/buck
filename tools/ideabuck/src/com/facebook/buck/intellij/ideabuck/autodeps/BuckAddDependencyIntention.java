@@ -44,7 +44,6 @@ import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiJavaCodeReferenceElement;
 import com.intellij.util.IncorrectOperationException;
-import java.io.IOException;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -244,8 +243,7 @@ public class BuckAddDependencyIntention extends BaseIntentionAction {
         targetMetadata.visibility = null; //
       } else {
         targetMetadata.visibility =
-            optionalVisibility
-                .stream()
+            optionalVisibility.stream()
                 .map(p -> BuckTargetPattern.parse(p).map(buckTargetLocator::resolve).orElse(null))
                 .collect(Collectors.toList());
       }
@@ -268,7 +266,11 @@ public class BuckAddDependencyIntention extends BaseIntentionAction {
     }
 
     boolean hasDependencyOn(BuckTarget target) {
-      return deps.stream().anyMatch(dep -> dep.equals(target));
+      if (deps == null) {
+        return false;
+      } else {
+        return deps.stream().anyMatch(dep -> dep.equals(target));
+      }
     }
 
     boolean contains(BuckTarget targetFile) {
@@ -276,7 +278,8 @@ public class BuckAddDependencyIntention extends BaseIntentionAction {
         return false;
       }
       String relativeToBuildFile = targetFile.getRuleName();
-      return srcs.contains(relativeToBuildFile) || resources.contains(relativeToBuildFile);
+      return (srcs != null && srcs.contains(relativeToBuildFile))
+          || (resources != null && resources.contains(relativeToBuildFile));
     }
   }
 
@@ -291,7 +294,7 @@ public class BuckAddDependencyIntention extends BaseIntentionAction {
             BuckCommand.QUERY,
             new Callback<List<TargetMetadata>>() {
               @Override
-              public List<TargetMetadata> deserialize(JsonElement jsonElement) throws IOException {
+              public List<TargetMetadata> deserialize(JsonElement jsonElement) {
                 Type type = new TypeToken<Map<String, JsonObject>>() {}.getType();
                 Map<String, JsonObject> raw = new Gson().fromJson(jsonElement, type);
                 List<TargetMetadata> results = new ArrayList<>();
@@ -333,7 +336,6 @@ public class BuckAddDependencyIntention extends BaseIntentionAction {
                             + editSourceFile
                             + " and/or "
                             + importSourceFile);
-                return;
               }
             });
     handler

@@ -49,7 +49,6 @@ import com.facebook.buck.core.rulekey.RuleKey;
 import com.facebook.buck.core.rulekey.calculator.ParallelRuleKeyCalculator;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.SourcePathRuleFinder;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.distributed.BuildSlaveEventWrapper;
 import com.facebook.buck.distributed.ClientStatsTracker;
 import com.facebook.buck.distributed.DistBuildService;
@@ -286,8 +285,7 @@ public class BuildPhaseTest {
     replay(mockDistBuildService);
     replay(mockEventBus);
 
-    SourcePathRuleFinder ruleFinder =
-        new SourcePathRuleFinder(graphs.getActionGraphAndBuilder().getActionGraphBuilder());
+    SourcePathRuleFinder ruleFinder = graphs.getActionGraphAndBuilder().getActionGraphBuilder();
 
     buildPhase.runDistBuildAndUpdateConsoleStatus(
         directExecutor,
@@ -301,12 +299,13 @@ public class BuildPhaseTest {
                 new DefaultRuleKeyFactory(
                     new RuleKeyFieldLoader(executorArgs.getRuleKeyConfiguration()),
                     fileHashCache,
-                    DefaultSourcePathResolver.from(ruleFinder),
                     ruleFinder,
                     new TrackedRuleKeyCache<RuleKey>(
                         new DefaultRuleKeyCache<>(), new NoOpCacheStatsTracker()),
                     Optional.empty()),
-                new DefaultRuleDepsCache(graphs.getActionGraphAndBuilder().getActionGraphBuilder()),
+                new DefaultRuleDepsCache(
+                    graphs.getActionGraphAndBuilder().getActionGraphBuilder(),
+                    graphs.getActionGraphAndBuilder().getBuildEngineActionToBuildRuleResolver()),
                 (buckEventBus, rule) -> () -> {})));
 
     verify(mockDistBuildService);
@@ -319,8 +318,7 @@ public class BuildPhaseTest {
     createBuildPhase();
     BuildJob job = PostBuildPhaseTest.createBuildJobWithSlaves(stampedeId);
     List<BuildSlaveRunId> buildSlaveRunIds =
-        job.getBuildSlaves()
-            .stream()
+        job.getBuildSlaves().stream()
             .map(BuildSlaveInfo::getBuildSlaveRunId)
             .collect(Collectors.toList());
 
@@ -436,8 +434,7 @@ public class BuildPhaseTest {
     createBuildPhase();
     BuildJob job = PostBuildPhaseTest.createBuildJobWithSlaves(stampedeId);
     List<BuildSlaveRunId> buildSlaveRunIds =
-        job.getBuildSlaves()
-            .stream()
+        job.getBuildSlaves().stream()
             .map(BuildSlaveInfo::getBuildSlaveRunId)
             .collect(Collectors.toList());
 

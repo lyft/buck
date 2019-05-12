@@ -28,12 +28,10 @@ import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.TestBuildRuleParams;
 import com.facebook.buck.core.rules.impl.NoopBuildRuleWithDeclaredAndExtraDeps;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.rules.tool.BinaryBuildRule;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.tool.Tool;
 import com.facebook.buck.core.toolchain.tool.impl.CommandTool;
 import com.facebook.buck.core.toolchain.tool.impl.CommandTool.Builder;
@@ -59,7 +57,7 @@ public class ExecutableMacroExpanderTest {
   private StringWithMacrosConverter converter;
 
   @Before
-  public void setUp() throws Exception {
+  public void setUp() {
     filesystem = new FakeProjectFilesystem();
     cellPathResolver = TestCellBuilder.createCellRoots(filesystem);
     graphBuilder = new TestActionGraphBuilder();
@@ -70,6 +68,7 @@ public class ExecutableMacroExpanderTest {
         StringWithMacrosConverter.builder()
             .setBuildTarget(buildTarget)
             .setCellPathResolver(cellPathResolver)
+            .setActionGraphBuilder(graphBuilder)
             .addExpanders(new ExecutableMacroExpander())
             .build();
   }
@@ -157,9 +156,8 @@ public class ExecutableMacroExpanderTest {
                     rule.getBuildTarget().getBasePath(),
                     EmptyTargetConfiguration.INSTANCE,
                     input);
-    Arg arg = converter.convert(stringWithMacros, graphBuilder);
-    return Arg.stringify(
-        arg, DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder)));
+    Arg arg = converter.convert(stringWithMacros);
+    return Arg.stringify(arg, graphBuilder.getSourcePathResolver());
   }
 
   @Test

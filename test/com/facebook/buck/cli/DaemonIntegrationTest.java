@@ -25,17 +25,17 @@ import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-import com.facebook.buck.core.model.BuildId;
 import com.facebook.buck.io.watchman.WatchmanWatcher;
+import com.facebook.buck.support.bgtasks.BackgroundTaskManager;
+import com.facebook.buck.support.bgtasks.TestBackgroundTaskManager;
 import com.facebook.buck.testutil.ProcessResult;
 import com.facebook.buck.testutil.TemporaryPaths;
+import com.facebook.buck.testutil.TestConsole;
 import com.facebook.buck.testutil.integration.ProjectWorkspace;
 import com.facebook.buck.testutil.integration.TestContext;
 import com.facebook.buck.testutil.integration.TestDataHelper;
-import com.facebook.buck.util.CapturingPrintStream;
 import com.facebook.buck.util.ExitCode;
 import com.facebook.buck.util.Threads;
-import com.facebook.buck.util.environment.CommandMode;
 import com.facebook.buck.util.environment.EnvVariablesProvider;
 import com.google.common.base.Charsets;
 import com.google.common.base.Throwables;
@@ -164,18 +164,18 @@ public class DaemonIntegrationTest {
   private Runnable createRunnableCommand(ExitCode expectedExitCode, String... args) {
     return () -> {
       try {
-        MainRunner main =
-            new MainRunner(
-                new CapturingPrintStream(),
-                new CapturingPrintStream(),
+        BackgroundTaskManager manager = TestBackgroundTaskManager.of();
+        MainForTests main =
+            new MainForTests(
+                new TestConsole(),
                 new ByteArrayInputStream("".getBytes(StandardCharsets.UTF_8)),
-                Optional.of(new TestContext()));
-        ExitCode exitCode =
-            main.runMainWithExitCode(
-                new BuildId(),
-                tmp.getRoot(),
                 EnvVariablesProvider.getSystemEnv(),
-                CommandMode.TEST,
+                Optional.of(new TestContext()));
+
+        MainRunner mainRunner = main.prepareMainRunner(manager);
+        ExitCode exitCode =
+            mainRunner.runMainWithExitCode(
+                tmp.getRoot(),
                 WatchmanWatcher.FreshInstanceAction.NONE,
                 System.nanoTime(),
                 ImmutableList.copyOf(args));

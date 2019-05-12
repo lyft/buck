@@ -19,18 +19,17 @@ package com.facebook.buck.parser;
 import com.facebook.buck.core.cell.Cell;
 import com.facebook.buck.core.cell.CellProvider;
 import com.facebook.buck.core.files.DirectoryListCache;
-import com.facebook.buck.core.files.DirectoryListTransformer;
+import com.facebook.buck.core.files.DirectoryListComputation;
 import com.facebook.buck.core.files.FileTree;
 import com.facebook.buck.core.files.FileTreeCache;
+import com.facebook.buck.core.files.FileTreeComputation;
 import com.facebook.buck.core.files.FileTreeFileNameIterator;
-import com.facebook.buck.core.files.FileTreeTransformer;
 import com.facebook.buck.core.files.ImmutableFileTreeKey;
-import com.facebook.buck.core.graph.transformation.ComputeResult;
-import com.facebook.buck.core.graph.transformation.DefaultGraphTransformationEngine;
 import com.facebook.buck.core.graph.transformation.GraphTransformationEngine;
-import com.facebook.buck.core.graph.transformation.GraphTransformationStage;
 import com.facebook.buck.core.graph.transformation.executor.DepsAwareExecutor;
-import com.facebook.buck.core.graph.transformation.executor.impl.DefaultDepsAwareExecutor;
+import com.facebook.buck.core.graph.transformation.impl.DefaultGraphTransformationEngine;
+import com.facebook.buck.core.graph.transformation.impl.GraphComputationStage;
+import com.facebook.buck.core.graph.transformation.model.ComputeResult;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.HasBuildTarget;
 import com.facebook.buck.core.model.TargetConfiguration;
@@ -82,7 +81,7 @@ public class TargetSpecResolver implements AutoCloseable {
    * Create {@link TargetSpecResolver instance}
    *
    * @param eventBus Event bus to send performance events to
-   * @param numThreads Number of threads to be used by Graph Engine executor
+   * @param executor The executor for the {@link GraphTransformationEngine}
    * @param cellProvider Provider to get a cell by path; this is a workaround for the state that
    *     cell itself is not really hashable so we use cell path instead as a key for appropriate
    *     caches
@@ -93,14 +92,11 @@ public class TargetSpecResolver implements AutoCloseable {
    */
   public TargetSpecResolver(
       BuckEventBus eventBus,
-      int numThreads,
+      DepsAwareExecutor<? super ComputeResult, ?> executor,
       CellProvider cellProvider,
       LoadingCache<Path, DirectoryListCache> dirListCachePerRoot,
       LoadingCache<Path, FileTreeCache> fileTreeCachePerRoot) {
     this.eventBus = eventBus;
-
-    // TODO(buck_team): pass executor from upstream
-    DepsAwareExecutor<ComputeResult, ?> executor = DefaultDepsAwareExecutor.of(numThreads);
 
     // For each cell we create a separate graph engine. The purpose of graph engine is to
     // recursively build a file tree with all files in appropriate cell for appropriate path.
@@ -133,10 +129,9 @@ public class TargetSpecResolver implements AutoCloseable {
 
                       return new DefaultGraphTransformationEngine(
                           ImmutableList.of(
-                              new GraphTransformationStage<>(
-                                  DirectoryListTransformer.of(fileSystemView), dirListCache),
-                              new GraphTransformationStage<>(
-                                  FileTreeTransformer.of(), fileTreeCache)),
+                              new GraphComputationStage<>(
+                                  DirectoryListComputation.of(fileSystemView), dirListCache),
+                              new GraphComputationStage<>(FileTreeComputation.of(), fileTreeCache)),
                           16,
                           executor);
                     }));
@@ -214,7 +209,9 @@ public class TargetSpecResolver implements AutoCloseable {
           // build file under base path
           Path buildFile =
               projectFilesystemView.resolve(
-                  buildFileSpec.getBasePath().resolve(cell.getBuildFileName()));
+                  buildFileSpec
+                      .getBasePath()
+                      .resolve(cell.getBuckConfigView(ParserConfig.class).getBuildFileName()));
           perBuildFileSpecs.put(buildFile, index);
         } else {
           // For recursive spec, i.e. //path/to/... we use cached file tree
@@ -231,7 +228,9 @@ public class TargetSpecResolver implements AutoCloseable {
                   .getUnchecked(cellPath)
                   .computeUnchecked(ImmutableFileTreeKey.of(basePath));
 
-          for (Path path : FileTreeFileNameIterator.ofIterable(fileTree, cell.getBuildFileName())) {
+          for (Path path :
+              FileTreeFileNameIterator.ofIterable(
+                  fileTree, cell.getBuckConfigView(ParserConfig.class).getBuildFileName())) {
             perBuildFileSpecs.put(projectFilesystemView.resolve(path), index);
           }
         }
@@ -255,7 +254,7 @@ public class TargetSpecResolver implements AutoCloseable {
       targetFutures.add(
           Futures.transform(
               targetNodeProvider.getTargetNodeJob(
-                  buildTargetSpec.getUnconfiguredBuildTarget().configure(targetConfiguration)),
+                  buildTargetSpec.getUnconfiguredBuildTargetView().configure(targetConfiguration)),
               node -> {
                 ImmutableSet<BuildTarget> buildTargets =
                     applySpecFilter(spec, ImmutableList.of(node), flavorEnhancer, targetNodeFilter);

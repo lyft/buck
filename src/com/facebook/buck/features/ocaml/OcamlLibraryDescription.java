@@ -28,11 +28,9 @@ import com.facebook.buck.core.model.targetgraph.BuildRuleCreationContextWithTarg
 import com.facebook.buck.core.model.targetgraph.DescriptionWithTargetGraph;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
+import com.facebook.buck.core.rules.BuildRuleResolver;
 import com.facebook.buck.core.sourcepath.ExplicitBuildTargetSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.ToolchainProvider;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
 import com.facebook.buck.cxx.CxxDeps;
@@ -83,9 +81,6 @@ public class OcamlLibraryDescription
     FlavorDomain<OcamlPlatform> ocamlPlatforms = ocamlToolchain.getOcamlPlatforms();
     Optional<OcamlPlatform> ocamlPlatform = ocamlPlatforms.getValue(buildTarget);
     if (ocamlPlatform.isPresent()) {
-      SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(context.getActionGraphBuilder());
-      SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
-
       ImmutableList<SourcePath> srcs =
           args.getSrcs().isPresent() ? args.getSrcs().get().getPaths() : ImmutableList.of();
 
@@ -128,11 +123,10 @@ public class OcamlLibraryDescription
             result.getBytecodeCompileDeps(),
             ImmutableSortedSet.<BuildRule>naturalOrder()
                 .add(result.getBytecodeLink())
-                .addAll(ruleFinder.filterBuildRuleInputs(result.getObjectFiles()))
+                .addAll(
+                    context.getActionGraphBuilder().filterBuildRuleInputs(result.getObjectFiles()))
                 .build(),
-            result
-                .getRules()
-                .stream()
+            result.getRules().stream()
                 .map(BuildRule::getBuildTarget)
                 .collect(ImmutableList.toImmutableList()));
 
@@ -157,7 +151,7 @@ public class OcamlLibraryDescription
             params,
             args.getLinkerFlags(),
             srcs.stream()
-                .map(pathResolver::getAbsolutePath)
+                .map(context.getActionGraphBuilder().getSourcePathResolver()::getAbsolutePath)
                 .filter(OcamlUtil.ext(OcamlCompilables.OCAML_C))
                 .map(ocamlLibraryBuild.getOcamlContext()::getCOutput)
                 .map(input -> ExplicitBuildTargetSourcePath.of(compileBuildTarget, input))
@@ -219,8 +213,9 @@ public class OcamlLibraryDescription
       }
 
       @Override
-      public Iterable<BuildRule> getOcamlLibraryDeps(OcamlPlatform platform) {
-        return allDeps.get(context.getActionGraphBuilder(), platform.getCxxPlatform());
+      public Iterable<BuildRule> getOcamlLibraryDeps(
+          BuildRuleResolver buildRuleResolver, OcamlPlatform platform) {
+        return allDeps.get(buildRuleResolver, platform.getCxxPlatform());
       }
     };
   }
@@ -237,7 +232,8 @@ public class OcamlLibraryDescription
             .getByName(OcamlToolchain.DEFAULT_NAME, OcamlToolchain.class)
             .getOcamlPlatforms()
             .getValues()) {
-      targetGraphOnlyDepsBuilder.addAll(OcamlUtil.getParseTimeDeps(platform));
+      targetGraphOnlyDepsBuilder.addAll(
+          OcamlUtil.getParseTimeDeps(buildTarget.getTargetConfiguration(), platform));
     }
   }
 

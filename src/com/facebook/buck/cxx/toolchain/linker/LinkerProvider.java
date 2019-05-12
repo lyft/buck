@@ -17,15 +17,16 @@
 package com.facebook.buck.cxx.toolchain.linker;
 
 import com.facebook.buck.core.model.BuildTarget;
+import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.rules.BuildRuleResolver;
 
 public interface LinkerProvider {
 
-  Linker resolve(BuildRuleResolver resolver);
+  Linker resolve(BuildRuleResolver resolver, TargetConfiguration targetConfiguration);
 
   Type getType();
 
-  Iterable<BuildTarget> getParseTimeDeps();
+  Iterable<BuildTarget> getParseTimeDeps(TargetConfiguration targetConfiguration);
 
   enum Type {
     DARWIN,

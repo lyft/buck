@@ -29,10 +29,9 @@ import com.facebook.buck.remoteexecution.util.MultiThreadedBlobUploader;
 import com.facebook.buck.remoteexecution.util.OutputsMaterializer;
 import com.facebook.buck.util.concurrent.MostExecutors;
 import com.google.bytestream.ByteStreamGrpc.ByteStreamStub;
-import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.ListenableFuture;
 import java.io.IOException;
-import java.nio.file.Path;
+import java.util.Collection;
 import java.util.List;
 
 /** Implementation of a CAS client using GRPC. */
@@ -61,14 +60,21 @@ public class GrpcContentAddressableStorageClient implements ContentAddressedStor
   }
 
   @Override
-  public ListenableFuture<Void> addMissing(ImmutableMap<Digest, UploadDataSupplier> data) {
-    return uploader.addMissing(data);
+  public ListenableFuture<Void> addMissing(Collection<UploadDataSupplier> data) throws IOException {
+    return uploader.addMissing(data.stream());
   }
 
   @Override
   public ListenableFuture<Void> materializeOutputs(
-      List<OutputDirectory> outputDirectories, List<OutputFile> outputFiles, Path root)
+      List<OutputDirectory> outputDirectories,
+      List<OutputFile> outputFiles,
+      FileMaterializer materializer)
       throws IOException {
-    return outputsMaterializer.materialize(outputDirectories, outputFiles, root);
+    return outputsMaterializer.materialize(outputDirectories, outputFiles, materializer);
+  }
+
+  @Override
+  public boolean containsDigest(Digest digest) {
+    return uploader.containsDigest(digest);
   }
 }

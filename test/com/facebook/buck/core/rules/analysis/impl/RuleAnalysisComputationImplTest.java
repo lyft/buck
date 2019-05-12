@@ -16,23 +16,20 @@
 package com.facebook.buck.core.rules.analysis.impl;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertSame;
 
 import com.facebook.buck.core.cell.CellPathResolver;
 import com.facebook.buck.core.cell.TestCellPathResolver;
 import com.facebook.buck.core.description.RuleDescription;
-import com.facebook.buck.core.graph.transformation.ComputeResult;
 import com.facebook.buck.core.graph.transformation.executor.DepsAwareExecutor;
 import com.facebook.buck.core.graph.transformation.executor.impl.DefaultDepsAwareExecutor;
+import com.facebook.buck.core.graph.transformation.model.ComputeResult;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
 import com.facebook.buck.core.model.targetgraph.TargetGraph;
 import com.facebook.buck.core.model.targetgraph.TargetNode;
 import com.facebook.buck.core.model.targetgraph.impl.TargetNodeFactory;
-import com.facebook.buck.core.rules.actions.ActionAnalysisData;
-import com.facebook.buck.core.rules.actions.ActionAnalysisData.ID;
-import com.facebook.buck.core.rules.actions.FakeActionAnalysisData;
+import com.facebook.buck.core.rules.analysis.ImmutableRuleAnalysisKey;
 import com.facebook.buck.core.rules.analysis.RuleAnalysisContext;
 import com.facebook.buck.core.rules.analysis.RuleAnalysisResult;
 import com.facebook.buck.core.rules.analysis.cache.RuleAnalysisCache;
@@ -76,7 +73,6 @@ public class RuleAnalysisComputationImplTest {
         ProviderInfoCollectionImpl.builder()
             .put(new FakeInfo(new FakeBuiltInProvider("myprovider", FakeInfo.class)))
             .build();
-    ActionAnalysisData expectedActionAnalysisData = new FakeActionAnalysisData(buildTarget);
 
     RuleDescription<FakeRuleDescriptionArg> ruleDescription =
         new RuleDescription<FakeRuleDescriptionArg>() {
@@ -84,7 +80,6 @@ public class RuleAnalysisComputationImplTest {
           public ProviderInfoCollection ruleImpl(
               RuleAnalysisContext context, BuildTarget target, FakeRuleDescriptionArg args) {
             assertEquals(buildTarget, target);
-            context.registerAction(expectedActionAnalysisData);
             return expectedProviders;
           }
 
@@ -114,18 +109,12 @@ public class RuleAnalysisComputationImplTest {
         RuleAnalysisComputationImpl.of(targetGraph, depsAwareExecutor, cache);
 
     RuleAnalysisResult ruleAnalysisResult =
-        ruleAnalysisComputation.computeUnchecked(ImmutableRuleAnalysisKeyImpl.of(buildTarget));
+        ruleAnalysisComputation.computeUnchecked(ImmutableRuleAnalysisKey.of(buildTarget));
 
     // We shouldn't be making copies of the providers or build target in our transformation. It
     // should be as given.
     assertSame(expectedProviders, ruleAnalysisResult.getProviderInfos());
     assertSame(buildTarget, ruleAnalysisResult.getBuildTarget());
-    assertSame(
-        expectedActionAnalysisData,
-        ruleAnalysisResult.getActionOptional(expectedActionAnalysisData.getKey().getID()).get());
-    assertEquals(1, ruleAnalysisResult.getRegisteredActions().size());
-
-    assertFalse(ruleAnalysisResult.actionExists(new ID() {}));
   }
 
   @Test
@@ -137,7 +126,6 @@ public class RuleAnalysisComputationImplTest {
         ProviderInfoCollectionImpl.builder()
             .put(new FakeInfo(new FakeBuiltInProvider("myprovider", FakeInfo.class)))
             .build();
-    ActionAnalysisData expectedActionAnalysisData = new FakeActionAnalysisData(buildTarget);
 
     RuleDescription<FakeRuleDescriptionArg> ruleDescription =
         new RuleDescription<FakeRuleDescriptionArg>() {
@@ -146,8 +134,7 @@ public class RuleAnalysisComputationImplTest {
               RuleAnalysisContext context, BuildTarget target, FakeRuleDescriptionArg args) {
             // here we use the deps
             assertEquals(buildTarget, target);
-            context.registerAction(expectedActionAnalysisData);
-            return context.deps().get(ImmutableRuleAnalysisKeyImpl.of(buildTarget2));
+            return context.deps().get(ImmutableRuleAnalysisKey.of(buildTarget2));
           }
 
           @Override
@@ -202,15 +189,11 @@ public class RuleAnalysisComputationImplTest {
         RuleAnalysisComputationImpl.of(targetGraph, depsAwareExecutor, cache);
 
     RuleAnalysisResult ruleAnalysisResult =
-        ruleAnalysisComputation.computeUnchecked(ImmutableRuleAnalysisKeyImpl.of(buildTarget));
+        ruleAnalysisComputation.computeUnchecked(ImmutableRuleAnalysisKey.of(buildTarget));
 
     // We shouldn't be making copies of the providers or build target in our transformation. It
     // should be as given.
     assertSame(expectedProviders, ruleAnalysisResult.getProviderInfos());
     assertSame(buildTarget, ruleAnalysisResult.getBuildTarget());
-    assertSame(
-        expectedActionAnalysisData,
-        ruleAnalysisResult.getActionOptional(expectedActionAnalysisData.getKey().getID()).get());
-    assertEquals(1, ruleAnalysisResult.getRegisteredActions().size());
   }
 }

@@ -23,8 +23,8 @@ import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.attr.HasDeclaredAndExtraDeps;
 import com.facebook.buck.core.sourcepath.BuildTargetSourcePath;
+import com.facebook.buck.core.sourcepath.PathSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
 import com.facebook.buck.log.thrift.ThriftRuleKeyLogger;
 import com.facebook.buck.rules.keys.hasher.RuleKeyHasher;
 import com.facebook.buck.util.cache.NoOpCacheStatsTracker;
@@ -42,7 +42,6 @@ public class DefaultRuleKeyFactory implements RuleKeyFactoryWithDiagnostics<Rule
 
   private final RuleKeyFieldLoader ruleKeyFieldLoader;
   private final FileHashLoader hashLoader;
-  private final SourcePathResolver pathResolver;
   private final SourcePathRuleFinder ruleFinder;
   private final RuleKeyCache<RuleKey> ruleKeyCache;
   private final Optional<ThriftRuleKeyLogger> ruleKeyLogger;
@@ -50,13 +49,11 @@ public class DefaultRuleKeyFactory implements RuleKeyFactoryWithDiagnostics<Rule
   public DefaultRuleKeyFactory(
       RuleKeyFieldLoader ruleKeyFieldLoader,
       FileHashLoader hashLoader,
-      SourcePathResolver pathResolver,
       SourcePathRuleFinder ruleFinder,
       RuleKeyCache<RuleKey> ruleKeyCache,
       Optional<ThriftRuleKeyLogger> ruleKeyLogger) {
     this.ruleKeyFieldLoader = ruleKeyFieldLoader;
     this.hashLoader = hashLoader;
-    this.pathResolver = pathResolver;
     this.ruleFinder = ruleFinder;
     this.ruleKeyCache = ruleKeyCache;
     this.ruleKeyLogger = ruleKeyLogger;
@@ -65,12 +62,10 @@ public class DefaultRuleKeyFactory implements RuleKeyFactoryWithDiagnostics<Rule
   public DefaultRuleKeyFactory(
       RuleKeyFieldLoader ruleKeyFieldLoader,
       FileHashLoader hashLoader,
-      SourcePathResolver pathResolver,
       SourcePathRuleFinder ruleFinder) {
     this(
         ruleKeyFieldLoader,
         hashLoader,
-        pathResolver,
         ruleFinder,
         new TrackedRuleKeyCache<>(new DefaultRuleKeyCache<>(), new NoOpCacheStatsTracker()),
         Optional.empty());
@@ -79,13 +74,11 @@ public class DefaultRuleKeyFactory implements RuleKeyFactoryWithDiagnostics<Rule
   public DefaultRuleKeyFactory(
       RuleKeyFieldLoader ruleKeyFieldLoader,
       FileHashLoader hashLoader,
-      SourcePathResolver pathResolver,
       SourcePathRuleFinder ruleFinder,
       Optional<ThriftRuleKeyLogger> ruleKeyLogger) {
     this(
         ruleKeyFieldLoader,
         hashLoader,
-        pathResolver,
         ruleFinder,
         new TrackedRuleKeyCache<>(new DefaultRuleKeyCache<>(), new NoOpCacheStatsTracker()),
         ruleKeyLogger);
@@ -168,7 +161,7 @@ public class DefaultRuleKeyFactory implements RuleKeyFactoryWithDiagnostics<Rule
     private final ImmutableList.Builder<RuleKeyInput> inputs = ImmutableList.builder();
 
     public Builder(RuleKeyHasher<RULE_KEY> hasher) {
-      super(ruleFinder, pathResolver, hashLoader, hasher);
+      super(ruleFinder, hashLoader, hasher);
     }
 
     @Override
@@ -191,10 +184,11 @@ public class DefaultRuleKeyFactory implements RuleKeyFactoryWithDiagnostics<Rule
         return setSourcePathAsRule((BuildTargetSourcePath) sourcePath);
       } else {
         // Add `PathSourcePath`s to our tracked inputs.
-        pathResolver
-            .getPathSourcePath(sourcePath)
+        PathSourcePath.from(sourcePath)
             .ifPresent(
-                path -> inputs.add(RuleKeyInput.of(path.getFilesystem(), path.getRelativePath())));
+                path ->
+                    inputs.add(
+                        new ImmutableRuleKeyInput(path.getFilesystem(), path.getRelativePath())));
         return setSourcePathDirectly(sourcePath);
       }
     }

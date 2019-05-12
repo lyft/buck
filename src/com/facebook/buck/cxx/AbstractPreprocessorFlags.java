@@ -18,11 +18,11 @@ package com.facebook.buck.cxx;
 
 import com.facebook.buck.core.rulekey.AddToRuleKey;
 import com.facebook.buck.core.rulekey.AddsToRuleKey;
+import com.facebook.buck.core.rulekey.CustomFieldBehavior;
+import com.facebook.buck.core.rulekey.DefaultFieldSerialization;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.common.BuildableSupport;
-import com.facebook.buck.core.rules.modern.annotations.CustomFieldBehavior;
-import com.facebook.buck.core.rules.modern.annotations.DefaultFieldSerialization;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
@@ -32,7 +32,6 @@ import com.facebook.buck.cxx.toolchain.Preprocessor;
 import com.facebook.buck.rules.args.Arg;
 import com.facebook.buck.rules.args.StringArg;
 import com.facebook.buck.rules.coercer.FrameworkPath;
-import com.facebook.buck.util.Optionals;
 import com.google.common.collect.ImmutableList;
 import java.nio.file.Path;
 import java.util.Optional;
@@ -74,10 +73,7 @@ abstract class AbstractPreprocessorFlags implements AddsToRuleKey {
 
   public Iterable<BuildRule> getDeps(SourcePathRuleFinder ruleFinder) {
     ImmutableList.Builder<BuildRule> deps = ImmutableList.builder();
-    deps.addAll(
-        Optionals.toStream(getPrefixHeader())
-            .flatMap(ruleFinder.FILTER_BUILD_RULE_INPUTS)
-            .iterator());
+    deps.addAll(ruleFinder.filterBuildRuleInputs(getPrefixHeader()).iterator());
     for (CxxHeaders cxxHeaders : getIncludes()) {
       cxxHeaders.getDeps(ruleFinder).forEachOrdered(deps::add);
     }

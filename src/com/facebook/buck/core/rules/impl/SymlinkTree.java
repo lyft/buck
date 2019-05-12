@@ -22,6 +22,7 @@ import com.facebook.buck.core.build.execution.context.ExecutionContext;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.rulekey.RuleKeyObjectSink;
 import com.facebook.buck.core.rules.BuildRule;
+import com.facebook.buck.core.rules.BuildRuleResolver;
 import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.attr.HasRuntimeDeps;
 import com.facebook.buck.core.rules.attr.SupportsInputBasedRuleKey;
@@ -101,9 +102,7 @@ public class SymlinkTree extends AbstractBuildRule
     this.directoriesToMerge = directoriesToMerge;
 
     this.buildDeps =
-        directoriesToMerge
-            .values()
-            .stream()
+        directoriesToMerge.values().stream()
             .map(ruleFinder::getRule)
             .filter(Optional::isPresent)
             .map(Optional::get)
@@ -127,9 +126,7 @@ public class SymlinkTree extends AbstractBuildRule
     sink.setReflectively(
         "merge_dirs",
         // Turn our multimap into something properly ordered by path with the multimap values sorted
-        directoriesToMerge
-            .keySet()
-            .stream()
+        directoriesToMerge.keySet().stream()
             .collect(
                 ImmutableSortedMap.toImmutableSortedMap(
                     String::compareTo,
@@ -231,9 +228,7 @@ public class SymlinkTree extends AbstractBuildRule
                 category,
                 getProjectFilesystem(),
                 root,
-                directoriesToMerge
-                    .entries()
-                    .stream()
+                directoriesToMerge.entries().stream()
                     .collect(
                         ImmutableSetMultimap.toImmutableSetMultimap(
                             Entry::getKey,
@@ -295,11 +290,9 @@ public class SymlinkTree extends AbstractBuildRule
   }
 
   @Override
-  public Stream<BuildTarget> getRuntimeDeps(SourcePathRuleFinder ruleFinder) {
-    return links
-        .values()
-        .stream()
-        .map(ruleFinder::filterBuildRuleInputs)
+  public Stream<BuildTarget> getRuntimeDeps(BuildRuleResolver buildRuleResolver) {
+    return links.values().stream()
+        .map(buildRuleResolver::filterBuildRuleInputs)
         .flatMap(ImmutableSet::stream)
         .map(BuildRule::getBuildTarget);
   }

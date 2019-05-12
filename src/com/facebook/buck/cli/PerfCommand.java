@@ -29,8 +29,11 @@ public class PerfCommand extends AbstractContainerCommand {
   @SubCommands({
     // TODO(cjhopman): Should we enforce that each of these commands derives from
     // AbstractPerfCommand?
-    @SubCommand(name = "rk", impl = PerfRuleKeyCommand.class),
     @SubCommand(name = "action-graph", impl = PerfActionGraphCommand.class),
+    @SubCommand(name = "cas", impl = PerfCasCommand.class),
+    @SubCommand(name = "rk", impl = PerfRuleKeyCommand.class),
+    @SubCommand(name = "manifest", impl = PerfManifestCommand.class),
+    @SubCommand(name = "mbr", impl = PerfMbrCommand.class),
   })
   @SuppressFieldNotInitialized
   Command subcommand;

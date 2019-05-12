@@ -23,7 +23,7 @@ import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.impl.BuildTargetPaths;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
+import com.facebook.buck.core.rules.BuildRuleResolver;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
 import com.facebook.buck.core.toolchain.tool.Tool;
@@ -36,7 +36,7 @@ import com.facebook.buck.jvm.java.TestType;
 import com.facebook.buck.rules.args.Arg;
 import com.facebook.buck.step.Step;
 import com.facebook.buck.step.fs.WriteFileStep;
-import com.facebook.buck.util.Optionals;
+import com.facebook.buck.util.RichStream;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
@@ -298,22 +298,22 @@ public class RobolectricTest extends JavaTest {
   }
 
   @Override
-  public Stream<BuildTarget> getRuntimeDeps(SourcePathRuleFinder ruleFinder) {
+  public Stream<BuildTarget> getRuntimeDeps(BuildRuleResolver buildRuleResolver) {
     return Stream.concat(
         // Inherit any runtime deps from `JavaTest`.
-        super.getRuntimeDeps(ruleFinder),
+        super.getRuntimeDeps(buildRuleResolver),
         Stream.of(
                 // On top of the runtime dependencies of a normal {@link JavaTest}, we need to make
                 // the
                 // {@link DummyRDotJava} and any of its resource deps is available locally (if it
                 // exists)
                 // to run this test.
-                Optionals.toStream(optionalDummyRDotJava),
-                Optionals.toStream(optionalDummyRDotJava)
-                    .flatMap(input -> input.getAndroidResourceDeps().stream())
-                    .flatMap(input -> Stream.of(input.getRes(), input.getAssets()))
-                    .filter(Objects::nonNull)
-                    .flatMap(ruleFinder.FILTER_BUILD_RULE_INPUTS),
+                RichStream.from(optionalDummyRDotJava),
+                buildRuleResolver.filterBuildRuleInputs(
+                    RichStream.from(optionalDummyRDotJava)
+                        .flatMap(input -> input.getAndroidResourceDeps().stream())
+                        .flatMap(input -> Stream.of(input.getRes(), input.getAssets()))
+                        .filter(Objects::nonNull)),
                 // It's possible that the user added some tool as a dependency, so make sure we
                 // promote this rules first-order deps to runtime deps, so that these potential
                 // tools are available when this test runs.

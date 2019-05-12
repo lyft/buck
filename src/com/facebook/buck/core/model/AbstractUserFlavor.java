@@ -17,6 +17,8 @@
 package com.facebook.buck.core.model;
 
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.google.common.base.Preconditions;
 import org.immutables.value.Value;
 
@@ -24,16 +26,19 @@ import org.immutables.value.Value;
  * A {@link com.facebook.buck.core.model.Flavor} visible to the user, with which they can modify
  * output of a target.
  */
-@Value.Immutable
+@Value.Immutable(copy = false, builder = false)
 @BuckStyleImmutable
+@JsonDeserialize
 abstract class AbstractUserFlavor implements Flavor {
 
   @Override
   @Value.Parameter
+  @JsonProperty("name")
   public abstract String getName();
 
   @Value.Parameter
   @Value.Auxiliary
+  @JsonProperty("description")
   public abstract String getDescription();
 
   @Override

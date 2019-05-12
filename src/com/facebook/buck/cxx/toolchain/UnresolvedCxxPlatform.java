@@ -18,8 +18,8 @@ package com.facebook.buck.cxx.toolchain;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.Flavor;
 import com.facebook.buck.core.model.FlavorConvertible;
+import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.google.common.base.Verify;
 
 /**
  * Used by descriptions to properly handle {@link CxxPlatform}. During parsing/configuration only
@@ -28,7 +28,7 @@ import com.google.common.base.Verify;
  */
 public interface UnresolvedCxxPlatform extends FlavorConvertible {
   /** Resolves the platform. */
-  CxxPlatform resolve(BuildRuleResolver resolver);
+  CxxPlatform resolve(BuildRuleResolver resolver, TargetConfiguration targetConfiguration);
 
   @Override
   Flavor getFlavor();
@@ -40,7 +40,7 @@ public interface UnresolvedCxxPlatform extends FlavorConvertible {
   UnresolvedCxxPlatform withFlavor(Flavor hostFlavor);
 
   /** Returns the parse-time deps required for this platform. */
-  Iterable<BuildTarget> getParseTimeDeps();
+  Iterable<BuildTarget> getParseTimeDeps(TargetConfiguration targetConfiguration);
 
   /**
    * This probably shouldn't exist. Users probably shouldn't be able to specify specific individual
@@ -48,19 +48,5 @@ public interface UnresolvedCxxPlatform extends FlavorConvertible {
    * getParseTimeDeps() instead or update this comment with your valid use case.
    */
   // TODO(cjhopman): delete this.
-  Iterable<? extends BuildTarget> getLinkerParseTimeDeps();
-
-  /**
-   * This definitely shouldn't exist. Currently, there are cases where we require resolving the
-   * CxxPlatform before graph construction. This is mostly just for other platform-like things that
-   * reference the cxx one.
-   */
-  // TODO(cjhopman): delete this.
-  default CxxPlatform getLegacyTotallyUnsafe() {
-    Verify.verify(
-        this instanceof StaticUnresolvedCxxPlatform,
-        "Resolving the CxxPlatform without a BuildRuleResolver is totally unsupported. "
-            + "It only sort of happens to work with static cxx platforms.");
-    return ((StaticUnresolvedCxxPlatform) this).getCxxPlatform();
-  }
+  Iterable<? extends BuildTarget> getLinkerParseTimeDeps(TargetConfiguration targetConfiguration);
 }

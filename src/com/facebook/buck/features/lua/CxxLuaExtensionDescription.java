@@ -28,10 +28,8 @@ import com.facebook.buck.core.model.targetgraph.DescriptionWithTargetGraph;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.ToolchainProvider;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
 import com.facebook.buck.cxx.CxxConstructorArg;
@@ -44,13 +42,13 @@ import com.facebook.buck.cxx.CxxPreprocessables;
 import com.facebook.buck.cxx.CxxPreprocessorInput;
 import com.facebook.buck.cxx.CxxSource;
 import com.facebook.buck.cxx.CxxSourceRuleFactory;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
-import com.facebook.buck.cxx.toolchain.CxxPlatforms;
 import com.facebook.buck.cxx.toolchain.HeaderSymlinkTree;
 import com.facebook.buck.cxx.toolchain.HeaderVisibility;
 import com.facebook.buck.cxx.toolchain.LinkerMapMode;
 import com.facebook.buck.cxx.toolchain.PicType;
+import com.facebook.buck.cxx.toolchain.impl.CxxPlatforms;
 import com.facebook.buck.cxx.toolchain.linker.Linker;
 import com.facebook.buck.cxx.toolchain.nativelink.NativeLinkTargetMode;
 import com.facebook.buck.cxx.toolchain.nativelink.NativeLinkable;
@@ -58,6 +56,7 @@ import com.facebook.buck.cxx.toolchain.nativelink.NativeLinkableInput;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.rules.args.Arg;
 import com.facebook.buck.rules.args.SourcePathArg;
+import com.facebook.buck.rules.macros.StringWithMacrosConverter;
 import com.facebook.buck.util.Optionals;
 import com.facebook.buck.util.RichStream;
 import com.facebook.buck.versions.VersionPropagator;
@@ -111,21 +110,21 @@ public class CxxLuaExtensionDescription
       BuildTarget buildTarget,
       ProjectFilesystem projectFilesystem,
       ActionGraphBuilder graphBuilder,
-      SourcePathResolver pathResolver,
-      SourcePathRuleFinder ruleFinder,
       CellPathResolver cellRoots,
       LuaPlatform luaPlatform,
       CxxLuaExtensionDescriptionArg args) {
 
     CxxPlatform cxxPlatform = luaPlatform.getCxxPlatform();
+    StringWithMacrosConverter macrosConverter =
+        CxxDescriptionEnhancer.getStringWithMacrosArgsConverter(
+            buildTarget, cellRoots, graphBuilder, cxxPlatform);
 
     // Extract all C/C++ sources from the constructor arg.
     ImmutableMap<String, CxxSource> srcs =
-        CxxDescriptionEnhancer.parseCxxSources(
-            buildTarget, graphBuilder, ruleFinder, pathResolver, cxxPlatform, args);
+        CxxDescriptionEnhancer.parseCxxSources(buildTarget, graphBuilder, cxxPlatform, args);
     ImmutableMap<Path, SourcePath> headers =
         CxxDescriptionEnhancer.parseHeaders(
-            buildTarget, graphBuilder, ruleFinder, pathResolver, Optional.of(cxxPlatform), args);
+            buildTarget, graphBuilder, Optional.of(cxxPlatform), args);
 
     // Setup the header symlink tree and combine all the preprocessor input from this rule
     // and all dependencies.
@@ -133,7 +132,6 @@ public class CxxLuaExtensionDescription
         CxxDescriptionEnhancer.requireHeaderSymlinkTree(
             buildTarget,
             projectFilesystem,
-            ruleFinder,
             graphBuilder,
             cxxPlatform,
             headers,
@@ -144,7 +142,7 @@ public class CxxLuaExtensionDescription
         ImmutableList.<CxxPreprocessorInput>builder()
             .add(
                 luaPlatform
-                    .getLuaCxxLibrary(graphBuilder)
+                    .getLuaCxxLibrary(graphBuilder, buildTarget.getTargetConfiguration())
                     .getCxxPreprocessorInput(cxxPlatform, graphBuilder))
             .addAll(
                 CxxDescriptionEnhancer.collectCxxPreprocessorInput(
@@ -160,9 +158,7 @@ public class CxxLuaExtensionDescription
                                 args.getLangPreprocessorFlags(),
                                 args.getLangPlatformPreprocessorFlags(),
                                 cxxPlatform),
-                            f ->
-                                CxxDescriptionEnhancer.toStringWithMacrosArgs(
-                                    buildTarget, cellRoots, graphBuilder, cxxPlatform, f))),
+                            macrosConverter::convert)),
                     ImmutableList.of(headerSymlinkTree),
                     ImmutableSet.of(),
                     CxxPreprocessables.getTransitiveCxxPreprocessorInput(
@@ -182,16 +178,13 @@ public class CxxLuaExtensionDescription
                     args.getLangCompilerFlags(),
                     args.getLangPlatformCompilerFlags(),
                     cxxPlatform),
-                f ->
-                    CxxDescriptionEnhancer.toStringWithMacrosArgs(
-                        buildTarget, cellRoots, graphBuilder, cxxPlatform, f)));
+                macrosConverter::convert));
     ImmutableMap<CxxPreprocessAndCompile, SourcePath> picObjects =
         CxxSourceRuleFactory.of(
                 projectFilesystem,
                 buildTarget,
                 graphBuilder,
-                pathResolver,
-                ruleFinder,
+                graphBuilder.getSourcePathResolver(),
                 cxxBuckConfig,
                 cxxPlatform,
                 cxxPreprocessorInput,
@@ -205,10 +198,7 @@ public class CxxLuaExtensionDescription
     CxxFlags.getFlagsWithMacrosWithPlatformMacroExpansion(
             args.getLinkerFlags(), args.getPlatformLinkerFlags(), cxxPlatform)
         .stream()
-        .map(
-            f ->
-                CxxDescriptionEnhancer.toStringWithMacrosArgs(
-                    buildTarget, cellRoots, graphBuilder, cxxPlatform, f))
+        .map(macrosConverter::convert)
         .forEach(argsBuilder::add);
 
     // Add object files into the args.
@@ -225,8 +215,6 @@ public class CxxLuaExtensionDescription
       LuaPlatform luaPlatform,
       CxxLuaExtensionDescriptionArg args) {
     CxxPlatform cxxPlatform = luaPlatform.getCxxPlatform();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
     String extensionName = getExtensionName(buildTarget, cxxPlatform);
     Path extensionPath = getExtensionPath(projectFilesystem, buildTarget, cxxPlatform);
     return CxxLinkableEnhancer.createCxxLinkableBuildRule(
@@ -234,8 +222,6 @@ public class CxxLuaExtensionDescription
         cxxPlatform,
         projectFilesystem,
         graphBuilder,
-        pathResolver,
-        ruleFinder,
         getExtensionTarget(buildTarget, cxxPlatform.getFlavor()),
         Linker.LinkType.SHARED,
         Optional.of(extensionName),
@@ -245,7 +231,10 @@ public class CxxLuaExtensionDescription
         CxxLinkOptions.of(),
         RichStream.from(args.getCxxDeps().get(graphBuilder, cxxPlatform))
             .filter(NativeLinkable.class)
-            .concat(Stream.of(luaPlatform.getLuaCxxLibrary(graphBuilder)))
+            .concat(
+                Stream.of(
+                    luaPlatform.getLuaCxxLibrary(
+                        graphBuilder, buildTarget.getTargetConfiguration())))
             .toImmutableList(),
         args.getCxxRuntimeType(),
         Optional.empty(),
@@ -257,8 +246,6 @@ public class CxxLuaExtensionDescription
                     buildTarget.withoutFlavors(LinkerMapMode.NO_LINKER_MAP.getFlavor()),
                     projectFilesystem,
                     graphBuilder,
-                    pathResolver,
-                    ruleFinder,
                     cellRoots,
                     luaPlatform,
                     args))
@@ -328,16 +315,13 @@ public class CxxLuaExtensionDescription
       public NativeLinkableInput getNativeLinkTargetInput(
           CxxPlatform cxxPlatform,
           ActionGraphBuilder graphBuilder,
-          SourcePathResolver pathResolver,
-          SourcePathRuleFinder ruleFinder) {
+          SourcePathResolver pathResolver) {
         return NativeLinkableInput.builder()
             .addAllArgs(
                 getExtensionArgs(
                     buildTarget,
                     projectFilesystem,
                     graphBuilder,
-                    pathResolver,
-                    ruleFinder,
                     cellRoots,
                     luaPlatforms.getValue(cxxPlatform.getFlavor()),
                     args))
@@ -346,7 +330,7 @@ public class CxxLuaExtensionDescription
       }
 
       @Override
-      public Optional<Path> getNativeLinkTargetOutputPath(CxxPlatform cxxPlatform) {
+      public Optional<Path> getNativeLinkTargetOutputPath() {
         return Optional.empty();
       }
     };
@@ -367,7 +351,8 @@ public class CxxLuaExtensionDescription
 
       // Get any parse time deps from the C/C++ platforms.
       targetGraphOnlyDepsBuilder.addAll(
-          CxxPlatforms.getParseTimeDeps(luaPlatform.getCxxPlatform()));
+          CxxPlatforms.getParseTimeDeps(
+              buildTarget.getTargetConfiguration(), luaPlatform.getCxxPlatform()));
     }
   }
 

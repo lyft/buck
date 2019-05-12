@@ -93,7 +93,9 @@ public class LocalFallbackStrategyTest {
     FallbackStrategyBuildResult fallbackStrategyBuildResult =
         new FallbackStrategyBuildResult(
             RULE_NAME, strategyBuildResult, buildStrategyContext, eventBus);
-    Assert.assertEquals(localResult, fallbackStrategyBuildResult.getBuildResult().get().get());
+    Assert.assertEquals(
+        localResult.getStatus(),
+        fallbackStrategyBuildResult.getBuildResult().get().get().getStatus());
 
     EasyMock.verify(strategyBuildResult, buildStrategyContext);
   }
@@ -113,7 +115,9 @@ public class LocalFallbackStrategyTest {
     FallbackStrategyBuildResult fallbackStrategyBuildResult =
         new FallbackStrategyBuildResult(
             RULE_NAME, strategyBuildResult, buildStrategyContext, eventBus);
-    Assert.assertEquals(localResult, fallbackStrategyBuildResult.getBuildResult().get().get());
+    Assert.assertEquals(
+        localResult.getStatus(),
+        fallbackStrategyBuildResult.getBuildResult().get().get().getStatus());
 
     EasyMock.verify(strategyBuildResult, buildStrategyContext);
   }
@@ -133,13 +137,15 @@ public class LocalFallbackStrategyTest {
     FallbackStrategyBuildResult fallbackStrategyBuildResult =
         new FallbackStrategyBuildResult(
             RULE_NAME, strategyBuildResult, buildStrategyContext, eventBus);
-    Assert.assertEquals(localResult, fallbackStrategyBuildResult.getBuildResult().get().get());
+    Assert.assertEquals(
+        localResult.getStatus(),
+        fallbackStrategyBuildResult.getBuildResult().get().get().getStatus());
 
     EasyMock.verify(strategyBuildResult, buildStrategyContext);
   }
 
   @Test
-  public void testLocalException() throws ExecutionException, InterruptedException {
+  public void testLocalException() throws InterruptedException {
     EasyMock.expect(strategyBuildResult.getBuildResult())
         .andReturn(Futures.immediateFuture(Optional.of(failedBuildResult("//will/fail:remotely"))))
         .times(2);

@@ -16,10 +16,10 @@
 
 package com.facebook.buck.cli;
 
+import com.facebook.buck.core.model.QueryTarget;
 import com.facebook.buck.core.sourcepath.PathSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.query.QueryFileTarget;
-import com.facebook.buck.query.QueryTarget;
 import com.facebook.buck.util.json.ObjectMappers;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
@@ -60,8 +60,7 @@ public final class CommandHelper {
   public static void printJsonOutput(Set<QueryTarget> targets, PrintStream printStream)
       throws IOException {
     Set<String> targetsNames =
-        targets
-            .stream()
+        targets.stream()
             .peek(Objects::requireNonNull)
             .map(CommandHelper::stringify)
             .collect(ImmutableSet.toImmutableSet());
@@ -77,8 +76,7 @@ public final class CommandHelper {
    */
   public static void print(
       Multimap<String, QueryTarget> targetsAndDependencies, PrintStream printStream) {
-    ImmutableSortedSet.copyOf(targetsAndDependencies.values())
-        .stream()
+    ImmutableSortedSet.copyOf(QueryTarget::compare, targetsAndDependencies.values()).stream()
         .map(CommandHelper::stringify)
         .forEach(printStream::println);
   }

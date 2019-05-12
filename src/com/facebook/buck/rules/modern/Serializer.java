@@ -17,15 +17,18 @@
 package com.facebook.buck.rules.modern;
 
 import com.facebook.buck.core.cell.CellPathResolver;
+import com.facebook.buck.core.exceptions.BuckUncheckedExecutionException;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.model.impl.DefaultTargetConfiguration;
+import com.facebook.buck.core.model.impl.HostTargetConfiguration;
 import com.facebook.buck.core.rulekey.AddsToRuleKey;
+import com.facebook.buck.core.rulekey.CustomFieldBehaviorTag;
+import com.facebook.buck.core.rulekey.CustomFieldSerializationTag;
+import com.facebook.buck.core.rulekey.DefaultFieldSerialization;
 import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.modern.annotations.CustomClassBehaviorTag;
-import com.facebook.buck.core.rules.modern.annotations.CustomFieldBehavior;
-import com.facebook.buck.core.rules.modern.annotations.DefaultFieldSerialization;
 import com.facebook.buck.core.sourcepath.DefaultBuildTargetSourcePath;
 import com.facebook.buck.core.sourcepath.ExplicitBuildTargetSourcePath;
 import com.facebook.buck.core.sourcepath.ForwardingBuildTargetSourcePath;
@@ -37,7 +40,6 @@ import com.facebook.buck.rules.modern.impl.UnconfiguredBuildTargetTypeInfo;
 import com.facebook.buck.rules.modern.impl.ValueTypeInfoFactory;
 import com.facebook.buck.rules.modern.impl.ValueTypeInfos.ExcludedValueTypeInfo;
 import com.facebook.buck.util.RichStream;
-import com.facebook.buck.util.exceptions.BuckUncheckedExecutionException;
 import com.facebook.buck.util.types.Either;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Verify;
@@ -54,6 +56,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -73,6 +76,11 @@ import javax.annotation.Nullable;
  * other such fields).
  */
 public class Serializer {
+
+  public static final int TARGET_CONFIGURATION_TYPE_EMPTY = 0;
+  public static final int TARGET_CONFIGURATION_TYPE_HOST = 1;
+  public static final int TARGET_CONFIGURATION_TYPE_DEFAULT = 2;
+
   private static final int MAX_INLINE_LENGTH = 100;
   private final ConcurrentHashMap<AddsToRuleKey, Either<HashCode, byte[]>> cache =
       new ConcurrentHashMap<>();
@@ -98,9 +106,7 @@ public class Serializer {
     this.delegate = delegate;
     this.rootCellPath = cellResolver.getCellPathOrThrow(Optional.empty());
     this.cellMap =
-        cellResolver
-            .getKnownRoots()
-            .stream()
+        cellResolver.getKnownRoots().stream()
             .collect(ImmutableMap.toImmutableMap(root -> root, cellResolver::getCanonicalCellName));
   }
 
@@ -122,6 +128,34 @@ public class Serializer {
     if (cache.containsKey(instance)) {
       return Objects.requireNonNull(cache.get(instance));
     }
+
+    Visitor visitor = reserialize(instance, classInfo);
+
+    return Objects.requireNonNull(
+        cache.computeIfAbsent(
+            instance,
+            ignored -> {
+              byte[] data = visitor.byteStream.toByteArray();
+              ImmutableList<HashCode> children =
+                  visitor.children.build().distinct().collect(ImmutableList.toImmutableList());
+              return data.length < MAX_INLINE_LENGTH && children.isEmpty()
+                  ? Either.ofRight(data)
+                  : Either.ofLeft(delegate.registerNewValue(instance, data, children));
+            }));
+  }
+
+  /**
+   * Returns the serialized bytes of the instance. This is useful if the caller has lost the value
+   * recorded in a previous serialize call.
+   */
+  public <T extends AddsToRuleKey> byte[] reserialize(T instance) throws IOException {
+    ClassInfo<T> classInfo = DefaultClassInfoFactory.forInstance(instance);
+    // TODO(cjhopman): Return children too?
+    return reserialize(instance, classInfo).byteStream.toByteArray();
+  }
+
+  private <T extends AddsToRuleKey> Visitor reserialize(T instance, ClassInfo<T> classInfo)
+      throws IOException {
     Visitor visitor = new Visitor(instance.getClass());
 
     Optional<CustomClassBehaviorTag> serializerTag =
@@ -134,23 +168,7 @@ public class Serializer {
     } else {
       classInfo.visit(instance, visitor);
     }
-
-    return Objects.requireNonNull(
-        cache.computeIfAbsent(
-            instance,
-            ignored -> {
-              byte[] data = visitor.byteStream.toByteArray();
-              ImmutableList<HashCode> children =
-                  visitor.children.build().distinct().collect(ImmutableList.toImmutableList());
-              return data.length < MAX_INLINE_LENGTH && children.isEmpty()
-                  ? Either.ofRight(data)
-                  : Either.ofLeft(registerNewValue(instance, data, children));
-            }));
-  }
-
-  private <T extends AddsToRuleKey> HashCode registerNewValue(
-      T instance, byte[] data, ImmutableList<HashCode> children) {
-    return delegate.registerNewValue(instance, data, children);
+    return visitor;
   }
 
   private class Visitor implements ValueVisitor<IOException> {
@@ -241,12 +259,14 @@ public class Serializer {
         Field field,
         T value,
         ValueTypeInfo<T> valueTypeInfo,
-        Optional<CustomFieldBehavior> behavior)
+        List<Class<? extends CustomFieldBehaviorTag>> behavior)
         throws IOException {
       try {
-        if (behavior.isPresent()) {
-          if (CustomBehaviorUtils.get(behavior.get(), DefaultFieldSerialization.class)
-              .isPresent()) {
+        Optional<CustomFieldSerializationTag> serializerTag =
+            CustomBehaviorUtils.get(CustomFieldSerializationTag.class, behavior);
+
+        if (serializerTag.isPresent()) {
+          if (serializerTag.get() instanceof DefaultFieldSerialization) {
             @SuppressWarnings("unchecked")
             ValueTypeInfo<T> typeInfo =
                 (ValueTypeInfo<T>)
@@ -256,15 +276,16 @@ public class Serializer {
             return;
           }
 
-          Optional<?> serializerTag =
-              CustomBehaviorUtils.get(behavior.get(), CustomFieldSerialization.class);
-          if (serializerTag.isPresent()) {
-            @SuppressWarnings("unchecked")
-            CustomFieldSerialization<T> customSerializer =
-                (CustomFieldSerialization<T>) serializerTag.get();
-            customSerializer.serialize(value, this);
-            return;
-          }
+          Verify.verify(
+              serializerTag.get() instanceof CustomFieldSerialization,
+              "Unrecognized serialization behavior %s.",
+              serializerTag.get().getClass().getName());
+
+          @SuppressWarnings("unchecked")
+          CustomFieldSerialization<T> customSerializer =
+              (CustomFieldSerialization<T>) serializerTag.get();
+          customSerializer.serialize(value, this);
+          return;
         }
 
         Verify.verify(
@@ -395,9 +416,11 @@ public class Serializer {
     @Override
     public void visitTargetConfiguration(TargetConfiguration value) throws IOException {
       if (value instanceof EmptyTargetConfiguration) {
-        stream.writeBoolean(true);
+        stream.writeInt(TARGET_CONFIGURATION_TYPE_EMPTY);
+      } else if (value instanceof HostTargetConfiguration) {
+        stream.writeInt(TARGET_CONFIGURATION_TYPE_HOST);
       } else if (value instanceof DefaultTargetConfiguration) {
-        stream.writeBoolean(false);
+        stream.writeInt(TARGET_CONFIGURATION_TYPE_DEFAULT);
         UnconfiguredBuildTargetTypeInfo.INSTANCE.visit(
             ((DefaultTargetConfiguration) value).getTargetPlatform(), this);
       } else {

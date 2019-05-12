@@ -36,7 +36,6 @@ import com.facebook.buck.core.sourcepath.FakeSourcePath;
 import com.facebook.buck.core.sourcepath.PathSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
 import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
 import com.facebook.buck.testutil.TemporaryPaths;
@@ -62,10 +61,14 @@ public class JvmLibraryArgInterpreterTest {
 
   @Before
   public void createHelpers() {
-    defaults = JavacOptions.builder().setSourceLevel("8").setTargetLevel("8").build();
+    defaults =
+        JavacOptions.builder()
+            .setLanguageLevelOptions(
+                JavacLanguageLevelOptions.builder().setSourceLevel("8").setTargetLevel("8").build())
+            .build();
     graphBuilder = new TestActionGraphBuilder();
-    ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    sourcePathResolver = DefaultSourcePathResolver.from(ruleFinder);
+    ruleFinder = graphBuilder;
+    sourcePathResolver = ruleFinder.getSourcePathResolver();
   }
 
   @Test
@@ -75,8 +78,8 @@ public class JvmLibraryArgInterpreterTest {
 
     JavacOptions options = createJavacOptions(arg);
 
-    assertEquals("1.4", options.getSourceLevel());
-    assertEquals("1.4", options.getTargetLevel());
+    assertEquals("1.4", options.getLanguageLevelOptions().getSourceLevel());
+    assertEquals("1.4", options.getLanguageLevelOptions().getTargetLevel());
   }
 
   @Test

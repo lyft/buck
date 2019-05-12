@@ -22,8 +22,8 @@ import com.facebook.buck.cxx.toolchain.Compiler;
 import com.facebook.buck.cxx.toolchain.DebugPathSanitizer;
 import com.facebook.buck.cxx.toolchain.DependencyTrackingMode;
 import com.facebook.buck.event.ConsoleEvent;
-import com.facebook.buck.io.file.MorePaths;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
+import com.facebook.buck.io.pathformat.PathFormatter;
 import com.facebook.buck.step.Step;
 import com.facebook.buck.step.StepExecutionResult;
 import com.facebook.buck.util.Console;
@@ -171,7 +171,7 @@ class CxxPreprocessAndCompileStep implements Step {
         .addAll(
             compiler.outputArgs(
                 useUnixPathSeparator
-                    ? MorePaths.pathWithUnixSeparators(output.toString())
+                    ? PathFormatter.pathWithUnixSeparators(output.toString())
                     : output.toString()))
         .add("-c")
         .addAll(
@@ -180,7 +180,7 @@ class CxxPreprocessAndCompileStep implements Step {
                 .orElseGet(ImmutableList::of))
         .add(
             useUnixPathSeparator
-                ? MorePaths.pathWithUnixSeparators(input.toString())
+                ? PathFormatter.pathWithUnixSeparators(input.toString())
                 : input.toString())
         .build();
   }
@@ -209,7 +209,9 @@ class CxxPreprocessAndCompileStep implements Step {
 
     ProcessExecutorParams params = builder.build();
 
-    LOG.debug("Running command (pwd=%s): %s", params.getDirectory(), getDescription(context));
+    if (LOG.isVerboseEnabled()) {
+      LOG.verbose("Running command (pwd=%s): %s", params.getDirectory(), getDescription(context));
+    }
 
     ProcessExecutor.Result result =
         new DefaultProcessExecutor(Console.createNullConsole()).launchAndExecute(params);
@@ -263,8 +265,7 @@ class CxxPreprocessAndCompileStep implements Step {
       List<String> errorLines = includesAndErrors.getOrDefault(false, Collections.emptyList());
 
       includeLines =
-          includeLines
-              .stream()
+          includeLines.stream()
               .map(CxxPreprocessAndCompileStep::parseShowIncludeLine)
               .collect(Collectors.toList());
       writeSrcAndIncludes(includeLines, depFile.get());
@@ -278,8 +279,7 @@ class CxxPreprocessAndCompileStep implements Step {
       List<String> errorLines = includesAndErrors.getOrDefault(false, Collections.emptyList());
 
       includeLines =
-          includeLines
-              .stream()
+          includeLines.stream()
               .map(CxxPreprocessAndCompileStep::parseShowHeadersLine)
               .collect(Collectors.toList());
       writeSrcAndIncludes(includeLines, depFile.get());
@@ -347,7 +347,9 @@ class CxxPreprocessAndCompileStep implements Step {
   @Override
   public StepExecutionResult execute(ExecutionContext context)
       throws IOException, InterruptedException {
-    LOG.debug("%s %s -> %s", operation.toString().toLowerCase(), input, output);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("%s %s -> %s", operation.toString().toLowerCase(), input, output);
+    }
 
     ProcessExecutor.Result result = executeCompilation(context);
     int exitCode = result.getExitCode();
@@ -371,7 +373,9 @@ class CxxPreprocessAndCompileStep implements Step {
     }
 
     if (exitCode != 0) {
-      LOG.debug("error %d %s %s", exitCode, operation.toString().toLowerCase(), input);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("error %d %s %s", exitCode, operation.toString().toLowerCase(), input);
+      }
     }
 
     return StepExecutionResult.of(result);

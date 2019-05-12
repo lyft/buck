@@ -20,16 +20,15 @@ import com.facebook.buck.android.packageable.AndroidPackageable;
 import com.facebook.buck.android.packageable.AndroidPackageableCollector;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.Flavor;
+import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.attr.HasRuntimeDeps;
 import com.facebook.buck.core.rules.impl.NoopBuildRuleWithDeclaredAndExtraDeps;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.util.log.Logger;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.HeaderVisibility;
@@ -45,7 +44,7 @@ import com.facebook.buck.rules.args.FileListableLinkerInputArg;
 import com.facebook.buck.rules.args.SourcePathArg;
 import com.facebook.buck.rules.coercer.FrameworkPath;
 import com.facebook.buck.util.RichStream;
-import com.facebook.buck.util.function.QuadFunction;
+import com.facebook.buck.util.function.TriFunction;
 import com.google.common.base.Preconditions;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
@@ -80,12 +79,8 @@ public class CxxLibrary extends NoopBuildRuleWithDeclaredAndExtraDeps
       exportedLinkerFlags;
   private final BiFunction<? super CxxPlatform, ActionGraphBuilder, Iterable<? extends Arg>>
       postExportedLinkerFlags;
-  private final QuadFunction<
-          ? super CxxPlatform,
-          ActionGraphBuilder,
-          SourcePathResolver,
-          SourcePathRuleFinder,
-          NativeLinkableInput>
+  private final TriFunction<
+          ? super CxxPlatform, ActionGraphBuilder, SourcePathResolver, NativeLinkableInput>
       linkTargetInput;
   private final Optional<Pattern> supportedPlatformsRegex;
   private final ImmutableSet<FrameworkPath> frameworks;
@@ -123,12 +118,7 @@ public class CxxLibrary extends NoopBuildRuleWithDeclaredAndExtraDeps
           exportedLinkerFlags,
       BiFunction<? super CxxPlatform, ActionGraphBuilder, Iterable<? extends Arg>>
           postExportedLinkerFlags,
-      QuadFunction<
-              ? super CxxPlatform,
-              ActionGraphBuilder,
-              SourcePathResolver,
-              SourcePathRuleFinder,
-              NativeLinkableInput>
+      TriFunction<? super CxxPlatform, ActionGraphBuilder, SourcePathResolver, NativeLinkableInput>
           linkTargetInput,
       Optional<Pattern> supportedPlatformsRegex,
       ImmutableSet<FrameworkPath> frameworks,
@@ -348,10 +338,10 @@ public class CxxLibrary extends NoopBuildRuleWithDeclaredAndExtraDeps
                         ? CxxDescriptionEnhancer.STATIC_FLAVOR
                         : CxxDescriptionEnhancer.STATIC_PIC_FLAVOR);
         if (linkWhole || forceLinkWhole) {
-          SourcePathResolver pathResolver =
-              DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder));
-          Linker linker = cxxPlatform.getLd().resolve(graphBuilder);
-          linkerArgsBuilder.addAll(linker.linkWhole(archive.toArg(), pathResolver));
+          Linker linker =
+              cxxPlatform.getLd().resolve(graphBuilder, getBuildTarget().getTargetConfiguration());
+          linkerArgsBuilder.addAll(
+              linker.linkWhole(archive.toArg(), graphBuilder.getSourcePathResolver()));
         } else {
           Arg libraryArg = archive.toArg();
           if (libraryArg instanceof SourcePathArg) {
@@ -392,7 +382,8 @@ public class CxxLibrary extends NoopBuildRuleWithDeclaredAndExtraDeps
       CxxPlatform cxxPlatform,
       Linker.LinkableDepType type,
       boolean forceLinkWhole,
-      ActionGraphBuilder graphBuilder) {
+      ActionGraphBuilder graphBuilder,
+      TargetConfiguration targetConfiguration) {
     NativeLinkableCacheKey key =
         NativeLinkableCacheKey.of(cxxPlatform.getFlavor(), type, forceLinkWhole, cxxPlatform);
     try {
@@ -472,19 +463,16 @@ public class CxxLibrary extends NoopBuildRuleWithDeclaredAndExtraDeps
 
   @Override
   public NativeLinkableInput getNativeLinkTargetInput(
-      CxxPlatform cxxPlatform,
-      ActionGraphBuilder graphBuilder,
-      SourcePathResolver pathResolver,
-      SourcePathRuleFinder ruleFinder) {
+      CxxPlatform cxxPlatform, ActionGraphBuilder graphBuilder, SourcePathResolver pathResolver) {
     if (!isPlatformSupported(cxxPlatform)) {
       LOG.verbose("Skipping library %s on platform %s", this, cxxPlatform.getFlavor());
       return NativeLinkableInput.of();
     }
-    return linkTargetInput.apply(cxxPlatform, graphBuilder, pathResolver, ruleFinder);
+    return linkTargetInput.apply(cxxPlatform, graphBuilder, pathResolver);
   }
 
   @Override
-  public Optional<Path> getNativeLinkTargetOutputPath(CxxPlatform cxxPlatform) {
+  public Optional<Path> getNativeLinkTargetOutputPath() {
     return Optional.empty();
   }
 
@@ -494,7 +482,7 @@ public class CxxLibrary extends NoopBuildRuleWithDeclaredAndExtraDeps
   }
 
   @Override
-  public Stream<BuildTarget> getRuntimeDeps(SourcePathRuleFinder ruleFinder) {
+  public Stream<BuildTarget> getRuntimeDeps(BuildRuleResolver buildRuleResolver) {
     // We export all declared deps as runtime deps, to setup a transitive runtime dep chain which
     // will pull in runtime deps (e.g. other binaries) or transitive C/C++ libraries.  Since the
     // `CxxLibrary` rules themselves are noop meta rules, they shouldn't add any unnecessary
@@ -504,7 +492,7 @@ public class CxxLibrary extends NoopBuildRuleWithDeclaredAndExtraDeps
         // holding, since we need to access nodes already created by the previous build rule
         // ruleFinder in the incremental action graph scenario, and {@see #updateBuildRuleResolver}
         // may already have been called.
-        .concat(exportedDeps.getForAllPlatforms(ruleFinder.getRuleResolver()).stream())
+        .concat(exportedDeps.getForAllPlatforms(buildRuleResolver).stream())
         .map(BuildRule::getBuildTarget);
   }
 

@@ -19,15 +19,16 @@ package com.facebook.buck.rules.coercer;
 import com.facebook.buck.core.cell.CellPathResolver;
 import com.facebook.buck.core.exceptions.BuildTargetParseException;
 import com.facebook.buck.core.model.TargetConfiguration;
-import com.facebook.buck.core.model.UnconfiguredBuildTarget;
-import com.facebook.buck.core.model.UnflavoredBuildTarget;
+import com.facebook.buck.core.model.UnconfiguredBuildTargetView;
+import com.facebook.buck.core.model.UnflavoredBuildTargetView;
 import com.facebook.buck.core.parser.buildtargetparser.UnconfiguredBuildTargetFactory;
-import com.facebook.buck.io.file.MorePaths;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
+import com.facebook.buck.io.pathformat.PathFormatter;
 import java.nio.file.Path;
 
-/** {@link TypeCoercer} for {@link UnconfiguredBuildTarget} */
-public class UnconfiguredBuildTargetTypeCoercer extends LeafTypeCoercer<UnconfiguredBuildTarget> {
+/** {@link TypeCoercer} for {@link UnconfiguredBuildTargetView} */
+public class UnconfiguredBuildTargetTypeCoercer
+    extends LeafTypeCoercer<UnconfiguredBuildTargetView> {
 
   private final UnconfiguredBuildTargetFactory unconfiguredBuildTargetFactory;
 
@@ -37,12 +38,12 @@ public class UnconfiguredBuildTargetTypeCoercer extends LeafTypeCoercer<Unconfig
   }
 
   @Override
-  public Class<UnconfiguredBuildTarget> getOutputClass() {
-    return UnconfiguredBuildTarget.class;
+  public Class<UnconfiguredBuildTargetView> getOutputClass() {
+    return UnconfiguredBuildTargetView.class;
   }
 
   @Override
-  public UnconfiguredBuildTarget coerce(
+  public UnconfiguredBuildTargetView coerce(
       CellPathResolver cellRoots,
       ProjectFilesystem alsoUnused,
       Path pathRelativeToProjectRoot,
@@ -56,8 +57,8 @@ public class UnconfiguredBuildTargetTypeCoercer extends LeafTypeCoercer<Unconfig
 
     try {
       String baseName =
-          UnflavoredBuildTarget.BUILD_TARGET_PREFIX
-              + MorePaths.pathWithUnixSeparators(pathRelativeToProjectRoot);
+          UnflavoredBuildTargetView.BUILD_TARGET_PREFIX
+              + PathFormatter.pathWithUnixSeparators(pathRelativeToProjectRoot);
 
       return unconfiguredBuildTargetFactory.createForBaseName(cellRoots, baseName, param);
     } catch (BuildTargetParseException e) {

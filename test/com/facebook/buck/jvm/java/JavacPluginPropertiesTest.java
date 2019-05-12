@@ -24,12 +24,10 @@ import com.facebook.buck.core.rulekey.RuleKey;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.TestBuildRuleParams;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
+import com.facebook.buck.core.sourcepath.FakeSourcePath;
 import com.facebook.buck.core.sourcepath.PathSourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
 import com.facebook.buck.jvm.java.AbstractJavacPluginProperties.Type;
@@ -48,13 +46,58 @@ public class JavacPluginPropertiesTest {
   @Test
   public void transitiveAnnotationProcessorDepsInInputs() {
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
 
-    FakeJavaLibrary rawDep = new FakeJavaLibrary(BuildTargetFactory.newInstance("//:dep"));
-    BuildRule dep = graphBuilder.computeIfAbsent(rawDep.getBuildTarget(), buildTarget -> rawDep);
+    FakeProjectFilesystem fakeProjectFilesystem = new FakeProjectFilesystem();
+
+    PrebuiltJar rawTransitivePrebuiltJarDep =
+        new PrebuiltJar(
+            BuildTargetFactory.newInstance("//lib:junit-util"),
+            fakeProjectFilesystem,
+            TestBuildRuleParams.create(),
+            new TestActionGraphBuilder().getSourcePathResolver(),
+            FakeSourcePath.of("abi-util.jar"),
+            Optional.of(FakeSourcePath.of("lib/junit-util-4.11-sources.jar")),
+            /* gwtJar */ Optional.empty(),
+            Optional.of("http://junit-team.github.io/junit-util/javadoc/latest/"),
+            /* mavenCoords */ Optional.empty(),
+            /* provided */ false,
+            /* requiredForSourceOnlyAbi */ false);
+    BuildRule transitivePrebuiltJarDep =
+        graphBuilder.computeIfAbsent(
+            rawTransitivePrebuiltJarDep.getBuildTarget(),
+            buildTarget -> rawTransitivePrebuiltJarDep);
+
+    PrebuiltJar rawFirstLevelPrebuiltJarDep =
+        new PrebuiltJar(
+            BuildTargetFactory.newInstance("//lib:junit"),
+            fakeProjectFilesystem,
+            new BuildRuleParams(
+                () -> ImmutableSortedSet.of(transitivePrebuiltJarDep),
+                ImmutableSortedSet::of,
+                ImmutableSortedSet.of()),
+            new TestActionGraphBuilder().getSourcePathResolver(),
+            FakeSourcePath.of("abi.jar"),
+            Optional.of(FakeSourcePath.of("lib/junit-4.11-sources.jar")),
+            /* gwtJar */ Optional.empty(),
+            Optional.of("http://junit-team.github.io/junit/javadoc/latest/"),
+            /* mavenCoords */ Optional.empty(),
+            /* provided */ false,
+            /* requiredForSourceOnlyAbi */ false);
+    BuildRule firstLevelPrebuiltJarDep =
+        graphBuilder.computeIfAbsent(
+            rawFirstLevelPrebuiltJarDep.getBuildTarget(),
+            buildTarget -> rawFirstLevelPrebuiltJarDep);
+
+    FakeJavaLibrary rawJavaLibraryDep =
+        new FakeJavaLibrary(BuildTargetFactory.newInstance("//:dep"));
+    BuildRule javaLibraryDep =
+        graphBuilder.computeIfAbsent(
+            rawJavaLibraryDep.getBuildTarget(), buildTarget -> rawJavaLibraryDep);
+
     FakeJavaLibrary rawProcessor =
         new FakeJavaLibrary(
-            BuildTargetFactory.newInstance("//:processor"), ImmutableSortedSet.of(dep));
+            BuildTargetFactory.newInstance("//:processor"),
+            ImmutableSortedSet.of(javaLibraryDep, firstLevelPrebuiltJarDep));
     BuildRule processor =
         graphBuilder.computeIfAbsent(rawProcessor.getBuildTarget(), buildTarget -> rawProcessor);
 
@@ -68,8 +111,14 @@ public class JavacPluginPropertiesTest {
             .build();
 
     assertThat(
-        ruleFinder.filterBuildRuleInputs(props.getInputs()),
-        Matchers.containsInAnyOrder(processor, dep));
+        graphBuilder.filterBuildRuleInputs(props.getInputs()),
+        Matchers.containsInAnyOrder(
+            processor, javaLibraryDep, firstLevelPrebuiltJarDep, transitivePrebuiltJarDep));
+
+    assertThat(
+        graphBuilder.filterBuildRuleInputs(props.getClasspathEntries()),
+        Matchers.containsInAnyOrder(
+            processor, javaLibraryDep, firstLevelPrebuiltJarDep, transitivePrebuiltJarDep));
   }
 
   private JavaAnnotationProcessor createAnnotationProcessor(
@@ -113,8 +162,6 @@ public class JavacPluginPropertiesTest {
 
   private RuleKey createInputRuleKey(Optional<String> resourceName) {
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
     ProjectFilesystem filesystem = new FakeProjectFilesystem();
 
     Optional<PathSourcePath> resource =
@@ -131,12 +178,12 @@ public class JavacPluginPropertiesTest {
                 HashCode.fromInt(0));
     if (resource.isPresent()) {
       builder.put(
-          pathResolver.getAbsolutePath(resource.get()),
+          graphBuilder.getSourcePathResolver().getAbsolutePath(resource.get()),
           HashCode.fromInt(resourceName.get().hashCode()));
     }
     FakeFileHashCache hashCache = new FakeFileHashCache(builder.build());
 
-    return new TestInputBasedRuleKeyFactory(hashCache, pathResolver, ruleFinder).build(processor);
+    return new TestInputBasedRuleKeyFactory(hashCache, graphBuilder).build(processor);
   }
 
   @Test

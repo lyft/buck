@@ -17,6 +17,7 @@ package com.facebook.buck.core.rules.resolver.impl;
 
 import com.facebook.buck.core.description.BaseDescription;
 import com.facebook.buck.core.description.MetadataProvidingDescription;
+import com.facebook.buck.core.exceptions.BuckUncheckedExecutionException;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.targetgraph.TargetGraph;
 import com.facebook.buck.core.model.targetgraph.TargetNode;
@@ -57,7 +58,12 @@ final class ActionGraphBuilderMetadataCache {
     @Override
     public Optional<?> load(Pair<BuildTarget, Class<?>> key) {
       TargetNode<?> node = targetGraph.get(key.getFirst());
-      return load(node, key.getSecond());
+      try {
+        return load(node, key.getSecond());
+      } catch (Exception e) {
+        throw new BuckUncheckedExecutionException(
+            e, "Error loading metadata for target %s, class %s", key.getFirst(), key.getSecond());
+      }
     }
 
     @SuppressWarnings("unchecked")

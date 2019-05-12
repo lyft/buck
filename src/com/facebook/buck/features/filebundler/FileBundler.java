@@ -22,6 +22,7 @@ import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
 import com.facebook.buck.io.file.MorePaths;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
+import com.facebook.buck.io.pathformat.PathFormatter;
 import com.facebook.buck.rules.modern.BuildCellRelativePathFactory;
 import com.facebook.buck.step.Step;
 import com.facebook.buck.util.PatternsMatcher;
@@ -56,7 +57,7 @@ public abstract class FileBundler {
       Map<Path, Path> relativePathMap) {
     Path pathRelativeToBaseDir;
 
-    if (relativeFilePath.startsWith(basePath) || basePath.equals(MorePaths.EMPTY_PATH)) {
+    if (relativeFilePath.startsWith(basePath) || MorePaths.isEmpty(basePath)) {
       pathRelativeToBaseDir = MorePaths.relativize(basePath, relativeFilePath);
     } else {
       pathRelativeToBaseDir = assumedAbsoluteBasePath.relativize(absoluteFilePath);
@@ -139,7 +140,7 @@ public abstract class FileBundler {
       Path destination = destinationDir.resolve(relativePath);
 
       if (entriesToExclude.hasPatterns()) {
-        String entryPath = MorePaths.pathWithUnixSeparators(relativePath);
+        String entryPath = PathFormatter.pathWithUnixSeparators(relativePath);
         if (entriesToExclude.matchesAny(entryPath)) {
           continue;
         }

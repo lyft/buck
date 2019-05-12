@@ -29,7 +29,6 @@ import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleResolver;
 import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
 import com.facebook.buck.core.test.event.IndividualTestEvent;
 import com.facebook.buck.core.test.event.TestRunEvent;
 import com.facebook.buck.core.test.event.TestStatusMessageEvent;
@@ -131,7 +130,6 @@ public class TestRunning {
       TestRunningOptions options,
       ListeningExecutorService service,
       BuildEngine buildEngine,
-      StepRunner stepRunner,
       BuildContext buildContext,
       SourcePathRuleFinder ruleFinder)
       throws IOException, InterruptedException {
@@ -153,7 +151,7 @@ public class TestRunning {
                       buildContext.getBuildCellRootPath(),
                       library.getProjectFilesystem(),
                       JacocoConstants.getJacocoOutputDir(library.getProjectFilesystem())))) {
-            stepRunner.runStepForBuildTarget(executionContext, step, Optional.empty());
+            StepRunner.runStep(executionContext, step);
           }
         } catch (StepFailedException e) {
           params
@@ -303,7 +301,6 @@ public class TestRunning {
     for (TestRun testRun : parallelTestRuns) {
       ListenableFuture<TestResults> testResults =
           runStepsAndYieldResult(
-              stepRunner,
               executionContext,
               testRun.getSteps(),
               testRun.getTestResultsCallable(),
@@ -340,7 +337,6 @@ public class TestRunning {
                       transformTestResults(
                           params,
                           runStepsAndYieldResult(
-                              stepRunner,
                               executionContext,
                               testRun.getSteps(),
                               testRun.getTestResultsCallable(),
@@ -417,26 +413,27 @@ public class TestRunning {
         JavaOptions javaOptions = javaBuckConfig.getDefaultJavaOptions();
         ToolProvider javaRuntimeProvider = javaOptions.getJavaRuntimeProvider();
         Preconditions.checkState(
-            Iterables.isEmpty(javaRuntimeProvider.getParseTimeDeps()),
+            Iterables.isEmpty(
+                javaRuntimeProvider.getParseTimeDeps(params.getTargetConfiguration())),
             "Using a rule-defined java runtime does not currently support generating code coverage.");
 
-        stepRunner.runStepForBuildTarget(
+        StepRunner.runStep(
             executionContext,
             getReportCommand(
                 rulesUnderTestForCoverage,
                 defaultJavaPackageFinder,
-                javaRuntimeProvider.resolve(ruleResolver),
+                javaRuntimeProvider.resolve(ruleResolver, params.getTargetConfiguration()),
                 params.getCell().getFilesystem(),
-                buildContext.getSourcePathResolver(),
                 ruleFinder,
                 JacocoConstants.getJacocoOutputDir(params.getCell().getFilesystem()),
                 options.getCoverageReportFormats(),
                 options.getCoverageReportTitle(),
-                javaBuckConfig.getDefaultJavacOptions().getSpoolMode()
+                javaBuckConfig
+                        .getDefaultJavacOptions(params.getTargetConfiguration())
+                        .getSpoolMode()
                     == JavacOptions.SpoolMode.INTERMEDIATE_TO_DISK,
                 options.getCoverageIncludes(),
-                options.getCoverageExcludes()),
-            Optional.empty());
+                options.getCoverageExcludes()));
       } catch (StepFailedException e) {
         params
             .getBuckEventBus()
@@ -527,9 +524,7 @@ public class TestRunning {
                                     "",
                                     "")))),
                     testRule.getContacts(),
-                    testRule
-                        .getLabels()
-                        .stream()
+                    testRule.getLabels().stream()
                         .map(Object::toString)
                         .collect(ImmutableSet.toImmutableSet()));
             TestResults newTestResults = postTestResults(testResults);
@@ -716,7 +711,6 @@ public class TestRunning {
       DefaultJavaPackageFinder defaultJavaPackageFinder,
       Tool javaRuntimeLauncher,
       ProjectFilesystem filesystem,
-      SourcePathResolver sourcePathResolver,
       SourcePathRuleFinder ruleFinder,
       Path outputDirectory,
       Set<CoverageReportFormat> formats,
@@ -730,7 +724,7 @@ public class TestRunning {
     // Add all source directories of java libraries that we are testing to -sourcepath.
     for (JavaLibrary rule : rulesUnderTest) {
       ImmutableSet<String> sourceFolderPath =
-          getPathToSourceFolders(rule, sourcePathResolver, ruleFinder, defaultJavaPackageFinder);
+          getPathToSourceFolders(rule, ruleFinder, defaultJavaPackageFinder);
       if (!sourceFolderPath.isEmpty()) {
         srcDirectories.addAll(sourceFolderPath);
       }
@@ -741,7 +735,7 @@ public class TestRunning {
       } else {
         SourcePath path = rule.getSourcePathToOutput();
         if (path != null) {
-          classesItem = sourcePathResolver.getRelativePath(path);
+          classesItem = ruleFinder.getSourcePathResolver().getRelativePath(path);
         }
       }
       if (classesItem == null) {
@@ -751,7 +745,7 @@ public class TestRunning {
     }
 
     return new GenerateCodeCoverageReportStep(
-        javaRuntimeLauncher.getCommandPrefix(sourcePathResolver),
+        javaRuntimeLauncher.getCommandPrefix(ruleFinder.getSourcePathResolver()),
         filesystem,
         srcDirectories.build(),
         pathsToJars.build(),
@@ -766,7 +760,6 @@ public class TestRunning {
   @VisibleForTesting
   static ImmutableSet<String> getPathToSourceFolders(
       JavaLibrary rule,
-      SourcePathResolver sourcePathResolver,
       SourcePathRuleFinder ruleFinder,
       DefaultJavaPackageFinder defaultJavaPackageFinder) {
     ImmutableSet<SourcePath> javaSrcs = rule.getJavaSrcs();
@@ -785,7 +778,7 @@ public class TestRunning {
         continue;
       }
 
-      Path javaSrcRelativePath = sourcePathResolver.getRelativePath(javaSrcPath);
+      Path javaSrcRelativePath = ruleFinder.getSourcePathResolver().getRelativePath(javaSrcPath);
 
       // If the source path is already under a known source folder, then we can skip this
       // source path.
@@ -808,7 +801,7 @@ public class TestRunning {
       // Traverse the file system from the parent directory of the java file until we hit the
       // parent of the src root directory.
       ImmutableSet<String> pathElements = defaultJavaPackageFinder.getPathElements();
-      Path directory = sourcePathResolver.getAbsolutePath(javaSrcPath).getParent();
+      Path directory = ruleFinder.getSourcePathResolver().getAbsolutePath(javaSrcPath).getParent();
       if (pathElements.isEmpty()) {
         continue;
       }
@@ -834,7 +827,6 @@ public class TestRunning {
   }
 
   private static ListenableFuture<TestResults> runStepsAndYieldResult(
-      StepRunner stepRunner,
       ExecutionContext context,
       List<Step> steps,
       Callable<TestResults> interpretResults,
@@ -847,7 +839,7 @@ public class TestRunning {
           LOG.debug("Test steps will run for %s", buildTarget);
           eventBus.post(TestRuleEvent.started(buildTarget));
           for (Step step : steps) {
-            stepRunner.runStepForBuildTarget(context, step, Optional.of(buildTarget));
+            StepRunner.runStep(context, step);
           }
           LOG.debug("Test steps did run for %s", buildTarget);
           eventBus.post(TestRuleEvent.finished(buildTarget));

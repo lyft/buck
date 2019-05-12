@@ -16,7 +16,7 @@
 
 package com.facebook.buck.rules.modern.impl;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
 
 import com.facebook.buck.rules.modern.Buildable;
 import org.junit.Test;
@@ -211,6 +211,19 @@ public class StringifyingValueVisitorTest extends AbstractValueVisitorTest {
         stringify(new WithBuildTargetWithEmptyConfiguration()));
   }
 
+  @Test
+  @Override
+  public void buildTargetWithHostConfiguration() {
+    assertEquals(
+        "target:path(/project/other)Optional<\n"
+            + "  string(other)\n"
+            + ">string(//some)string(target)SortedSet<\n"
+            + "  string(flavor1)\n"
+            + "  string(flavor2)\n"
+            + ">configuration<hostPlatform>",
+        stringify(new WithBuildTargetWithHostConfiguration()));
+  }
+
   private String stringify(Buildable value) {
     StringifyingValueVisitor visitor = new StringifyingValueVisitor();
     DefaultClassInfoFactory.forInstance(value).visit(value, visitor);
@@ -356,5 +369,11 @@ public class StringifyingValueVisitorTest extends AbstractValueVisitorTest {
             + "  >\n"
             + ">",
         stringify(new WithWildcards()));
+  }
+
+  @Override
+  @Test
+  public void withExcludeFromRuleKey() {
+    assertEquals("sourcePath:\n" + "otherPath:", stringify(new WithExcludeFromRuleKey()));
   }
 }

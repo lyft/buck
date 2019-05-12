@@ -28,12 +28,9 @@ import com.facebook.buck.core.rulekey.AddToRuleKey;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.impl.AbstractBuildRuleWithDeclaredAndExtraDeps;
 import com.facebook.buck.core.sourcepath.ExplicitBuildTargetSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
 import com.facebook.buck.io.BuildCellRelativePath;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
@@ -66,22 +63,19 @@ public class PrebuiltJarDescription
       BuildRuleParams params,
       PrebuiltJarDescriptionArg args) {
     ActionGraphBuilder graphBuilder = context.getActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
     ProjectFilesystem projectFilesystem = context.getProjectFilesystem();
 
     if (JavaAbis.isClassAbiTarget(buildTarget)) {
       return CalculateClassAbi.of(
-          buildTarget, ruleFinder, projectFilesystem, params, args.getBinaryJar());
+          buildTarget, graphBuilder, projectFilesystem, params, args.getBinaryJar());
     }
-
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
 
     BuildRule prebuilt =
         new PrebuiltJar(
             buildTarget,
             projectFilesystem,
             params,
-            pathResolver,
+            graphBuilder.getSourcePathResolver(),
             args.getBinaryJar(),
             args.getSourceJar(),
             args.getGwtJar(),
@@ -118,11 +112,11 @@ public class PrebuiltJarDescription
       input = arg.getBinaryJar();
     }
 
-    class ExistingOuputs extends AbstractBuildRuleWithDeclaredAndExtraDeps {
+    class ExistingOutputs extends AbstractBuildRuleWithDeclaredAndExtraDeps {
       @AddToRuleKey private final SourcePath source;
       private final Path output;
 
-      protected ExistingOuputs(
+      protected ExistingOutputs(
           BuildTarget buildTarget,
           ProjectFilesystem projectFilesystem,
           BuildRuleParams params,
@@ -162,7 +156,7 @@ public class PrebuiltJarDescription
         return ExplicitBuildTargetSourcePath.of(getBuildTarget(), output);
       }
     }
-    return new ExistingOuputs(buildTarget, projectFilesystem, params, input);
+    return new ExistingOutputs(buildTarget, projectFilesystem, params, input);
   }
 
   @Override

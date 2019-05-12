@@ -18,12 +18,11 @@ package com.facebook.buck.distributed;
 
 import com.facebook.buck.core.cell.Cell;
 import com.facebook.buck.core.model.BuildTarget;
-import com.facebook.buck.core.model.EmptyTargetConfiguration;
-import com.facebook.buck.core.model.Flavor;
 import com.facebook.buck.core.model.InternalFlavor;
-import com.facebook.buck.core.model.UnflavoredBuildTarget;
-import com.facebook.buck.core.model.impl.ImmutableUnconfiguredBuildTarget;
-import com.facebook.buck.core.model.impl.ImmutableUnflavoredBuildTarget;
+import com.facebook.buck.core.model.UnflavoredBuildTargetView;
+import com.facebook.buck.core.model.impl.HostTargetConfiguration;
+import com.facebook.buck.core.model.impl.ImmutableUnconfiguredBuildTargetView;
+import com.facebook.buck.core.model.impl.ImmutableUnflavoredBuildTargetView;
 import com.facebook.buck.core.model.targetgraph.TargetGraph;
 import com.facebook.buck.core.model.targetgraph.TargetGraphAndBuildTargets;
 import com.facebook.buck.core.model.targetgraph.TargetNode;
@@ -34,13 +33,13 @@ import com.facebook.buck.distributed.thrift.BuildJobStateTargetGraph;
 import com.facebook.buck.distributed.thrift.BuildJobStateTargetNode;
 import com.facebook.buck.event.SimplePerfEvent;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
+import com.facebook.buck.parser.ParserConfig;
 import com.facebook.buck.parser.ParserTargetNodeFactory;
 import com.facebook.buck.util.MoreMaps;
 import com.facebook.buck.util.json.ObjectMappers;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListeningExecutorService;
@@ -134,23 +133,16 @@ public class DistBuildTargetGraphCodec {
 
   public static BuildTarget decodeBuildTarget(BuildJobStateBuildTarget remoteTarget, Cell cell) {
 
-    UnflavoredBuildTarget unflavoredBuildTarget =
-        ImmutableUnflavoredBuildTarget.builder()
-            .setShortName(remoteTarget.getShortName())
-            .setBaseName(remoteTarget.getBaseName())
-            .setCellPath(cell.getRoot())
-            .setCell(Optional.ofNullable(remoteTarget.getCellName()))
-            .build();
+    UnflavoredBuildTargetView unflavoredBuildTargetView =
+        ImmutableUnflavoredBuildTargetView.of(
+            cell.getRoot(),
+            Optional.ofNullable(remoteTarget.getCellName()),
+            remoteTarget.getBaseName(),
+            remoteTarget.getShortName());
 
-    ImmutableSet<Flavor> flavors =
-        remoteTarget
-            .flavors
-            .stream()
-            .map(InternalFlavor::of)
-            .collect(ImmutableSet.toImmutableSet());
-
-    return ImmutableUnconfiguredBuildTarget.of(unflavoredBuildTarget, flavors)
-        .configure(EmptyTargetConfiguration.INSTANCE);
+    return ImmutableUnconfiguredBuildTargetView.of(
+            unflavoredBuildTargetView, remoteTarget.flavors.stream().map(InternalFlavor::of))
+        .configure(HostTargetConfiguration.INSTANCE);
   }
 
   public TargetGraphAndBuildTargets createTargetGraph(
@@ -220,7 +212,9 @@ public class DistBuildTargetGraphCodec {
           Map<String, Object> rawNode = getRawNode(remoteNode);
 
           Path buildFilePath =
-              projectFilesystem.resolve(target.getBasePath()).resolve(cell.getBuildFileName());
+              projectFilesystem
+                  .resolve(target.getBasePath())
+                  .resolve(cell.getBuckConfigView(ParserConfig.class).getBuildFileName());
 
           TargetNode<?> targetNode =
               parserTargetNodeFactory.createTargetNode(

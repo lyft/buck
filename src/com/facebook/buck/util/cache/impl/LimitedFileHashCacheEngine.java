@@ -15,8 +15,8 @@
  */
 package com.facebook.buck.util.cache.impl;
 
+import com.facebook.buck.core.io.ArchiveMemberPath;
 import com.facebook.buck.event.AbstractBuckEvent;
-import com.facebook.buck.io.ArchiveMemberPath;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.util.cache.FileHashCacheEngine;
 import com.facebook.buck.util.cache.HashCodeAndFileType;
@@ -78,12 +78,10 @@ class LimitedFileHashCacheEngine implements FileHashCacheEngine {
     private ImmutableMap<Path, HashCode> loadJarContentsHashes() {
       try {
         return new DefaultJarContentHasher(filesystem, path)
-            .getContentHashes()
-            .entrySet()
-            .stream()
-            .collect(
-                ImmutableMap.toImmutableMap(
-                    entry -> entry.getKey(), entry -> entry.getValue().getHashCode()));
+            .getContentHashes().entrySet().stream()
+                .collect(
+                    ImmutableMap.toImmutableMap(
+                        entry -> entry.getKey(), entry -> entry.getValue().getHashCode()));
       } catch (IOException e) {
         throw new RuntimeException(e);
       }

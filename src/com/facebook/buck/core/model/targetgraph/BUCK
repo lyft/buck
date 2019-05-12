@@ -7,9 +7,10 @@ java_immutables_library(
         "//src/com/facebook/buck/core/cell:cell",
         "//src/com/facebook/buck/core/description:description",
         "//src/com/facebook/buck/core/model:model",
+        "//src/com/facebook/buck/core/model/targetgraph/raw:raw",
         "//src/com/facebook/buck/core/rules/impl:impl",
         "//src/com/facebook/buck/core/util/graph:graph",
-        "//src/com/facebook/buck/rules/visibility:visibility",
+        "//src/com/facebook/buck/rules/visibility/parser:parser",
     ],
     tests = [
         "//test/com/facebook/buck/core/model/targetgraph:targetgraph",
@@ -21,6 +22,8 @@ java_immutables_library(
         "//src/com/facebook/buck/core/model/impl:impl",
         "//src/com/facebook/buck/core/util/immutables:immutables",
         "//src/com/facebook/buck/util:util",
+        "//third-party/java/jackson:jackson-annotations",
+        "//third-party/java/jackson:jackson-databind",
         "//third-party/java/jsr:jsr305",
     ],
 )

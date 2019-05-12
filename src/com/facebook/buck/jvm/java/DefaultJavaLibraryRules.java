@@ -25,7 +25,6 @@ import com.facebook.buck.core.rules.BuildRuleResolver;
 import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.ToolchainProvider;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.jvm.common.ResourceValidator;
@@ -101,13 +100,8 @@ public abstract class DefaultJavaLibraryRules {
   abstract CellPathResolver getCellPathResolver();
 
   @Value.Lazy
-  SourcePathRuleFinder getSourcePathRuleFinder() {
-    return new SourcePathRuleFinder(getActionGraphBuilder());
-  }
-
-  @Value.Lazy
   SourcePathResolver getSourcePathResolver() {
-    return DefaultSourcePathResolver.from(getSourcePathRuleFinder());
+    return getActionGraphBuilder().getSourcePathResolver();
   }
 
   @org.immutables.builder.Builder.Parameter
@@ -277,7 +271,7 @@ public abstract class DefaultJavaLibraryRules {
   private static final Pattern JAVA_VERSION_PATTERN = Pattern.compile("^(1\\.)*(?<version>\\d)$");
 
   private boolean isDesugarRequired() {
-    String sourceLevel = getJavacOptions().getSourceLevel();
+    String sourceLevel = getJavacOptions().getLanguageLevelOptions().getSourceLevel();
     Matcher matcher = JAVA_VERSION_PATTERN.matcher(sourceLevel);
     if (!matcher.find()) {
       return false;
@@ -416,7 +410,7 @@ public abstract class DefaultJavaLibraryRules {
                 getLibraryTarget(),
                 getProjectFilesystem(),
                 getJarBuildStepsFactory(),
-                getSourcePathRuleFinder(),
+                getActionGraphBuilder(),
                 getProguardConfig(),
                 classpaths.getFirstOrderPackageableDeps(),
                 Objects.requireNonNull(getDeps()).getExportedDeps(),
@@ -456,7 +450,7 @@ public abstract class DefaultJavaLibraryRules {
                 sourceAbiTarget,
                 getProjectFilesystem(),
                 jarBuildStepsFactory,
-                getSourcePathRuleFinder()));
+                getActionGraphBuilder()));
   }
 
   @Nullable
@@ -474,7 +468,7 @@ public abstract class DefaultJavaLibraryRules {
                 sourceAbiTarget,
                 getProjectFilesystem(),
                 jarBuildStepsFactory,
-                getSourcePathRuleFinder()));
+                getActionGraphBuilder()));
   }
 
   @Nullable
@@ -488,7 +482,7 @@ public abstract class DefaultJavaLibraryRules {
         .addToIndex(
             CalculateClassAbi.of(
                 classAbiTarget,
-                getSourcePathRuleFinder(),
+                getActionGraphBuilder(),
                 getProjectFilesystem(),
                 getInitialParams(),
                 libraryRule.getSourcePathToOutput(),
@@ -523,7 +517,12 @@ public abstract class DefaultJavaLibraryRules {
   @Value.Lazy
   CompileToJarStepFactory getConfiguredCompiler() {
     return getConfiguredCompilerFactory()
-        .configure(getArgs(), getJavacOptions(), getActionGraphBuilder(), getToolchainProvider());
+        .configure(
+            getArgs(),
+            getJavacOptions(),
+            getActionGraphBuilder(),
+            getInitialBuildTarget().getTargetConfiguration(),
+            getToolchainProvider());
   }
 
   @Value.Lazy
@@ -533,6 +532,7 @@ public abstract class DefaultJavaLibraryRules {
             getArgs(),
             getJavacOptionsForSourceOnlyAbi(),
             getActionGraphBuilder(),
+            getInitialBuildTarget().getTargetConfiguration(),
             getToolchainProvider());
   }
 
@@ -604,7 +604,7 @@ public abstract class DefaultJavaLibraryRules {
 
   private ResourcesParameters getResourcesParameters() {
     return ResourcesParameters.create(
-        getProjectFilesystem(), getSourcePathRuleFinder(), getResources(), getResourcesRoot());
+        getProjectFilesystem(), getActionGraphBuilder(), getResources(), getResourcesRoot());
   }
 
   private static UnusedDependenciesAction getUnusedDependenciesAction(
@@ -650,7 +650,12 @@ public abstract class DefaultJavaLibraryRules {
             .setResourcesRoot(args.getResourcesRoot())
             .setProguardConfig(args.getProguardConfig())
             .setPostprocessClassesCommands(args.getPostprocessClassesCommands())
-            .setDeps(JavaLibraryDeps.newInstance(args, graphBuilder, configuredCompilerFactory))
+            .setDeps(
+                JavaLibraryDeps.newInstance(
+                    args,
+                    graphBuilder,
+                    initialBuildTarget.getTargetConfiguration(),
+                    configuredCompilerFactory))
             .setTests(args.getTests())
             .setManifestFile(args.getManifestFile())
             .setMavenCoords(args.getMavenCoords())

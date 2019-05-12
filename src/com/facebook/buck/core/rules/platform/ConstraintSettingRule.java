@@ -16,26 +16,36 @@
 
 package com.facebook.buck.core.rules.platform;
 
-import com.facebook.buck.core.model.UnconfiguredBuildTarget;
+import com.facebook.buck.core.model.UnconfiguredBuildTargetView;
 import com.facebook.buck.core.rules.config.ConfigurationRule;
+import java.util.Optional;
 
 /** A configuration rule that represents {@code config_setting} target. */
 public class ConstraintSettingRule implements ConfigurationRule {
 
-  private final UnconfiguredBuildTarget buildTarget;
+  private final UnconfiguredBuildTargetView buildTarget;
   private final String name;
+  private final Optional<UnconfiguredBuildTargetView> hostConstraintDetector;
 
-  public ConstraintSettingRule(UnconfiguredBuildTarget buildTarget, String name) {
+  public ConstraintSettingRule(
+      UnconfiguredBuildTargetView buildTarget,
+      String name,
+      Optional<UnconfiguredBuildTargetView> hostConstraintDetector) {
     this.buildTarget = buildTarget;
     this.name = name;
+    this.hostConstraintDetector = hostConstraintDetector;
   }
 
   @Override
-  public UnconfiguredBuildTarget getBuildTarget() {
+  public UnconfiguredBuildTargetView getBuildTarget() {
     return buildTarget;
   }
 
   public String getName() {
     return name;
+  }
+
+  public Optional<UnconfiguredBuildTargetView> getHostConstraintDetector() {
+    return hostConstraintDetector;
   }
 }

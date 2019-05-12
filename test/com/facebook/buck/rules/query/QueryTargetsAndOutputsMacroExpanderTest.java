@@ -28,10 +28,7 @@ import com.facebook.buck.core.model.targetgraph.TargetGraphFactory;
 import com.facebook.buck.core.model.targetgraph.TargetNode;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
 import com.facebook.buck.jvm.java.JavaLibraryBuilder;
@@ -63,7 +60,6 @@ public class QueryTargetsAndOutputsMacroExpanderTest {
   private ProjectFilesystem filesystem;
   private ActionGraphBuilder graphBuilder;
   private CellPathResolver cellNames;
-  private SourcePathResolver pathResolver;
   private TypeCoercer<?> coercer;
   private BuildRule rule;
   private StringWithMacrosConverter converter;
@@ -93,8 +89,6 @@ public class QueryTargetsAndOutputsMacroExpanderTest {
 
     TargetGraph targetGraph = TargetGraphFactory.newInstance(depNode, ruleNode);
     graphBuilder = new TestActionGraphBuilder(targetGraph, filesystem);
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    pathResolver = DefaultSourcePathResolver.from(ruleFinder);
 
     rule = graphBuilder.requireRule(ruleNode.getBuildTarget());
 
@@ -102,6 +96,7 @@ public class QueryTargetsAndOutputsMacroExpanderTest {
         StringWithMacrosConverter.builder()
             .setBuildTarget(ruleNode.getBuildTarget())
             .setCellPathResolver(cellNames)
+            .setActionGraphBuilder(graphBuilder)
             .addExpanders(new QueryTargetsAndOutputsMacroExpander(Optional.of(targetGraph)))
             .setPrecomputedWorkCache(cache)
             .build();
@@ -179,8 +174,8 @@ public class QueryTargetsAndOutputsMacroExpanderTest {
                 rule.getBuildTarget().getBasePath(),
                 EmptyTargetConfiguration.INSTANCE,
                 input);
-    Arg arg = converter.convert(stringWithMacros, graphBuilder);
-    return Arg.stringify(arg, pathResolver);
+    Arg arg = converter.convert(stringWithMacros);
+    return Arg.stringify(arg, graphBuilder.getSourcePathResolver());
   }
 
   private void assertExpandsTo(String input, BuildRule rule, String expected)

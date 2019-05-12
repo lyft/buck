@@ -21,16 +21,14 @@ import com.facebook.buck.core.exceptions.HumanReadableException;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.Flavor;
 import com.facebook.buck.core.model.FlavorDomain;
+import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.impl.NoopBuildRule;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.ToolchainProvider;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.CxxPlatformsProvider;
 import com.facebook.buck.cxx.toolchain.HeaderMode;
@@ -53,6 +51,7 @@ import com.facebook.buck.rules.args.SourcePathArg;
 import com.facebook.buck.rules.args.StringArg;
 import com.facebook.buck.rules.coercer.FrameworkPath;
 import com.facebook.buck.rules.macros.StringWithMacros;
+import com.facebook.buck.rules.macros.StringWithMacrosConverter;
 import com.facebook.buck.util.RichStream;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
@@ -99,7 +98,8 @@ public class CxxLibraryFactory {
 
     CxxPlatformsProvider cxxPlatformsProvider = getCxxPlatformsProvider();
     FlavorDomain<CxxPlatform> cxxPlatforms =
-        cxxPlatformsProvider.getResolvedCxxPlatforms(graphBuilder);
+        cxxPlatformsProvider.getResolvedCxxPlatforms(
+            graphBuilder, buildTarget.getTargetConfiguration());
     Flavor defaultCxxFlavor = cxxPlatformsProvider.getDefaultUnresolvedCxxPlatform().getFlavor();
 
     // See if we're building a particular "type" and "platform" of this library, and if so, extract
@@ -116,8 +116,6 @@ public class CxxLibraryFactory {
     if (buildTarget.getFlavors().contains(CxxCompilationDatabase.COMPILATION_DATABASE)) {
       CxxPlatform cxxPlatformOrDefault = cxxPlatformOrDefaultSupplier.get();
       // XXX: This needs bundleLoader for tests..
-      SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-      SourcePathResolver sourcePathResolver = DefaultSourcePathResolver.from(ruleFinder);
       // TODO(T21900763): We should be using `requireObjects` instead but those would not
       // necessarily be `CxxPreprocessAndCompile` rules (e.g., Swift in `apple_library`).
       ImmutableMap<CxxPreprocessAndCompile, SourcePath> objects =
@@ -125,8 +123,6 @@ public class CxxLibraryFactory {
               buildTarget.withoutFlavors(CxxCompilationDatabase.COMPILATION_DATABASE),
               projectFilesystem,
               graphBuilder,
-              sourcePathResolver,
-              ruleFinder,
               cellRoots,
               cxxBuckConfig,
               cxxPlatformOrDefault,
@@ -283,9 +279,9 @@ public class CxxLibraryFactory {
                   args.getExportedLinkerFlags(), args.getExportedPlatformLinkerFlags(), input);
           return RichStream.from(flags)
               .map(
-                  f ->
-                      CxxDescriptionEnhancer.toStringWithMacrosArgs(
-                          buildTarget, cellRoots, graphBuilderInner, input, f))
+                  CxxDescriptionEnhancer.getStringWithMacrosArgsConverter(
+                          buildTarget, cellRoots, graphBuilderInner, input)
+                      ::convert)
               .concat(RichStream.from(delegateExportedLinkerFlags))
               .toImmutableList();
         },
@@ -305,19 +301,17 @@ public class CxxLibraryFactory {
                   input);
           return RichStream.from(flags)
               .map(
-                  f ->
-                      CxxDescriptionEnhancer.toStringWithMacrosArgs(
-                          buildTarget, cellRoots, graphBuilderInner, input, f))
+                  CxxDescriptionEnhancer.getStringWithMacrosArgsConverter(
+                          buildTarget, cellRoots, graphBuilderInner, input)
+                      ::convert)
               .concat(RichStream.from(delegatePostExportedLinkerFlags))
               .toImmutableList();
         },
-        (cxxPlatform, ruleResolverInner, pathResolverInner, ruleFinderInner) ->
+        (cxxPlatform, ruleResolverInner, pathResolverInner) ->
             getSharedLibraryNativeLinkTargetInput(
                 buildTarget,
                 projectFilesystem,
                 ruleResolverInner,
-                pathResolverInner,
-                ruleFinderInner,
                 cellRoots,
                 cxxBuckConfig,
                 cxxPlatform,
@@ -361,15 +355,12 @@ public class CxxLibraryFactory {
   /**
    * @return an {@link Iterable} with platform dependencies that need to be resolved at parse time.
    */
-  public Iterable<BuildTarget> getPlatformParseTimeDeps() {
+  public Iterable<BuildTarget> getPlatformParseTimeDeps(TargetConfiguration targetConfiguration) {
     // Since we don't have context on the top-level rules using this C/C++ library (e.g. it may be
     // a `python_binary`), we eagerly add the deps for all possible platforms to guarantee that the
     // correct ones are included.
-    return getCxxPlatformsProvider()
-        .getUnresolvedCxxPlatforms()
-        .getValues()
-        .stream()
-        .flatMap(p -> RichStream.from(p.getParseTimeDeps()))
+    return getCxxPlatformsProvider().getUnresolvedCxxPlatforms().getValues().stream()
+        .flatMap(p -> RichStream.from(p.getParseTimeDeps(targetConfiguration)))
         .collect(ImmutableList.toImmutableList());
   }
 
@@ -377,8 +368,6 @@ public class CxxLibraryFactory {
       BuildTarget buildTarget,
       ProjectFilesystem projectFilesystem,
       ActionGraphBuilder graphBuilder,
-      SourcePathResolver sourcePathResolver,
-      SourcePathRuleFinder ruleFinder,
       CellPathResolver cellRoots,
       CxxBuckConfig cxxBuckConfig,
       CxxPlatform cxxPlatform,
@@ -395,8 +384,6 @@ public class CxxLibraryFactory {
             buildTarget,
             projectFilesystem,
             graphBuilder,
-            sourcePathResolver,
-            ruleFinder,
             cellRoots,
             cxxBuckConfig,
             cxxPlatform,
@@ -419,8 +406,6 @@ public class CxxLibraryFactory {
       BuildTarget buildTarget,
       ProjectFilesystem projectFilesystem,
       ActionGraphBuilder graphBuilder,
-      SourcePathResolver sourcePathResolver,
-      SourcePathRuleFinder ruleFinder,
       CellPathResolver cellRoots,
       CxxBuckConfig cxxBuckConfig,
       CxxPlatform cxxPlatform,
@@ -438,16 +423,10 @@ public class CxxLibraryFactory {
         CxxDescriptionEnhancer.requireHeaderSymlinkTree(
             buildTarget,
             projectFilesystem,
-            ruleFinder,
             graphBuilder,
             cxxPlatform,
             CxxDescriptionEnhancer.parseHeaders(
-                buildTarget,
-                graphBuilder,
-                ruleFinder,
-                sourcePathResolver,
-                Optional.of(cxxPlatform),
-                args),
+                buildTarget, graphBuilder, Optional.of(cxxPlatform), args),
             HeaderVisibility.PRIVATE,
             shouldCreatePrivateHeadersSymlinks);
 
@@ -468,15 +447,14 @@ public class CxxLibraryFactory {
                     args.getLangCompilerFlags(),
                     args.getLangPlatformCompilerFlags(),
                     cxxPlatform),
-                f ->
-                    CxxDescriptionEnhancer.toStringWithMacrosArgs(
-                        buildTarget, cellRoots, graphBuilder, cxxPlatform, f)));
+                CxxDescriptionEnhancer.getStringWithMacrosArgsConverter(
+                        buildTarget, cellRoots, graphBuilder, cxxPlatform)
+                    ::convert));
     return CxxSourceRuleFactory.of(
             projectFilesystem,
             buildTarget,
             graphBuilder,
-            sourcePathResolver,
-            ruleFinder,
+            graphBuilder.getSourcePathResolver(),
             cxxBuckConfig,
             cxxPlatform,
             CxxLibraryDescription.getPreprocessorInputsForBuildingLibrarySources(
@@ -495,16 +473,13 @@ public class CxxLibraryFactory {
             args.getPrecompiledHeader(),
             pic)
         .requirePreprocessAndCompileRules(
-            CxxDescriptionEnhancer.parseCxxSources(
-                buildTarget, graphBuilder, ruleFinder, sourcePathResolver, cxxPlatform, args));
+            CxxDescriptionEnhancer.parseCxxSources(buildTarget, graphBuilder, cxxPlatform, args));
   }
 
   private static NativeLinkableInput getSharedLibraryNativeLinkTargetInput(
       BuildTarget buildTarget,
       ProjectFilesystem projectFilesystem,
       ActionGraphBuilder graphBuilder,
-      SourcePathResolver pathResolver,
-      SourcePathRuleFinder ruleFinder,
       CellPathResolver cellRoots,
       CxxBuckConfig cxxBuckConfig,
       CxxPlatform cxxPlatform,
@@ -520,14 +495,16 @@ public class CxxLibraryFactory {
           transitiveCxxPreprocessorInputFunction,
       Optional<CxxLibraryDescriptionDelegate> delegate) {
 
+    StringWithMacrosConverter macrosConverter =
+        CxxDescriptionEnhancer.getStringWithMacrosArgsConverter(
+            buildTarget, cellRoots, graphBuilder, cxxPlatform);
+
     // Create rules for compiling the PIC object files.
     ImmutableList<SourcePath> objects =
         requireObjects(
             buildTarget,
             projectFilesystem,
             graphBuilder,
-            pathResolver,
-            ruleFinder,
             cellRoots,
             cxxBuckConfig,
             cxxPlatform,
@@ -539,28 +516,16 @@ public class CxxLibraryFactory {
 
     return NativeLinkableInput.builder()
         .addAllArgs(
-            RichStream.<StringWithMacros>empty()
-                .concat(linkerFlags.stream())
+            RichStream.from(linkerFlags)
                 .concat(exportedLinkerFlags.stream())
-                .map(
-                    f ->
-                        CxxDescriptionEnhancer.toStringWithMacrosArgs(
-                            buildTarget, cellRoots, graphBuilder, cxxPlatform, f))
+                .map(macrosConverter::convert)
                 .toImmutableList())
         .addAllArgs(SourcePathArg.from(objects))
         .addAllArgs(
-            RichStream.from(postLinkerFlags)
-                .map(
-                    f ->
-                        CxxDescriptionEnhancer.toStringWithMacrosArgs(
-                            buildTarget, cellRoots, graphBuilder, cxxPlatform, f))
-                .toImmutableList())
+            RichStream.from(postLinkerFlags).map(macrosConverter::convert).toImmutableList())
         .addAllArgs(
             RichStream.from(postExportedLinkerFlags.stream())
-                .map(
-                    f ->
-                        CxxDescriptionEnhancer.toStringWithMacrosArgs(
-                            buildTarget, cellRoots, graphBuilder, cxxPlatform, f))
+                .map(macrosConverter::convert)
                 .toImmutableList())
         .setFrameworks(frameworks)
         .setLibraries(libraries)
@@ -576,8 +541,6 @@ public class CxxLibraryFactory {
       BuildTarget buildTargetMaybeWithLinkerMapMode,
       ProjectFilesystem projectFilesystem,
       ActionGraphBuilder graphBuilder,
-      SourcePathResolver pathResolver,
-      SourcePathRuleFinder ruleFinder,
       CellPathResolver cellRoots,
       CxxBuckConfig cxxBuckConfig,
       CxxPlatform cxxPlatform,
@@ -607,8 +570,6 @@ public class CxxLibraryFactory {
             buildTargetWithoutLinkerMapMode,
             projectFilesystem,
             graphBuilder,
-            pathResolver,
-            ruleFinder,
             cellRoots,
             cxxBuckConfig,
             cxxPlatform,
@@ -617,11 +578,14 @@ public class CxxLibraryFactory {
             deps,
             transitiveCxxPreprocessorInputFunction,
             delegate);
-
     // Setup the rules to link the shared library.
     BuildTarget sharedTarget =
         CxxDescriptionEnhancer.createSharedLibraryBuildTarget(
             buildTargetMaybeWithLinkerMapMode, cxxPlatform.getFlavor(), linkType);
+
+    StringWithMacrosConverter macrosConverter =
+        CxxDescriptionEnhancer.getStringWithMacrosArgsConverter(
+            sharedTarget, cellRoots, graphBuilder, cxxPlatform);
 
     String sharedLibrarySoname =
         CxxDescriptionEnhancer.getSharedLibrarySoname(
@@ -651,8 +615,6 @@ public class CxxLibraryFactory {
         cxxPlatform,
         projectFilesystem,
         graphBuilder,
-        pathResolver,
-        ruleFinder,
         sharedTarget,
         linkType,
         Optional.of(sharedLibrarySoname),
@@ -667,20 +629,10 @@ public class CxxLibraryFactory {
         ImmutableSet.of(),
         NativeLinkableInput.builder()
             .addAllArgs(
-                RichStream.from(linkerFlags)
-                    .map(
-                        f ->
-                            CxxDescriptionEnhancer.toStringWithMacrosArgs(
-                                sharedTarget, cellRoots, graphBuilder, cxxPlatform, f))
-                    .toImmutableList())
+                RichStream.from(linkerFlags).map(macrosConverter::convert).toImmutableList())
             .addAllArgs(SourcePathArg.from(objects))
             .addAllArgs(
-                RichStream.from(postLinkerFlags)
-                    .map(
-                        f ->
-                            CxxDescriptionEnhancer.toStringWithMacrosArgs(
-                                sharedTarget, cellRoots, graphBuilder, cxxPlatform, f))
-                    .toImmutableList())
+                RichStream.from(postLinkerFlags).map(macrosConverter::convert).toImmutableList())
             .setFrameworks(frameworks)
             .setLibraries(libraries)
             .build(),
@@ -698,16 +650,13 @@ public class CxxLibraryFactory {
     boolean shouldCreatePrivateHeaderSymlinks =
         args.getXcodePrivateHeadersSymlinks()
             .orElse(cxxPlatform.getPrivateHeadersSymlinksEnabled());
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
     return CxxDescriptionEnhancer.createHeaderSymlinkTree(
         buildTarget,
         projectFilesystem,
-        ruleFinder,
         graphBuilder,
         cxxPlatform,
         CxxDescriptionEnhancer.parseHeaders(
-            buildTarget, graphBuilder, ruleFinder, pathResolver, Optional.of(cxxPlatform), args),
+            buildTarget, graphBuilder, Optional.of(cxxPlatform), args),
         HeaderVisibility.PRIVATE,
         shouldCreatePrivateHeaderSymlinks);
   }
@@ -719,15 +668,13 @@ public class CxxLibraryFactory {
       ActionGraphBuilder graphBuilder,
       HeaderMode mode,
       CxxLibraryDescriptionArg args) {
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
     return CxxDescriptionEnhancer.createHeaderSymlinkTree(
         buildTarget,
         projectFilesystem,
-        ruleFinder,
+        graphBuilder,
         mode,
         CxxDescriptionEnhancer.parseExportedHeaders(
-            buildTarget, graphBuilder, ruleFinder, pathResolver, Optional.empty(), args),
+            buildTarget, graphBuilder, Optional.empty(), args),
         HeaderVisibility.PUBLIC);
   }
 
@@ -740,16 +687,13 @@ public class CxxLibraryFactory {
       CxxLibraryDescriptionArg args) {
     boolean shouldCreatePublicHeaderSymlinks =
         args.getXcodePublicHeadersSymlinks().orElse(cxxPlatform.getPublicHeadersSymlinksEnabled());
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
     return CxxDescriptionEnhancer.createHeaderSymlinkTree(
         buildTarget,
         projectFilesystem,
-        ruleFinder,
         graphBuilder,
         cxxPlatform,
         CxxDescriptionEnhancer.parseExportedPlatformHeaders(
-            buildTarget, graphBuilder, ruleFinder, pathResolver, cxxPlatform, args),
+            buildTarget, graphBuilder, cxxPlatform, args),
         HeaderVisibility.PUBLIC,
         shouldCreatePublicHeaderSymlinks);
   }
@@ -772,17 +716,12 @@ public class CxxLibraryFactory {
       CxxLibraryDescription.TransitiveCxxPreprocessorInputFunction
           transitiveCxxPreprocessorInputFunction,
       Optional<CxxLibraryDescriptionDelegate> delegate) {
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver sourcePathResolver = DefaultSourcePathResolver.from(ruleFinder);
-
     // Create rules for compiling the object files.
     ImmutableList<SourcePath> objects =
         requireObjects(
             buildTarget,
             projectFilesystem,
             graphBuilder,
-            sourcePathResolver,
-            ruleFinder,
             cellRoots,
             cxxBuckConfig,
             cxxPlatform,
@@ -811,7 +750,6 @@ public class CxxLibraryFactory {
         staticTarget,
         projectFilesystem,
         graphBuilder,
-        ruleFinder,
         cxxPlatform,
         staticLibraryName,
         ImmutableList.copyOf(objects),
@@ -857,14 +795,10 @@ public class CxxLibraryFactory {
             args.getExportedPostPlatformLinkerFlags(),
             cxxPlatform));
 
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver sourcePathResolver = DefaultSourcePathResolver.from(ruleFinder);
     return createSharedLibrary(
         buildTarget,
         projectFilesystem,
         graphBuilder,
-        sourcePathResolver,
-        ruleFinder,
         cellRoots,
         cxxBuckConfig,
         cxxPlatform,
@@ -892,9 +826,6 @@ public class CxxLibraryFactory {
       CxxPlatform cxxPlatform,
       SharedLibraryInterfaceParams params) {
 
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
-
     // Otherwise, grab the rule's original shared library and use that.
     CxxLink sharedLibrary =
         (CxxLink)
@@ -908,8 +839,6 @@ public class CxxLibraryFactory {
                 CxxLibraryDescription.Type.SHARED_INTERFACE.getFlavor(), cxxPlatform.getFlavor()),
             projectFilesystem,
             graphBuilder,
-            pathResolver,
-            ruleFinder,
             cxxPlatform,
             sharedLibrary.getSourcePathToOutput());
   }
@@ -923,9 +852,6 @@ public class CxxLibraryFactory {
       CxxPlatform cxxPlatform,
       SharedLibraryInterfaceParams params) {
 
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
-
     NativeLinkTarget linkTarget =
         (NativeLinkTarget)
             graphBuilder.requireRule(baseTarget.withoutFlavors(cxxPlatform.getFlavor()));
@@ -933,7 +859,7 @@ public class CxxLibraryFactory {
     NativeLinkTargetMode linkTargetMode = linkTarget.getNativeLinkTargetMode(cxxPlatform);
     Preconditions.checkArgument(linkTargetMode.getType().equals(LinkType.SHARED));
 
-    Linker linker = cxxPlatform.getLd().resolve(graphBuilder);
+    Linker linker = cxxPlatform.getLd().resolve(graphBuilder, baseTarget.getTargetConfiguration());
 
     // Build up the arguments to pass to the linker.
     ImmutableList.Builder<Arg> argsBuilder = ImmutableList.builder();
@@ -957,7 +883,8 @@ public class CxxLibraryFactory {
 
     // Add the args for the root link target first.
     NativeLinkableInput input =
-        linkTarget.getNativeLinkTargetInput(cxxPlatform, graphBuilder, pathResolver, ruleFinder);
+        linkTarget.getNativeLinkTargetInput(
+            cxxPlatform, graphBuilder, graphBuilder.getSourcePathResolver());
     argsBuilder.addAll(input.getArgs());
 
     // Since we're linking against a dummy libomnibus, ignore undefined symbols.  Put this at the
@@ -979,8 +906,6 @@ public class CxxLibraryFactory {
                 CxxLibraryDescription.Type.SHARED_INTERFACE.getFlavor(), cxxPlatform.getFlavor()),
             projectFilesystem,
             graphBuilder,
-            pathResolver,
-            ruleFinder,
             soname,
             linker,
             args);

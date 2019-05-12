@@ -17,11 +17,11 @@
 package com.facebook.buck.cli;
 
 import com.facebook.buck.core.cell.Cell;
-import com.facebook.buck.core.config.AliasConfig;
 import com.facebook.buck.core.config.BuckConfig;
 import com.facebook.buck.core.model.BuildTarget;
+import com.facebook.buck.core.model.QueryTarget;
 import com.facebook.buck.core.model.TargetConfiguration;
-import com.facebook.buck.core.model.UnconfiguredBuildTarget;
+import com.facebook.buck.core.model.UnconfiguredBuildTargetView;
 import com.facebook.buck.core.sourcepath.PathSourcePath;
 import com.facebook.buck.core.util.log.Logger;
 import com.facebook.buck.parser.BuildTargetPatternTargetNodeParser;
@@ -31,14 +31,13 @@ import com.facebook.buck.parser.TargetNodeSpec;
 import com.facebook.buck.parser.exceptions.BuildFileParseException;
 import com.facebook.buck.query.QueryBuildTarget;
 import com.facebook.buck.query.QueryFileTarget;
-import com.facebook.buck.query.QueryTarget;
+import com.facebook.buck.support.cli.config.AliasConfig;
 import com.facebook.buck.util.MoreMaps;
 import com.google.common.base.Functions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
-import com.google.common.collect.Ordering;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -96,10 +95,10 @@ class TargetPatternEvaluator {
       }
 
       // Check if this is an alias.
-      ImmutableSet<UnconfiguredBuildTarget> aliasTargets =
+      ImmutableSet<UnconfiguredBuildTargetView> aliasTargets =
           AliasConfig.from(buckConfig).getBuildTargetsForAlias(pattern);
       if (!aliasTargets.isEmpty()) {
-        for (UnconfiguredBuildTarget alias : aliasTargets) {
+        for (UnconfiguredBuildTargetView alias : aliasTargets) {
           unresolved.put(alias.getFullyQualifiedName(), pattern);
         }
       } else {
@@ -130,21 +129,20 @@ class TargetPatternEvaluator {
         PathArguments.getCanonicalFilesUnderProjectRoot(projectRoot, ImmutableList.of(pattern))
             .relativePathsUnderProjectRoot;
 
-    return filePaths
-        .stream()
+    return filePaths.stream()
         .map(path -> PathSourcePath.of(rootCell.getFilesystem(), path))
         .map(QueryFileTarget::of)
-        .collect(ImmutableSortedSet.toImmutableSortedSet(Ordering.natural()));
+        .collect(ImmutableSortedSet.toImmutableSortedSet(QueryTarget::compare));
   }
 
   private ImmutableMap<String, ImmutableSet<QueryTarget>> resolveBuildTargetPatterns(
-      List<String> patterns) throws InterruptedException, BuildFileParseException, IOException {
+      List<String> patterns) throws InterruptedException, BuildFileParseException {
 
     // Build up an ordered list of patterns and pass them to the parse to get resolved in one go.
     // The returned list of nodes maintains the spec list ordering.
     List<TargetNodeSpec> specs = new ArrayList<>();
     for (String pattern : patterns) {
-      specs.addAll(targetNodeSpecParser.parse(rootCell.getCellPathResolver(), pattern));
+      specs.addAll(targetNodeSpecParser.parse(rootCell, pattern));
     }
     ImmutableList<ImmutableSet<BuildTarget>> buildTargets =
         parser.resolveTargetSpecs(parsingContext, specs, targetConfiguration);
@@ -155,7 +153,8 @@ class TargetPatternEvaluator {
     for (int index = 0; index < buildTargets.size(); index++) {
       ImmutableSet<BuildTarget> targets = buildTargets.get(index);
       // Sorting to have predictable results across different java libraries implementations.
-      ImmutableSet.Builder<QueryTarget> builder = ImmutableSortedSet.naturalOrder();
+      ImmutableSet.Builder<QueryTarget> builder =
+          new ImmutableSortedSet.Builder<>(QueryTarget::compare);
       for (BuildTarget target : targets) {
         builder.add(QueryBuildTarget.of(target));
       }

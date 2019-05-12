@@ -21,23 +21,21 @@ import com.facebook.buck.core.build.engine.BuildRuleSuccessType;
 import com.facebook.buck.core.build.engine.BuildStrategyContext;
 import com.facebook.buck.core.cell.Cell;
 import com.facebook.buck.core.cell.CellPathResolver;
+import com.facebook.buck.core.exceptions.BuckUncheckedExecutionException;
 import com.facebook.buck.core.model.BuildTarget;
-import com.facebook.buck.core.rules.AbstractBuildRuleResolver;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.SourcePathRuleFinder;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
+import com.facebook.buck.core.rules.impl.AbstractBuildRuleResolver;
 import com.facebook.buck.rules.modern.Buildable;
 import com.facebook.buck.rules.modern.Deserializer;
 import com.facebook.buck.rules.modern.Deserializer.DataProvider;
 import com.facebook.buck.rules.modern.ModernBuildRule;
 import com.facebook.buck.rules.modern.Serializer;
 import com.facebook.buck.rules.modern.Serializer.Delegate;
-import com.facebook.buck.step.DefaultStepRunner;
 import com.facebook.buck.step.Step;
 import com.facebook.buck.step.StepFailedException;
 import com.facebook.buck.step.StepRunner;
 import com.facebook.buck.util.Scope;
-import com.facebook.buck.util.exceptions.BuckUncheckedExecutionException;
 import com.google.common.base.Preconditions;
 import com.google.common.hash.HashCode;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -79,7 +77,7 @@ class ReconstructingStrategy extends AbstractModernBuildRuleStrategy {
                     .getCellByPath(cellResolver.getCellPathOrThrow(name))
                     .getFilesystem(),
             Class::forName,
-            () -> DefaultSourcePathResolver.from(ruleFinder),
+            ruleFinder::getSourcePathResolver,
             rootCell.getToolchainProvider());
   }
 
@@ -115,26 +113,21 @@ class ReconstructingStrategy extends AbstractModernBuildRuleStrategy {
                         rule.getProjectFilesystem(),
                         rule.getBuildTarget(),
                         reconstructed,
-                        new SourcePathRuleFinder(
-                            new AbstractBuildRuleResolver() {
-                              @Override
-                              public Optional<BuildRule> getRuleOptional(BuildTarget buildTarget) {
-                                throw new RuntimeException(
-                                    "Cannot resolve rules in deserialized MBR state.");
-                              }
-                            }));
+                        new AbstractBuildRuleResolver() {
+                          @Override
+                          public Optional<BuildRule> getRuleOptional(BuildTarget buildTarget) {
+                            throw new RuntimeException(
+                                "Cannot resolve rules in deserialized MBR state.");
+                          }
+                        });
 
-                    StepRunner stepRunner = new DefaultStepRunner();
                     for (Step step :
                         ModernBuildRule.stepsForBuildable(
                             strategyContext.getBuildRuleBuildContext(),
                             reconstructed,
                             rule.getProjectFilesystem(),
                             rule.getBuildTarget())) {
-                      stepRunner.runStepForBuildTarget(
-                          strategyContext.getExecutionContext(),
-                          step,
-                          Optional.of(rule.getBuildTarget()));
+                      StepRunner.runStep(strategyContext.getExecutionContext(), step);
                     }
                     converted.recordOutputs(strategyContext.getBuildableContext());
                   } catch (IOException | StepFailedException | InterruptedException e) {
@@ -142,7 +135,8 @@ class ReconstructingStrategy extends AbstractModernBuildRuleStrategy {
                   }
 
                   return Optional.of(
-                      strategyContext.createBuildResult(BuildRuleSuccessType.BUILT_LOCALLY));
+                      strategyContext.createBuildResult(
+                          BuildRuleSuccessType.BUILT_LOCALLY, Optional.of("reconstructed")));
                 });
     return StrategyBuildResult.nonCancellable(buildResult);
   }

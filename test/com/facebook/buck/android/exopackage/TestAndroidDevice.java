@@ -19,8 +19,8 @@ package com.facebook.buck.android.exopackage;
 import static org.junit.Assert.assertTrue;
 
 import com.facebook.buck.android.agent.util.AgentUtil;
+import com.facebook.buck.core.exceptions.BuckUncheckedExecutionException;
 import com.facebook.buck.io.file.MostFiles;
-import com.facebook.buck.util.exceptions.BuckUncheckedExecutionException;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -52,8 +52,7 @@ public class TestAndroidDevice implements AndroidDevice {
   private final ApkInfoReader apkInfoReader;
 
   public Map<String, Path> getInstalledApks() throws Exception {
-    return listDirRecursive(APK_INSTALL_DIR)
-        .stream()
+    return listDirRecursive(APK_INSTALL_DIR).stream()
         .filter(p -> p.getFileName().equals(APK_FILE_NAME))
         .collect(
             ImmutableMap.toImmutableMap(

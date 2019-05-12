@@ -24,21 +24,26 @@ import java.util.function.Supplier;
 public class CompilerProvider extends CxxToolProvider<Compiler> {
   private final boolean preferDependencyTree;
 
-  public CompilerProvider(ToolProvider toolProvider, Type type, boolean preferDependencyTree) {
-    this(toolProvider, Suppliers.ofInstance(type), preferDependencyTree, false);
-  }
-
   public CompilerProvider(
-      ToolProvider toolProvider, Supplier<Type> type, boolean preferDependencyTree) {
-    this(toolProvider, type, preferDependencyTree, false);
+      ToolProvider toolProvider, Type type, ToolType toolType, boolean preferDependencyTree) {
+    this(toolProvider, Suppliers.ofInstance(type), toolType, preferDependencyTree, false);
   }
 
   public CompilerProvider(
       ToolProvider toolProvider,
       Supplier<Type> type,
+      ToolType toolType,
+      boolean preferDependencyTree) {
+    this(toolProvider, type, toolType, preferDependencyTree, false);
+  }
+
+  public CompilerProvider(
+      ToolProvider toolProvider,
+      Supplier<Type> type,
+      ToolType toolType,
       boolean preferDependencyTree,
       boolean useUnixPathSeparator) {
-    super(toolProvider, type, useUnixPathSeparator);
+    super(toolProvider, type, toolType, useUnixPathSeparator);
     this.preferDependencyTree = preferDependencyTree;
   }
 
@@ -46,13 +51,13 @@ public class CompilerProvider extends CxxToolProvider<Compiler> {
   protected Compiler build(CxxToolProvider.Type type, Tool tool) {
     switch (type) {
       case CLANG:
-        return new ClangCompiler(tool, preferDependencyTree);
+        return new ClangCompiler(tool, getToolType(), preferDependencyTree);
       case CLANG_CL:
         return new ClangClCompiler(tool);
       case CLANG_WINDOWS:
-        return new ClangWindowsCompiler(tool, preferDependencyTree);
+        return new ClangWindowsCompiler(tool, getToolType(), preferDependencyTree);
       case GCC:
-        return new GccCompiler(tool, preferDependencyTree);
+        return new GccCompiler(tool, getToolType(), preferDependencyTree);
       case WINDOWS:
         return new WindowsCompiler(tool);
       case WINDOWS_ML64:

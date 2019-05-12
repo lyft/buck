@@ -22,9 +22,14 @@ import com.facebook.buck.core.model.BuildTargetFactory;
 import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.model.UnconfiguredBuildTargetFactoryForTests;
+import com.facebook.buck.core.model.impl.HostTargetConfiguration;
 import com.facebook.buck.core.model.impl.ImmutableDefaultTargetConfiguration;
 import com.facebook.buck.core.rulekey.AddToRuleKey;
 import com.facebook.buck.core.rulekey.AddsToRuleKey;
+import com.facebook.buck.core.rulekey.DefaultFieldInputs;
+import com.facebook.buck.core.rulekey.DefaultFieldSerialization;
+import com.facebook.buck.core.rulekey.ExcludeFromRuleKey;
+import com.facebook.buck.core.rulekey.IgnoredFieldInputs;
 import com.facebook.buck.core.sourcepath.DefaultBuildTargetSourcePath;
 import com.facebook.buck.core.sourcepath.ExplicitBuildTargetSourcePath;
 import com.facebook.buck.core.sourcepath.FakeSourcePath;
@@ -37,10 +42,12 @@ import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
 import com.facebook.buck.rules.args.AddsToRuleKeyFunction;
 import com.facebook.buck.rules.modern.BuildCellRelativePathFactory;
 import com.facebook.buck.rules.modern.Buildable;
+import com.facebook.buck.rules.modern.EmptyMemoizerDeserialization;
 import com.facebook.buck.rules.modern.OutputPath;
 import com.facebook.buck.rules.modern.OutputPathResolver;
 import com.facebook.buck.rules.modern.PublicOutputPath;
 import com.facebook.buck.step.Step;
+import com.facebook.buck.util.Memoizer;
 import com.facebook.buck.util.MoreSuppliers;
 import com.facebook.buck.util.types.Either;
 import com.google.common.base.Suppliers;
@@ -120,6 +127,9 @@ public abstract class AbstractValueVisitorTest {
   public abstract void buildTargetWithEmptyConfiguration() throws Exception;
 
   @Test
+  public abstract void buildTargetWithHostConfiguration() throws Exception;
+
+  @Test
   public abstract void pattern() throws Exception;
 
   @Test
@@ -155,6 +165,9 @@ public abstract class AbstractValueVisitorTest {
   @Test
   public abstract void wildcards() throws Exception;
 
+  @Test
+  public abstract void withExcludeFromRuleKey() throws Exception;
+
   public interface FakeBuildable extends Buildable {
     @Override
     default ImmutableList<Step> getBuildSteps(
@@ -164,6 +177,18 @@ public abstract class AbstractValueVisitorTest {
         BuildCellRelativePathFactory buildCellPathFactory) {
       return ImmutableList.of();
     }
+  }
+
+  public static class WithExcludeFromRuleKey implements FakeBuildable {
+    @ExcludeFromRuleKey(
+        serialization = DefaultFieldSerialization.class,
+        inputs = DefaultFieldInputs.class)
+    final SourcePath sourcePath = FakeSourcePath.of(rootFilesystem, "some.path");
+
+    @ExcludeFromRuleKey(
+        serialization = EmptyMemoizerDeserialization.class,
+        inputs = IgnoredFieldInputs.class)
+    final Memoizer<SourcePath> otherPath = new Memoizer<>();
   }
 
   public static class WithExcluded implements FakeBuildable {
@@ -231,7 +256,17 @@ public abstract class AbstractValueVisitorTest {
   public static class WithBuildTargetWithEmptyConfiguration implements FakeBuildable {
     @AddToRuleKey
     final BuildTarget target =
-        someBuildTarget.getUnconfiguredBuildTarget().configure(EmptyTargetConfiguration.INSTANCE);
+        someBuildTarget
+            .getUnconfiguredBuildTargetView()
+            .configure(EmptyTargetConfiguration.INSTANCE);
+  }
+
+  public static class WithBuildTargetWithHostConfiguration implements FakeBuildable {
+    @AddToRuleKey
+    final BuildTarget target =
+        someBuildTarget
+            .getUnconfiguredBuildTargetView()
+            .configure(HostTargetConfiguration.INSTANCE);
   }
 
   public static class WithOutputPath implements FakeBuildable {

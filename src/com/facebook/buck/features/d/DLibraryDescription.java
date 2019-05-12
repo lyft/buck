@@ -26,16 +26,13 @@ import com.facebook.buck.core.model.targetgraph.DescriptionWithTargetGraph;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.sourcepath.DefaultBuildTargetSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.ToolchainProvider;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
 import com.facebook.buck.cxx.Archive;
 import com.facebook.buck.cxx.CxxDescriptionEnhancer;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.PicType;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
@@ -74,13 +71,11 @@ public class DLibraryDescription
       BuildRuleParams params,
       DLibraryDescriptionArg args) {
     ActionGraphBuilder graphBuilder = context.getActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
     ProjectFilesystem projectFilesystem = context.getProjectFilesystem();
 
     if (buildTarget.getFlavors().contains(DDescriptionUtils.SOURCE_LINK_TREE)) {
       return DDescriptionUtils.createSourceSymlinkTree(
-          buildTarget, projectFilesystem, pathResolver, ruleFinder, args.getSrcs());
+          buildTarget, projectFilesystem, graphBuilder, args.getSrcs());
     }
 
     BuildTarget sourceTreeTarget =
@@ -98,8 +93,6 @@ public class DLibraryDescription
           projectFilesystem,
           params,
           graphBuilder,
-          pathResolver,
-          ruleFinder,
           /* compilerFlags */ ImmutableList.of(),
           args.getSrcs(),
           dIncludes,
@@ -115,15 +108,14 @@ public class DLibraryDescription
       ProjectFilesystem projectFilesystem,
       BuildRuleParams params,
       ActionGraphBuilder graphBuilder,
-      SourcePathResolver pathResolver,
-      SourcePathRuleFinder ruleFinder,
       ImmutableList<String> compilerFlags,
       SourceSortedSet sources,
       DIncludes dIncludes,
       PicType pic) {
 
     CxxPlatform cxxPlatform =
-        DDescriptionUtils.getCxxPlatform(graphBuilder, toolchainProvider, dBuckConfig);
+        DDescriptionUtils.getCxxPlatform(
+            graphBuilder, toolchainProvider, dBuckConfig, buildTarget.getTargetConfiguration());
 
     ImmutableList<SourcePath> compiledSources =
         DDescriptionUtils.sourcePathsForCompiledSources(
@@ -131,8 +123,6 @@ public class DLibraryDescription
             projectFilesystem,
             params,
             graphBuilder,
-            pathResolver,
-            ruleFinder,
             cxxPlatform,
             dBuckConfig,
             compilerFlags,
@@ -155,7 +145,6 @@ public class DLibraryDescription
         staticTarget,
         projectFilesystem,
         graphBuilder,
-        ruleFinder,
         cxxPlatform,
         staticLibraryName,
         compiledSources,
@@ -171,7 +160,7 @@ public class DLibraryDescription
       ImmutableCollection.Builder<BuildTarget> targetGraphOnlyDepsBuilder) {
     extraDepsBuilder.addAll(
         DDescriptionUtils.getUnresolvedCxxPlatform(toolchainProvider, dBuckConfig)
-            .getParseTimeDeps());
+            .getParseTimeDeps(buildTarget.getTargetConfiguration()));
   }
 
   @BuckStyleImmutable

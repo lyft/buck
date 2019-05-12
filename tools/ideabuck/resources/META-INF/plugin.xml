@@ -1,7 +1,7 @@
 <idea-plugin>
   <id>intellij.buck.plugin</id>
   <name>Buck for IDEA</name>
-  <version>3.7.2-SNAPSHOT</version>
+  <version>3.7.4-SNAPSHOT</version>
   <category>Build</category>
   <vendor email="fb-plugins@fb.com" url="www.facebook.com">Facebook, Inc.</vendor>
 
@@ -10,9 +10,23 @@
   ]]></description>
 
   <change-notes><![CDATA[
+<h3>3.7.4</h3>
+<ul>
+</ul>
+<h3>3.7.3</h3>
+<ul>
+  <li>Fixes to make triggering buck from IntelliJ more consistent with
+  invoking it from the command-line.</li>
+  <li>Improved cell discovery in prefs.</li>
+</ul>
+</h3>
 <h3>3.7.2</h3>
 <ul>
-  <li></li>
+  <li>Make grammar fully Starlark-compatible.</li>
+  <li>Support reference navigation for identifiers in Starlark files.</li>
+  <li>Support folding of various multi-line Starlark elements (function definitions,
+      collections/comprehensions, etc.).</li>
+  <li>Support structure view.</li>
 </ul>
 <h3>3.7.1</h3>
 <ul>
@@ -236,9 +250,6 @@
     <lang.syntaxHighlighterFactory
       language="Buckconfig"
       implementationClass="com.facebook.buck.intellij.ideabuck.highlight.BcfgSyntaxHighlighterFactory"/>
-    <lang.formatter
-      language="Buck"
-      implementationClass="com.facebook.buck.intellij.ideabuck.format.BuckFormattingModelBuilder"/>
     <lang.importOptimizer
       language="Buck"
       implementationClass="com.facebook.buck.intellij.ideabuck.format.BuckImportOptimizer"/>
@@ -280,9 +291,11 @@
     <lang.braceMatcher
       language="Buck"
       implementationClass="com.facebook.buck.intellij.ideabuck.format.BuckBraceMatcher"/>
+    <lang.refactoringSupport language="Buck" implementationClass="com.facebook.buck.intellij.ideabuck.lang.BuckIdentifierRefactoringSupportProvider"/>
     <quoteHandler
       fileType="Buck"
       className="com.facebook.buck.intellij.ideabuck.format.BuckQuoteHandler"/>
+    <lang.psiStructureViewFactory language="Buck" implementationClass="com.facebook.buck.intellij.ideabuck.structure.BuckStructureViewFactory"/>
     <copyPastePreProcessor
       implementation="com.facebook.buck.intellij.ideabuck.format.BuckCopyPasteProcessor"/>
     <toolWindow
@@ -305,6 +318,8 @@
       implementation="com.facebook.buck.intellij.ideabuck.configurations.TestConfigurationType"/>
     <programRunner
       implementation="com.facebook.buck.intellij.ideabuck.configurations.TestProgramRunner"/>
+    <psi.referenceContributor implementation="com.facebook.buck.intellij.ideabuck.lang.BuckIdentifierReferenceContributor"/>
+
     <runLineMarkerContributor language="JAVA"
       implementationClass="com.facebook.buck.intellij.ideabuck.actions.select.SelectedTestRunLineMarkerContributor"/>
     <additionalTextAttributes scheme="Default" file="colorSchemes/BuckDefault.xml"/>

@@ -24,11 +24,12 @@ import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-import com.facebook.buck.core.model.impl.ImmutableUnflavoredBuildTarget;
+import com.facebook.buck.core.model.impl.ImmutableUnflavoredBuildTargetView;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Optional;
 import org.hamcrest.Matchers;
 import org.junit.Test;
 
@@ -135,12 +136,8 @@ public class BuildTargetTest {
 
   @Test
   public void testGetUnflavoredTarget() {
-    UnflavoredBuildTarget unflavoredTarget =
-        ImmutableUnflavoredBuildTarget.builder()
-            .setBaseName("//foo/bar")
-            .setShortName("baz")
-            .setCellPath(ROOT)
-            .build();
+    UnflavoredBuildTargetView unflavoredTarget =
+        ImmutableUnflavoredBuildTargetView.of(ROOT, Optional.empty(), "//foo/bar", "baz");
 
     BuildTarget flavoredTarget =
         BuildTargetFactory.newInstance(ROOT, "//foo/bar", "baz", InternalFlavor.of("biz"));
@@ -168,18 +165,12 @@ public class BuildTargetTest {
 
   @Test
   public void unflavoredBuildTargetsAreInterned() {
-    UnflavoredBuildTarget target1 =
-        ImmutableUnflavoredBuildTarget.builder()
-            .setCellPath(ROOT)
-            .setBaseName("//foo")
-            .setShortName("bar")
-            .build();
-    UnflavoredBuildTarget target2 =
-        ImmutableUnflavoredBuildTarget.builder()
-            .setCellPath(ROOT)
-            .setBaseName("//foo")
-            .setShortName("bar")
-            .build();
+    UnflavoredBuildTargetView target1 =
+        ImmutableUnflavoredBuildTargetView.of(ROOT, Optional.empty(), "//foo", "bar");
+
+    UnflavoredBuildTargetView target2 =
+        ImmutableUnflavoredBuildTargetView.of(ROOT, Optional.empty(), "//foo", "bar");
+
     assertSame(target1, target2);
   }
 }

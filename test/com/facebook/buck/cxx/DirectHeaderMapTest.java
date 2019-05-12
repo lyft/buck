@@ -32,7 +32,6 @@ import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.PathSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.io.BuildCellRelativePath;
 import com.facebook.buck.io.file.MorePaths;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
@@ -73,7 +72,6 @@ public class DirectHeaderMapTest {
   private Path headerMapPath;
   private Path file1;
   private Path file2;
-  private SourcePathRuleFinder ruleFinder;
 
   @Before
   public void setUp() throws Exception {
@@ -107,11 +105,10 @@ public class DirectHeaderMapTest {
     // Setup the symlink tree buildable.
     graphBuilder = new TestActionGraphBuilder();
 
-    ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    pathResolver = DefaultSourcePathResolver.from(ruleFinder);
+    pathResolver = graphBuilder.getSourcePathResolver();
 
     buildRule =
-        new DirectHeaderMap(buildTarget, projectFilesystem, symlinkTreeRoot, links, ruleFinder);
+        new DirectHeaderMap(buildTarget, projectFilesystem, symlinkTreeRoot, links, graphBuilder);
     graphBuilder.addToIndex(buildRule);
 
     headerMapPath = pathResolver.getRelativePath(buildRule.getSourcePathToOutput());
@@ -166,10 +163,9 @@ public class DirectHeaderMapTest {
             projectFilesystem,
             symlinkTreeRoot,
             modifiedLinksBuilder.build(),
-            ruleFinder);
+            graphBuilder);
 
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(new TestActionGraphBuilder());
-    SourcePathResolver resolver = DefaultSourcePathResolver.from(ruleFinder);
+    SourcePathRuleFinder ruleFinder = new TestActionGraphBuilder();
 
     // Calculate their rule keys and verify they're different.
     FileHashLoader hashCache =
@@ -178,14 +174,12 @@ public class DirectHeaderMapTest {
                 DefaultFileHashCache.createDefaultFileHashCache(
                     TestProjectFilesystems.createProjectFilesystem(tmpDir.getRoot()),
                     FileHashCacheMode.DEFAULT)));
-    RuleKey key1 = new TestDefaultRuleKeyFactory(hashCache, resolver, ruleFinder).build(buildRule);
-    RuleKey key2 =
-        new TestDefaultRuleKeyFactory(hashCache, resolver, ruleFinder).build(modifiedBuildRule);
+    RuleKey key1 = new TestDefaultRuleKeyFactory(hashCache, ruleFinder).build(buildRule);
+    RuleKey key2 = new TestDefaultRuleKeyFactory(hashCache, ruleFinder).build(modifiedBuildRule);
     assertNotEquals(key1, key2);
 
-    key1 = new TestInputBasedRuleKeyFactory(hashCache, resolver, ruleFinder).build(buildRule);
-    key2 =
-        new TestInputBasedRuleKeyFactory(hashCache, resolver, ruleFinder).build(modifiedBuildRule);
+    key1 = new TestInputBasedRuleKeyFactory(hashCache, ruleFinder).build(buildRule);
+    key2 = new TestInputBasedRuleKeyFactory(hashCache, ruleFinder).build(modifiedBuildRule);
     assertNotEquals(key1, key2);
   }
 
@@ -193,8 +187,7 @@ public class DirectHeaderMapTest {
   public void testRuleKeyDoesNotChangeIfLinkTargetsChange() throws IOException {
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder();
     graphBuilder.addToIndex(buildRule);
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver resolver = DefaultSourcePathResolver.from(ruleFinder);
+    SourcePathRuleFinder ruleFinder = graphBuilder;
     // Calculate their rule keys and verify they're different.
     DefaultFileHashCache hashCache =
         DefaultFileHashCache.createDefaultFileHashCache(
@@ -202,18 +195,14 @@ public class DirectHeaderMapTest {
             FileHashCacheMode.DEFAULT);
     FileHashLoader hashLoader = new StackedFileHashCache(ImmutableList.of(hashCache));
 
-    RuleKey defaultKey1 =
-        new TestDefaultRuleKeyFactory(hashLoader, resolver, ruleFinder).build(buildRule);
-    RuleKey inputKey1 =
-        new TestInputBasedRuleKeyFactory(hashLoader, resolver, ruleFinder).build(buildRule);
+    RuleKey defaultKey1 = new TestDefaultRuleKeyFactory(hashLoader, ruleFinder).build(buildRule);
+    RuleKey inputKey1 = new TestInputBasedRuleKeyFactory(hashLoader, ruleFinder).build(buildRule);
 
     Files.write(file1, "hello other world".getBytes());
     hashCache.invalidateAll();
 
-    RuleKey defaultKey2 =
-        new TestDefaultRuleKeyFactory(hashLoader, resolver, ruleFinder).build(buildRule);
-    RuleKey inputKey2 =
-        new TestInputBasedRuleKeyFactory(hashLoader, resolver, ruleFinder).build(buildRule);
+    RuleKey defaultKey2 = new TestDefaultRuleKeyFactory(hashLoader, ruleFinder).build(buildRule);
+    RuleKey inputKey2 = new TestInputBasedRuleKeyFactory(hashLoader, ruleFinder).build(buildRule);
 
     // When the file content changes, the rulekey should change but the input rulekey should be
     // unchanged. This ensures that a dependent's rulekey changes correctly.

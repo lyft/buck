@@ -19,7 +19,7 @@ package com.facebook.buck.features.ocaml;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
+import com.facebook.buck.core.rules.BuildRuleResolver;
 import com.facebook.buck.core.rules.attr.HasRuntimeDeps;
 import com.facebook.buck.core.sourcepath.ExplicitBuildTargetSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
@@ -128,12 +128,13 @@ class OcamlStaticLibrary extends OcamlLibrary implements HasRuntimeDeps {
   }
 
   @Override
-  public Iterable<BuildRule> getOcamlLibraryDeps(OcamlPlatform platform) {
+  public Iterable<BuildRule> getOcamlLibraryDeps(
+      BuildRuleResolver buildRuleResolver, OcamlPlatform platform) {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public Stream<BuildTarget> getRuntimeDeps(SourcePathRuleFinder ruleFinder) {
+  public Stream<BuildTarget> getRuntimeDeps(BuildRuleResolver buildRuleResolver) {
     return RichStream.from(runtimeDeps);
   }
 }

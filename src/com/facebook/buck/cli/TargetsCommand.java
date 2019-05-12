@@ -37,10 +37,8 @@ import com.facebook.buck.core.rulekey.RuleKey;
 import com.facebook.buck.core.rulekey.calculator.ParallelRuleKeyCalculator;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.knowntypes.KnownRuleTypes;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.util.graph.AbstractBreadthFirstTraversal;
 import com.facebook.buck.core.util.graph.AcyclicDepthFirstPostOrderTraversal;
 import com.facebook.buck.core.util.graph.AcyclicDepthFirstPostOrderTraversal.CycleException;
@@ -66,6 +64,8 @@ import com.facebook.buck.rules.keys.DefaultRuleKeyFactory;
 import com.facebook.buck.rules.keys.RuleKeyCacheRecycler;
 import com.facebook.buck.rules.keys.RuleKeyCacheScope;
 import com.facebook.buck.rules.keys.RuleKeyFieldLoader;
+import com.facebook.buck.support.cli.config.CliConfig;
+import com.facebook.buck.support.cli.config.JsonAttributeFormat;
 import com.facebook.buck.util.CommandLineException;
 import com.facebook.buck.util.ExitCode;
 import com.facebook.buck.util.MoreExceptions;
@@ -268,10 +268,6 @@ public class TargetsCommand extends AbstractCommand {
 
   @Argument private List<String> arguments = new ArrayList<>();
 
-  public List<String> getArguments() {
-    return arguments;
-  }
-
   public ImmutableSet<String> getTypes() {
     return types.get();
   }
@@ -306,9 +302,7 @@ public class TargetsCommand extends AbstractCommand {
    *     --assume-modified-files} or {@code --assume-no-modified-files} is used, absent otherwise.
    */
   public ImmutableSet<Path> getTargetHashModifiedPaths() {
-    return targetHashModifiedPaths
-        .get()
-        .stream()
+    return targetHashModifiedPaths.get().stream()
         .map(Paths::get)
         .collect(ImmutableSet.toImmutableSet());
   }
@@ -331,7 +325,7 @@ public class TargetsCommand extends AbstractCommand {
                         .withSpeculativeParsing(SpeculativeParsing.ENABLED),
                     params.getParser().getPermState(),
                     getTargetPlatforms())) {
-          ResolveAliasHelper.resolveAlias(params, parserState, getArguments());
+          ResolveAliasHelper.resolveAlias(params, parserState, arguments);
         }
         return ExitCode.SUCCESS;
       }
@@ -349,7 +343,7 @@ public class TargetsCommand extends AbstractCommand {
     // referencedFiles can try to find targets based on a file, so make sure at least
     // /something/ is provided. We don't want people accidentally crawling a whole repo
     // when they didn't intend to.
-    if (getArguments().isEmpty() && this.referencedFiles.get().isEmpty()) {
+    if (arguments.isEmpty() && this.referencedFiles.get().isEmpty()) {
       throw new CommandLineException(
           "Must specify at least one build target pattern. See https://buckbuild.com/concept/build_target_pattern.html");
     }
@@ -454,9 +448,7 @@ public class TargetsCommand extends AbstractCommand {
   }
 
   private boolean hasConfigurationRules(TargetGraph targetGraph) {
-    return targetGraph
-        .getNodesWithNoIncomingEdges()
-        .stream()
+    return targetGraph.getNodesWithNoIncomingEdges().stream()
         .anyMatch(node -> node.getRuleType().getKind() == RuleType.Kind.CONFIGURATION);
   }
 
@@ -489,13 +481,11 @@ public class TargetsCommand extends AbstractCommand {
                 result.getActionGraph()))) {
 
       // ruleKeyFactory is used to calculate rule key that we also want to display on a graph
-      SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(result.getActionGraphBuilder());
       DefaultRuleKeyFactory ruleKeyFactory =
           new DefaultRuleKeyFactory(
               new RuleKeyFieldLoader(params.getRuleKeyConfiguration()),
               params.getFileHashCache(),
-              DefaultSourcePathResolver.from(ruleFinder),
-              ruleFinder,
+              result.getActionGraphBuilder(),
               ruleKeyCacheScope.getCache(),
               Optional.empty());
 
@@ -524,7 +514,7 @@ public class TargetsCommand extends AbstractCommand {
         createParsingContext(params.getCell(), executor)
             .withApplyDefaultFlavorsMode(parserConfig.getDefaultFlavorsMode())
             .withSpeculativeParsing(SpeculativeParsing.ENABLED);
-    if (getArguments().isEmpty()) {
+    if (arguments.isEmpty()) {
       TargetGraphAndBuildTargets completeTargetGraphAndBuildTargets =
           params
               .getParser()
@@ -551,9 +541,7 @@ public class TargetsCommand extends AbstractCommand {
                   parsingContext.withApplyDefaultFlavorsMode(
                       ParserConfig.ApplyDefaultFlavorsMode.DISABLED),
                   parseArgumentsAsTargetNodeSpecs(
-                      params.getCell().getCellPathResolver(),
-                      params.getBuckConfig(),
-                      getArguments()),
+                      params.getCell(), params.getBuckConfig(), arguments),
                   params.getTargetConfiguration()),
           descriptionClasses);
     }
@@ -578,9 +566,7 @@ public class TargetsCommand extends AbstractCommand {
     TargetGraph targetGraph = targetGraphAndBuildTargets.getTargetGraph();
     return TargetGraphAndBuildTargets.of(
         targetGraph,
-        targetGraphAndBuildTargets
-            .getBuildTargets()
-            .stream()
+        targetGraphAndBuildTargets.getBuildTargets().stream()
             .filter(
                 f ->
                     descriptionClasses
@@ -649,7 +635,7 @@ public class TargetsCommand extends AbstractCommand {
     // their dependencies. If we're detecting test changes we need the whole graph as tests are not
     // dependencies.
     TargetGraphAndBuildTargets targetGraphAndBuildTargets;
-    if (getArguments().isEmpty() || isDetectTestChanges) {
+    if (arguments.isEmpty() || isDetectTestChanges) {
       targetGraphAndBuildTargets =
           TargetGraphAndBuildTargets.of(
               params
@@ -670,9 +656,7 @@ public class TargetsCommand extends AbstractCommand {
               .buildTargetGraphWithConfigurationTargets(
                   parsingContext,
                   parseArgumentsAsTargetNodeSpecs(
-                      params.getCell().getCellPathResolver(),
-                      params.getBuckConfig(),
-                      getArguments()),
+                      params.getCell(), params.getBuckConfig(), arguments),
                   params.getTargetConfiguration());
     }
     return params.getBuckConfig().getView(BuildBuckConfig.class).getTargetsVersions()
@@ -745,15 +729,11 @@ public class TargetsCommand extends AbstractCommand {
     if (referencedFiles.isPresent()) {
       BuildFileTree buildFileTree =
           new InMemoryBuildFileTree(
-              graph
-                  .getNodes()
-                  .stream()
+              graph.getNodes().stream()
                   .map(TargetNode::getBuildTarget)
                   .collect(ImmutableSet.toImmutableSet()));
       directOwners =
-          graph
-              .getNodes()
-              .stream()
+          graph.getNodes().stream()
               .filter(new DirectOwnerPredicate(buildFileTree, referencedFiles.get(), buildFileName))
               .collect(ImmutableSet.toImmutableSet());
     } else {
@@ -851,7 +831,6 @@ public class TargetsCommand extends AbstractCommand {
                 params.getKnownRuleTypesProvider(),
                 new ParserPythonInterpreterProvider(
                     params.getCell().getBuckConfig(), params.getExecutableFinder()),
-                params.getCell().getBuckConfig(),
                 params.getWatchman(),
                 params.getBuckEventBus(),
                 params.getManifestServiceSupplier(),
@@ -872,12 +851,10 @@ public class TargetsCommand extends AbstractCommand {
         Map<String, Object> targetNodeAttributes =
             params.getParser().getTargetNodeRawAttributes(state, params.getCell(), targetNode);
         if (targetNodeAttributes == null) {
-          params
-              .getBuckEventBus()
-              .post(
-                  ConsoleEvent.warning(
-                      "unable to find rule for target "
-                          + targetNode.getBuildTarget().getFullyQualifiedName()));
+          printWarning(
+              params,
+              "unable to find rule for target "
+                  + targetNode.getBuildTarget().getFullyQualifiedName());
           continue;
         }
 
@@ -898,9 +875,7 @@ public class TargetsCommand extends AbstractCommand {
 
         if (jsonAttributeFormat != JsonAttributeFormat.LEGACY) {
           targetNodeAttributes =
-              targetNodeAttributes
-                  .entrySet()
-                  .stream()
+              targetNodeAttributes.entrySet().stream()
                   .collect(
                       ImmutableSortedMap.toImmutableSortedMap(
                           Comparator.naturalOrder(),
@@ -996,9 +971,6 @@ public class TargetsCommand extends AbstractCommand {
         actionGraph = Optional.of(result.getActionGraph());
         graphBuilder = Optional.of(result.getActionGraphBuilder());
         if (isShowRuleKey) {
-          SourcePathRuleFinder ruleFinder =
-              new SourcePathRuleFinder(result.getActionGraphBuilder());
-
           try (RuleKeyCacheScope<RuleKey> ruleKeyCacheScope =
               getDefaultRuleKeyCacheScope(
                   params,
@@ -1014,11 +986,11 @@ public class TargetsCommand extends AbstractCommand {
                         new DefaultRuleKeyFactory(
                             new RuleKeyFieldLoader(params.getRuleKeyConfiguration()),
                             params.getFileHashCache(),
-                            DefaultSourcePathResolver.from(ruleFinder),
-                            ruleFinder,
+                            result.getActionGraphBuilder(),
                             ruleKeyCacheScope.getCache(),
                             Optional.ofNullable(ruleKeyLogger)),
-                        new DefaultRuleDepsCache(graphBuilder.get()),
+                        new DefaultRuleDepsCache(
+                            graphBuilder.get(), result.getBuildEngineActionToBuildRuleResolver()),
                         (eventBus, rule) -> () -> {}));
           }
         }
@@ -1086,8 +1058,7 @@ public class TargetsCommand extends AbstractCommand {
           BuildRule rule = graphBuilder.requireRule(target);
           builder.setRuleType(rule.getType());
           if (isShowOutput || isShowFullOutput) {
-            SourcePathResolver sourcePathResolver =
-                DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder));
+            SourcePathResolver sourcePathResolver = graphBuilder.getSourcePathResolver();
             getUserFacingOutputPath(
                     sourcePathResolver,
                     rule,
@@ -1245,7 +1216,6 @@ public class TargetsCommand extends AbstractCommand {
                 params.getKnownRuleTypesProvider(),
                 new ParserPythonInterpreterProvider(
                     params.getCell().getBuckConfig(), params.getExecutableFinder()),
-                params.getCell().getBuckConfig(),
                 params.getWatchman(),
                 params.getBuckEventBus(),
                 params.getManifestServiceSupplier(),

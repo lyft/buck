@@ -20,6 +20,7 @@ import static com.facebook.buck.log.MachineReadableLogConfig.PREFIX_BUILD_FINISH
 import static com.facebook.buck.log.MachineReadableLogConfig.PREFIX_EXIT_CODE;
 import static com.facebook.buck.log.MachineReadableLogConfig.PREFIX_INVOCATION_INFO;
 
+import com.facebook.buck.core.exceptions.HumanReadableException;
 import com.facebook.buck.core.model.BuildId;
 import com.facebook.buck.doctor.config.BuildLogEntry;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
@@ -31,6 +32,7 @@ import com.google.common.collect.ImmutableList;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitOption;
 import java.nio.file.FileVisitResult;
 import java.nio.file.FileVisitor;
 import java.nio.file.Files;
@@ -40,10 +42,12 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
+import javax.annotation.Nullable;
 
 /** Methods for finding and inspecting buck log files. */
 public class BuildLogHelper {
@@ -66,9 +70,7 @@ public class BuildLogHelper {
         logEntries.add(newBuildLogEntry(logFile));
       }
     }
-    return logEntries
-        .build()
-        .stream()
+    return logEntries.build().stream()
         .sorted(Comparator.comparing(BuildLogEntry::getLastModifiedTime).reversed())
         .collect(ImmutableList.toImmutableList());
   }
@@ -130,9 +132,7 @@ public class BuildLogHelper {
     }
 
     Optional<Path> traceFile =
-        projectFilesystem
-            .getFilesUnderPath(logFile.getParent())
-            .stream()
+        projectFilesystem.getFilesUnderPath(logFile.getParent()).stream()
             .filter(input -> input.toString().endsWith(".trace"))
             .findFirst();
 
@@ -181,12 +181,11 @@ public class BuildLogHelper {
     List<Path> logfiles = new ArrayList<>();
     projectFilesystem.walkRelativeFileTree(
         projectFilesystem.getBuckPaths().getLogDir(),
+        EnumSet.noneOf(FileVisitOption.class),
         new FileVisitor<Path>() {
           @Override
           public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
-            return Files.isSymbolicLink(dir)
-                ? FileVisitResult.SKIP_SUBTREE
-                : FileVisitResult.CONTINUE;
+            return attrs.isSymbolicLink() ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
           }
 
           @Override
@@ -200,14 +199,21 @@ public class BuildLogHelper {
 
           @Override
           public FileVisitResult visitFileFailed(Path file, IOException exc) {
+            if (exc != null) {
+              throw new HumanReadableException(exc, "Cannot visit %s", file);
+            }
             return FileVisitResult.CONTINUE;
           }
 
           @Override
-          public FileVisitResult postVisitDirectory(Path dir, IOException exc) {
+          public FileVisitResult postVisitDirectory(Path dir, @Nullable IOException exc) {
+            if (exc != null) {
+              throw new HumanReadableException(exc, "Cannot get a list of files in %s", dir);
+            }
             return FileVisitResult.CONTINUE;
           }
-        });
+        },
+        false);
 
     return logfiles;
   }

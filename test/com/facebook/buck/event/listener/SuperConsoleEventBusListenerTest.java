@@ -47,9 +47,9 @@ import com.facebook.buck.core.rulekey.RuleKey;
 import com.facebook.buck.core.rules.impl.FakeBuildRule;
 import com.facebook.buck.core.test.event.TestRunEvent;
 import com.facebook.buck.core.test.event.TestSummaryEvent;
-import com.facebook.buck.distributed.DistBuildStatus;
 import com.facebook.buck.distributed.DistBuildStatusEvent;
 import com.facebook.buck.distributed.DistributedExitCode;
+import com.facebook.buck.distributed.ImmutableDistBuildStatus;
 import com.facebook.buck.distributed.StampedeLocalBuildStatusEvent;
 import com.facebook.buck.distributed.build_client.DistBuildRemoteProgressEvent;
 import com.facebook.buck.distributed.build_client.DistBuildSuperConsoleEvent;
@@ -165,21 +165,39 @@ public class SuperConsoleEventBusListenerTest {
     durationTracker = new BuildRuleDurationTracker();
   }
 
-  @Parameters(name = "{2}")
+  @Parameters(name = "{0}")
   public static Collection<Object[]> data() {
     return Arrays.asList(
         new Object[][] {
-          {false, Optional.empty(), "no_build_id_and_no_build_url"},
-          {true, Optional.empty(), "build_id_and_no_build_url"},
           {
-            true,
-            Optional.of("View details at https://example.com/build/{build_id}"),
-            "build_id_and_build_url"
+            "no_build_id_and_no_build_url",
+            false,
+            Optional.empty(),
+            ImmutableSet.of("build", "test", "install")
           },
           {
+            "build_id_and_no_build_url",
+            true,
+            Optional.empty(),
+            ImmutableSet.of("build", "test", "install")
+          },
+          {
+            "build_id_and_build_url",
+            true,
+            Optional.of("View details at https://example.com/build/{build_id}"),
+            ImmutableSet.of("build", "test", "install")
+          },
+          {
+            "no_build_id_and_build_url",
             false,
             Optional.of("View details at https://example.com/build/{build_id}"),
-            "no_build_id_and_build_url"
+            ImmutableSet.of("build", "test", "install")
+          },
+          {
+            "no_build_id_and_build_url_but_no_build_command",
+            false,
+            Optional.of("View details at https://example.com/build/{build_id}"),
+            ImmutableSet.of()
           }
         });
   }
@@ -187,13 +205,16 @@ public class SuperConsoleEventBusListenerTest {
   private final BuildId buildId = new BuildId("1234-5678");
 
   @Parameterized.Parameter(0)
-  public boolean printBuildId;
+  public String _ignoredName;
 
   @Parameterized.Parameter(1)
-  public Optional<String> buildDetailsTemplate;
+  public boolean printBuildId;
 
   @Parameterized.Parameter(2)
-  public String _ignoredName;
+  public Optional<String> buildDetailsTemplate;
+
+  @Parameterized.Parameter(3)
+  public ImmutableSet<String> buildDetailsCommands;
 
   private static class TestRenderingConsole extends RenderingConsole {
     private final TestConsole testConsole;
@@ -217,7 +238,12 @@ public class SuperConsoleEventBusListenerTest {
     TestRenderingConsole renderingConsole = new TestRenderingConsole(fakeClock, new TestConsole());
     SuperConsoleEventBusListener listener =
         createSuperConsole(
-            fakeClock, eventBus, printBuildId, buildDetailsTemplate, renderingConsole);
+            fakeClock,
+            eventBus,
+            printBuildId,
+            buildDetailsTemplate,
+            buildDetailsCommands,
+            renderingConsole);
 
     BuildTarget fakeTarget = BuildTargetFactory.newInstance("//banana:stand");
     BuildTarget dirCachedTarget = BuildTargetFactory.newInstance("//chicken:dance");
@@ -517,6 +543,7 @@ public class SuperConsoleEventBusListenerTest {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
                 Optional.empty()),
             1000L,
             TimeUnit.MILLISECONDS,
@@ -559,6 +586,7 @@ public class SuperConsoleEventBusListenerTest {
                 Optional.empty(),
                 Optional.of(BuildRuleSuccessType.FETCHED_FROM_CACHE),
                 UploadToCacheResultType.UNCACHEABLE,
+                Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
@@ -746,7 +774,7 @@ public class SuperConsoleEventBusListenerTest {
     CommandEvent.Started commandStarted =
         CommandEvent.started("build", ImmutableList.of(), OptionalLong.of(100), 1234);
     eventBus.post(CommandEvent.finished(commandStarted, ExitCode.SUCCESS));
-    if (buildDetailsTemplate.isPresent()) {
+    if (buildDetailsCommands.contains("build") && buildDetailsTemplate.isPresent()) {
       validateBuildIdConsole(
           listener,
           renderingConsole,
@@ -887,6 +915,7 @@ public class SuperConsoleEventBusListenerTest {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
                 Optional.empty()),
             1000L,
             TimeUnit.MILLISECONDS,
@@ -929,6 +958,7 @@ public class SuperConsoleEventBusListenerTest {
                 Optional.empty(),
                 Optional.of(BuildRuleSuccessType.BUILT_LOCALLY),
                 UploadToCacheResultType.UNCACHEABLE,
+                Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
@@ -1091,7 +1121,9 @@ public class SuperConsoleEventBusListenerTest {
     eventBus.postWithoutConfiguring(
         configureTestEventAtTime(
             new DistBuildStatusEvent(
-                job, DistBuildStatus.builder().setStatus(BuildStatus.QUEUED.toString()).build()),
+                job,
+                new ImmutableDistBuildStatus(
+                    Optional.of(BuildStatus.QUEUED.toString()), ImmutableList.of())),
             timeMillis,
             TimeUnit.MILLISECONDS,
             /* threadId */ 0L));
@@ -1122,7 +1154,8 @@ public class SuperConsoleEventBusListenerTest {
     timeMillis += 100;
     eventBus.postWithoutConfiguring(
         configureTestEventAtTime(
-            new DistBuildStatusEvent(job, DistBuildStatus.builder().build()),
+            new DistBuildStatusEvent(
+                job, new ImmutableDistBuildStatus(Optional.empty(), ImmutableList.of())),
             timeMillis,
             TimeUnit.MILLISECONDS,
             /* threadId */ 0L));
@@ -1136,6 +1169,7 @@ public class SuperConsoleEventBusListenerTest {
                 Optional.empty(),
                 Optional.of(BuildRuleSuccessType.BUILT_LOCALLY),
                 UploadToCacheResultType.UNCACHEABLE,
+                Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
@@ -1169,10 +1203,9 @@ public class SuperConsoleEventBusListenerTest {
         configureTestEventAtTime(
             new DistBuildStatusEvent(
                 job,
-                DistBuildStatus.builder()
-                    .setStatus(BuildStatus.BUILDING.toString())
-                    .setSlaveStatuses(ImmutableList.of(slave1, slave2, slave3))
-                    .build()),
+                new ImmutableDistBuildStatus(
+                    Optional.of(BuildStatus.BUILDING.toString()),
+                    ImmutableList.of(slave1, slave2, slave3))),
             timeMillis,
             TimeUnit.MILLISECONDS,
             /* threadId */ 0L));
@@ -1227,10 +1260,9 @@ public class SuperConsoleEventBusListenerTest {
         configureTestEventAtTime(
             new DistBuildStatusEvent(
                 job,
-                DistBuildStatus.builder()
-                    .setStatus(BuildStatus.BUILDING.toString())
-                    .setSlaveStatuses(ImmutableList.of(slave1, slave2, slave3))
-                    .build()),
+                new ImmutableDistBuildStatus(
+                    Optional.of(BuildStatus.BUILDING.toString()),
+                    ImmutableList.of(slave1, slave2, slave3))),
             timeMillis,
             TimeUnit.MILLISECONDS,
             /* threadId */ 0L));
@@ -1285,10 +1317,8 @@ public class SuperConsoleEventBusListenerTest {
         configureTestEventAtTime(
             new DistBuildStatusEvent(
                 job,
-                DistBuildStatus.builder()
-                    .setStatus("custom")
-                    .setSlaveStatuses(ImmutableList.of(slave1, slave2, slave3))
-                    .build()),
+                new ImmutableDistBuildStatus(
+                    Optional.of("custom"), ImmutableList.of(slave1, slave2, slave3))),
             timeMillis,
             TimeUnit.MILLISECONDS,
             /* threadId */ 0L));
@@ -1321,6 +1351,7 @@ public class SuperConsoleEventBusListenerTest {
                 Optional.of(BuildRuleSuccessType.FETCHED_FROM_CACHE),
                 // TODO(cjhopman): This doesn't make sense. It's a cache hit on an uncacheable rule.
                 UploadToCacheResultType.UNCACHEABLE,
+                Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
@@ -1363,10 +1394,8 @@ public class SuperConsoleEventBusListenerTest {
         configureTestEventAtTime(
             new DistBuildStatusEvent(
                 job,
-                DistBuildStatus.builder()
-                    .setStatus("custom")
-                    .setSlaveStatuses(ImmutableList.of(slave1, slave2, slave3))
-                    .build()),
+                new ImmutableDistBuildStatus(
+                    Optional.of("custom"), ImmutableList.of(slave1, slave2, slave3))),
             timeMillis,
             TimeUnit.MILLISECONDS,
             /* threadId */ 0L));
@@ -1395,10 +1424,9 @@ public class SuperConsoleEventBusListenerTest {
         configureTestEventAtTime(
             new DistBuildStatusEvent(
                 job,
-                DistBuildStatus.builder()
-                    .setStatus(BuildStatus.FINISHED_SUCCESSFULLY.toString())
-                    .setSlaveStatuses(ImmutableList.of(slave1, slave2, slave3))
-                    .build()),
+                new ImmutableDistBuildStatus(
+                    Optional.of(BuildStatus.FINISHED_SUCCESSFULLY.toString()),
+                    ImmutableList.of(slave1, slave2, slave3))),
             timeMillis,
             TimeUnit.MILLISECONDS,
             /* threadId */ 0L));
@@ -1762,6 +1790,7 @@ public class SuperConsoleEventBusListenerTest {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
                 Optional.empty()),
             1000L,
             TimeUnit.MILLISECONDS,
@@ -2068,6 +2097,7 @@ public class SuperConsoleEventBusListenerTest {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
                 Optional.empty()),
             1000L,
             TimeUnit.MILLISECONDS,
@@ -2295,6 +2325,7 @@ public class SuperConsoleEventBusListenerTest {
             buildId,
             false,
             Optional.empty(),
+            ImmutableSet.of(),
             ImmutableList.of());
     listener.register(eventBus);
 
@@ -2386,6 +2417,7 @@ public class SuperConsoleEventBusListenerTest {
                 Optional.empty(),
                 Optional.of(BuildRuleSuccessType.BUILT_LOCALLY),
                 UploadToCacheResultType.UNCACHEABLE,
+                Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
@@ -2734,6 +2766,7 @@ public class SuperConsoleEventBusListenerTest {
                 Optional.empty(),
                 Optional.of(BuildRuleSuccessType.BUILT_LOCALLY),
                 UploadToCacheResultType.UNCACHEABLE,
+                Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
@@ -3222,7 +3255,7 @@ public class SuperConsoleEventBusListenerTest {
 
   private SuperConsoleEventBusListener createSuperConsole(
       Clock clock, BuckEventBus eventBus, TestRenderingConsole console) {
-    return createSuperConsole(clock, eventBus, false, Optional.empty(), console);
+    return createSuperConsole(clock, eventBus, false, Optional.empty(), ImmutableSet.of(), console);
   }
 
   private SuperConsoleEventBusListener createSuperConsole(
@@ -3230,6 +3263,7 @@ public class SuperConsoleEventBusListenerTest {
       BuckEventBus eventBus,
       boolean printBuildId,
       Optional<String> buildDetailsTemplate,
+      ImmutableSet<String> buildDetailsCommands,
       TestRenderingConsole console) {
     SuperConsoleEventBusListener listener =
         new SuperConsoleEventBusListener(
@@ -3249,6 +3283,7 @@ public class SuperConsoleEventBusListenerTest {
             buildId,
             printBuildId,
             buildDetailsTemplate,
+            buildDetailsCommands,
             ImmutableList.of());
     listener.register(eventBus);
     return listener;

@@ -32,6 +32,9 @@ public interface PathShortener {
           "Expected preprocessor suffix to be absolute: %s",
           absolutePath);
       Path relativePath = MorePaths.relativize(workingDir, absolutePath);
+      if (MorePaths.isEmpty(relativePath)) {
+        relativePath = relativePath.getFileSystem().getPath(".");
+      }
       return absolutePath.toString().length() > relativePath.toString().length()
           ? relativePath
           : absolutePath;

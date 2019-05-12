@@ -16,9 +16,10 @@
 
 package com.facebook.buck.query;
 
+import com.facebook.buck.core.model.QueryTarget;
 import com.google.common.collect.ImmutableSet;
 
-public interface QueryEvaluator {
+public interface QueryEvaluator<ENV_NODE_TYPE> {
   /**
    * Evaluates the result of a query expression in the given environment.
    *
@@ -27,5 +28,7 @@ public interface QueryEvaluator {
    * @return the evaluated target set.
    * @throws QueryException if evaluation fails.
    */
-  ImmutableSet<QueryTarget> eval(QueryExpression exp, QueryEnvironment env) throws QueryException;
+  <OUTPUT_TYPE extends QueryTarget> ImmutableSet<OUTPUT_TYPE> eval(
+      QueryExpression<ENV_NODE_TYPE> exp, QueryEnvironment<ENV_NODE_TYPE> env)
+      throws QueryException;
 }

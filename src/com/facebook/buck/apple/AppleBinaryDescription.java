@@ -23,6 +23,7 @@ import com.facebook.buck.apple.toolchain.CodeSignIdentityStore;
 import com.facebook.buck.apple.toolchain.ProvisioningProfileStore;
 import com.facebook.buck.core.cell.CellPathResolver;
 import com.facebook.buck.core.description.MetadataProvidingDescription;
+import com.facebook.buck.core.description.arg.HasContacts;
 import com.facebook.buck.core.description.attr.ImplicitDepsInferringDescription;
 import com.facebook.buck.core.description.attr.ImplicitFlavorsInferringDescription;
 import com.facebook.buck.core.description.impl.DescriptionCache;
@@ -40,10 +41,7 @@ import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.sourcepath.SourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.ToolchainProvider;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
 import com.facebook.buck.cxx.CxxBinaryDescription;
@@ -55,13 +53,13 @@ import com.facebook.buck.cxx.CxxBinaryMetadataFactory;
 import com.facebook.buck.cxx.CxxCompilationDatabase;
 import com.facebook.buck.cxx.FrameworkDependencies;
 import com.facebook.buck.cxx.HasAppleDebugSymbolDeps;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
-import com.facebook.buck.cxx.toolchain.CxxPlatforms;
 import com.facebook.buck.cxx.toolchain.CxxPlatformsProvider;
 import com.facebook.buck.cxx.toolchain.LinkerMapMode;
 import com.facebook.buck.cxx.toolchain.StripStyle;
 import com.facebook.buck.cxx.toolchain.UnresolvedCxxPlatform;
+import com.facebook.buck.cxx.toolchain.impl.CxxPlatforms;
 import com.facebook.buck.file.WriteFile;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.rules.macros.StringWithMacros;
@@ -165,8 +163,7 @@ public class AppleBinaryDescription
 
     // Drop StripStyle because it's overridden by AppleDebugFormat
     result =
-        result
-            .stream()
+        result.stream()
             .filter(domain -> !domain.equals(StripStyle.FLAVOR_DOMAIN))
             .collect(ImmutableSet.toImmutableSet());
 
@@ -359,7 +356,7 @@ public class AppleBinaryDescription
           cxxPlatforms
               .getValue(buildTarget)
               .orElse(cxxPlatforms.getValue(defaultCxxFlavor))
-              .resolve(graphBuilder);
+              .resolve(graphBuilder, buildTarget.getTargetConfiguration());
       ApplePlatform applePlatform =
           appleCxxPlatformsFlavorDomain
               .getValue(cxxPlatform.getFlavor())
@@ -503,9 +500,6 @@ public class AppleBinaryDescription
             extraCxxDeps = ImmutableSortedSet.of();
           }
 
-          SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-          SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
-
           Optional<Path> stubBinaryPath =
               getStubBinaryPath(buildTarget, appleCxxPlatformsFlavorDomain, args);
           if (shouldUseStubBinary(buildTarget, args) && stubBinaryPath.isPresent()) {
@@ -524,7 +518,7 @@ public class AppleBinaryDescription
             CxxBinaryDescriptionArg.Builder delegateArg =
                 CxxBinaryDescriptionArg.builder().from(args);
             AppleDescriptions.populateCxxBinaryDescriptionArg(
-                pathResolver, delegateArg, args, buildTarget);
+                graphBuilder.getSourcePathResolver(), delegateArg, args, buildTarget);
 
             Optional<ApplePlatform> applePlatform =
                 getApplePlatformForTarget(buildTarget, appleCxxPlatformsFlavorDomain, graphBuilder);
@@ -541,7 +535,10 @@ public class AppleBinaryDescription
                         "-Xlinker",
                         "__entitlements",
                         "-Xlinker",
-                        pathResolver.getAbsolutePath(entitlements.get()).toString());
+                        graphBuilder
+                            .getSourcePathResolver()
+                            .getAbsolutePath(entitlements.get())
+                            .toString());
                 delegateArg.addAllLinkerFlags(
                     Iterables.transform(
                         flags, flag -> StringWithMacros.of(ImmutableList.of(Either.ofLeft(flag)))));
@@ -597,7 +594,7 @@ public class AppleBinaryDescription
         cxxPlatforms
             .getValue(buildTarget)
             .orElse(cxxPlatforms.getValue(defaultCxxFlavor))
-            .resolve(ruleResolver);
+            .resolve(ruleResolver, buildTarget.getTargetConfiguration());
 
     if (!appleCxxPlatformsFlavorDomain.contains(cxxPlatform.getFlavor())) {
       return Optional.empty();
@@ -625,10 +622,7 @@ public class AppleBinaryDescription
     if (!metadataClass.isAssignableFrom(FrameworkDependencies.class)) {
       CxxBinaryDescriptionArg.Builder delegateArg = CxxBinaryDescriptionArg.builder().from(args);
       AppleDescriptions.populateCxxBinaryDescriptionArg(
-          DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder)),
-          delegateArg,
-          args,
-          buildTarget);
+          graphBuilder.getSourcePathResolver(), delegateArg, args, buildTarget);
       return cxxBinaryMetadataFactory.createMetadata(
           buildTarget, graphBuilder, delegateArg.build().getDeps(), metadataClass);
     }
@@ -699,7 +693,7 @@ public class AppleBinaryDescription
   @BuckStyleImmutable
   @Value.Immutable
   interface AbstractAppleBinaryDescriptionArg
-      extends AppleNativeTargetDescriptionArg, HasEntitlementsFile {
+      extends AppleNativeTargetDescriptionArg, HasContacts, HasEntitlementsFile {
     Optional<SourcePath> getInfoPlist();
 
     ImmutableMap<String, String> getInfoPlistSubstitutions();

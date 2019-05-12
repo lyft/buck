@@ -145,7 +145,7 @@
     <include name="android/sdk-common-25.3.0.jar" />
     <include name="aopalliance/aopalliance.jar" />
     <include name="aosp/apksig.jar" />
-    <include name="asm/asm*-7.0.jar" />
+    <include name="asm/asm*-7.1.jar" />
     <include name="bazel/bazel_deploy.jar" />
     <include name="bundletool/bundletool-0.7.1.jar" />
     <include name="closure-templates/soy-excluding-deps.jar" />
@@ -193,7 +193,7 @@
     <include name="jimfs/jimfs-1.1.jar" />
     <include name="jopt-simple/jopt-simple-4.6.jar" />
     <include name="json-simple/json-simple-1.1.1.jar" />
-    <include name="kotlinx-metadata-jvm/kotlinx-metadata-jvm-0.0.3.jar" />
+    <include name="kotlinx-metadata-jvm/kotlinx-metadata-jvm-0.0.4.jar" />
     <include name="jsr/javax.inject-1.jar" />
     <include name="jsr/jsr305.jar" />
     <include name="nuprocess/nuprocess-1.2.4.jar" />
@@ -268,6 +268,7 @@
     <pathelement location="${immutables-value-standalone.jar}"/>
     <pathelement location="${immutables-builder-standalone.jar}"/>
     <pathelement location="${pf4j-standalone.jar}"/>
+    <pathelement location="src/com/facebook/buck/core/util/immutables/resources"/>
   </path>
 
   <pathconvert refid="processorpath" property="processorpath" />
@@ -277,6 +278,7 @@
     <pathelement location="${immutables-builder-standalone.jar}"/>
     <pathelement location="${pf4j-standalone.jar}"/>
     <pathelement location="${buck.modules.annotation.processor.jar}"/>
+    <pathelement location="src/com/facebook/buck/core/util/immutables/resources"/>
   </path>
 
   <pathconvert refid="module.processorpath" property="module.processorpath" />
@@ -359,12 +361,13 @@
     <compiler destdir="${bootstrapper.classes.dir}" classpathref="bootstrapper-classpath">
       <javac-params>
         <include name="${bootstrapper.src.dir}/**/*.java" />
-        <include name="com/facebook/buck/util/JavaVersion.java" />
         <include name="com/facebook/buck/util/liteinfersupport/Nullable.java" />
         <include name="com/facebook/buck/util/liteinfersupport/PropagatesNullable.java" />
         <include name="com/facebook/buck/jvm/java/plugin/api/*.java" />
         <include name="com/facebook/buck/jvm/java/abi/source/api/*.java" />
         <include name="com/facebook/buck/jvm/java/lang/model/*.java" />
+        <include name="com/facebook/buck/jvm/java/version/JavaVersion.java" />
+        <include name="com/facebook/buck/core/filesystems/*.java" />
       </javac-params>
     </compiler>
     <jar destfile="${bootstrapper.jar}">
@@ -863,11 +866,11 @@
       <zipfileset excludes="**/*SF **/*RSA" src="${third-party.dir}/java/jacoco/org.jacoco.core-0.8.3.201812281252.jar"/>
       <zipfileset excludes="**/*SF **/*RSA" src="${third-party.dir}/java/jacoco/org.jacoco.report-0.8.3.201812281252.jar"/>
       <zipfileset excludes="**/*SF **/*RSA" src="${third-party.dir}/java/plexus/plexus-utils-3.0.20.jar"/>
-      <zipfileset includes="**/*.class" src="${third-party.dir}/java/asm/asm-7.0.jar" />
-      <zipfileset includes="**/*.class" src="${third-party.dir}/java/asm/asm-analysis-7.0.jar" />
-      <zipfileset includes="**/*.class" src="${third-party.dir}/java/asm/asm-commons-7.0.jar" />
-      <zipfileset includes="**/*.class" src="${third-party.dir}/java/asm/asm-tree-7.0.jar" />
-      <zipfileset includes="**/*.class" src="${third-party.dir}/java/asm/asm-util-7.0.jar" />
+      <zipfileset includes="**/*.class" src="${third-party.dir}/java/asm/asm-7.1.jar" />
+      <zipfileset includes="**/*.class" src="${third-party.dir}/java/asm/asm-analysis-7.1.jar" />
+      <zipfileset includes="**/*.class" src="${third-party.dir}/java/asm/asm-commons-7.1.jar" />
+      <zipfileset includes="**/*.class" src="${third-party.dir}/java/asm/asm-tree-7.1.jar" />
+      <zipfileset includes="**/*.class" src="${third-party.dir}/java/asm/asm-util-7.1.jar" />
       <zipfileset includes="**/*.class" src="${third-party.dir}/java/guava/guava-23.3-jre.jar"/>
       <fileset dir="${classes.dir}">
           <include name="com/facebook/buck/jvm/java/coverage/ReportGenerator.class"/>
@@ -1107,6 +1110,8 @@
       <mkdir dir="@{destdir}" />
       <record name="@{destdir}/javadoc.log" action="start" />
 
+      <!-- Explicitly set source to 8 to work around JDK-8212233 when run under
+           Java 11.0.2. -->
       <javadoc destdir="@{destdir}"
                access="@{access}"
                classpathref="@{classpathref}"
@@ -1114,6 +1119,7 @@
                failonerror="true"
                additionalparam="${javadoc.doclint}"
                useexternalfile="true"
+               source="8"
                >
         <arg value="-notimestamp"/>
         <fileset dir="${src.dir}">

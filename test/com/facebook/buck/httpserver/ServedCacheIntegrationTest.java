@@ -36,7 +36,7 @@ import com.facebook.buck.core.config.BuckConfigTestUtils;
 import com.facebook.buck.core.model.BuildId;
 import com.facebook.buck.core.model.TargetConfigurationSerializer;
 import com.facebook.buck.core.model.TargetConfigurationSerializerForTests;
-import com.facebook.buck.core.model.UnconfiguredBuildTarget;
+import com.facebook.buck.core.model.UnconfiguredBuildTargetView;
 import com.facebook.buck.core.parser.buildtargetparser.ParsingUnconfiguredBuildTargetFactory;
 import com.facebook.buck.core.rulekey.RuleKey;
 import com.facebook.buck.event.BuckEventBus;
@@ -48,8 +48,7 @@ import com.facebook.buck.io.filesystem.TestProjectFilesystems;
 import com.facebook.buck.io.filesystem.impl.DefaultProjectFilesystem;
 import com.facebook.buck.io.filesystem.impl.DefaultProjectFilesystemDelegate;
 import com.facebook.buck.io.filesystem.impl.DefaultProjectFilesystemFactory;
-import com.facebook.buck.support.bgtasks.BackgroundTaskManager;
-import com.facebook.buck.support.bgtasks.TaskManagerScope;
+import com.facebook.buck.support.bgtasks.TaskManagerCommandScope;
 import com.facebook.buck.support.bgtasks.TestBackgroundTaskManager;
 import com.facebook.buck.testutil.TemporaryPaths;
 import com.facebook.buck.util.environment.Architecture;
@@ -84,7 +83,7 @@ public class ServedCacheIntegrationTest {
   private static final BuildId BUILD_ID = new BuildId("test");
 
   private ProjectFilesystem projectFilesystem;
-  private Function<String, UnconfiguredBuildTarget> unconfiguredBuildTargetFactory;
+  private Function<String, UnconfiguredBuildTargetView> unconfiguredBuildTargetFactory;
   private CellPathResolver cellPathResolver;
   private TargetConfigurationSerializer targetConfigurationSerializer;
   private WebServer webServer = null;
@@ -96,8 +95,8 @@ public class ServedCacheIntegrationTest {
   private static final ListeningExecutorService DIRECT_EXECUTOR_SERVICE =
       MoreExecutors.newDirectExecutorService();
 
-  private BackgroundTaskManager bgTaskManager;
-  private TaskManagerScope managerScope;
+  private TestBackgroundTaskManager bgTaskManager;
+  private TaskManagerCommandScope managerScope;
 
   @Before
   public void setUp() throws Exception {
@@ -110,7 +109,7 @@ public class ServedCacheIntegrationTest {
         ArtifactInfo.builder().addRuleKeys(A_FILE_RULE_KEY).setMetadata(A_FILE_METADATA).build(),
         BorrowablePath.notBorrowablePath(A_FILE_PATH));
 
-    bgTaskManager = new TestBackgroundTaskManager();
+    bgTaskManager = TestBackgroundTaskManager.of();
     managerScope = bgTaskManager.getNewScope(BUILD_ID);
 
     cellPathResolver = TestCellPathResolver.get(projectFilesystem);

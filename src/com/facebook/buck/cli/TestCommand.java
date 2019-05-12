@@ -41,8 +41,7 @@ import com.facebook.buck.core.resources.ResourcesConfig;
 import com.facebook.buck.core.rulekey.RuleKey;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
+import com.facebook.buck.core.rules.attr.HasRuntimeDeps;
 import com.facebook.buck.core.test.rule.ExternalTestRunnerRule;
 import com.facebook.buck.core.test.rule.ExternalTestRunnerTestSpec;
 import com.facebook.buck.core.test.rule.TestRule;
@@ -62,7 +61,6 @@ import com.facebook.buck.rules.keys.RuleKeyFactories;
 import com.facebook.buck.rules.modern.builders.ModernBuildRuleBuilderFactory;
 import com.facebook.buck.rules.modern.config.ModernBuildRuleConfig;
 import com.facebook.buck.step.AdbOptions;
-import com.facebook.buck.step.DefaultStepRunner;
 import com.facebook.buck.test.CoverageReportFormat;
 import com.facebook.buck.test.TestRunningOptions;
 import com.facebook.buck.test.config.TestBuckConfig;
@@ -316,7 +314,6 @@ public class TestCommand extends BuildCommand {
 
     try (CommandThreadManager testPool =
         new CommandThreadManager("Test-Run", getTestConcurrencyLimit(params))) {
-      SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(build.getGraphBuilder());
       int exitCodeInt =
           TestRunning.runTests(
               params,
@@ -326,9 +323,8 @@ public class TestCommand extends BuildCommand {
               getTestRunningOptions(params),
               testPool.getWeightedListeningExecutorService(),
               buildEngine,
-              new DefaultStepRunner(),
               buildContext,
-              ruleFinder);
+              build.getGraphBuilder());
       return ExitCode.map(exitCodeInt);
     }
   }
@@ -466,8 +462,11 @@ public class TestCommand extends BuildCommand {
 
     LOG.debug("Running with arguments %s", getArguments());
 
+    ListeningProcessExecutor processExecutor = new ListeningProcessExecutor();
     try (CommandThreadManager pool =
-        new CommandThreadManager("Test", getConcurrencyLimit(params.getBuckConfig()))) {
+            new CommandThreadManager("Test", getConcurrencyLimit(params.getBuckConfig()));
+        BuildPrehook prehook = getPrehook(processExecutor, params)) {
+      prehook.startPrehookScript();
       BuildEvent.Started started = BuildEvent.started(getArguments());
       params.getBuckEventBus().post(started);
 
@@ -509,9 +508,7 @@ public class TestCommand extends BuildCommand {
                   .buildTargetGraphWithoutConfigurationTargets(
                       parsingContext,
                       parseArgumentsAsTargetNodeSpecs(
-                          params.getCell().getCellPathResolver(),
-                          params.getBuckConfig(),
-                          getArguments()),
+                          params.getCell(), params.getBuckConfig(), getArguments()),
                       params.getTargetConfiguration());
 
           LOG.debug("Got explicit build targets %s", targetGraphAndBuildTargets.getBuildTargets());
@@ -576,8 +573,6 @@ public class TestCommand extends BuildCommand {
                   actionGraphAndBuilder.getActionGraph()))) {
         LocalCachingBuildEngineDelegate localCachingBuildEngineDelegate =
             new LocalCachingBuildEngineDelegate(params.getFileHashCache());
-        SourcePathRuleFinder sourcePathRuleFinder =
-            new SourcePathRuleFinder(actionGraphAndBuilder.getActionGraphBuilder());
         try (CachingBuildEngine cachingBuildEngine =
                 new CachingBuildEngine(
                     localCachingBuildEngineDelegate,
@@ -591,15 +586,13 @@ public class TestCommand extends BuildCommand {
                         params.getBuckEventBus(),
                         params.getMetadataProvider()),
                     pool.getWeightedListeningExecutorService(),
-                    new DefaultStepRunner(),
                     getBuildEngineMode().orElse(cachingBuildEngineBuckConfig.getBuildEngineMode()),
                     cachingBuildEngineBuckConfig.getBuildMetadataStorage(),
                     cachingBuildEngineBuckConfig.getBuildDepFiles(),
                     cachingBuildEngineBuckConfig.getBuildMaxDepFileCacheEntries(),
                     cachingBuildEngineBuckConfig.getBuildArtifactCacheSizeLimit(),
                     actionGraphAndBuilder.getActionGraphBuilder(),
-                    sourcePathRuleFinder,
-                    DefaultSourcePathResolver.from(sourcePathRuleFinder),
+                    actionGraphAndBuilder.getBuildEngineActionToBuildRuleResolver(),
                     params.getTargetConfigurationSerializer(),
                     params.getBuildInfoStoreManager(),
                     cachingBuildEngineBuckConfig.getResourceAwareSchedulingInfo(),
@@ -630,12 +623,18 @@ public class TestCommand extends BuildCommand {
                     getExecutionContext(),
                     isKeepGoing())) {
 
-          // Build all of the test rules.
+          // Build all of the test rules and runtime deps.
+          Iterable<BuildTarget> targets =
+              RichStream.from(testRules)
+                  .filter(HasRuntimeDeps.class::isInstance)
+                  .map(HasRuntimeDeps.class::cast)
+                  .flatMap(
+                      rule -> rule.getRuntimeDeps(actionGraphAndBuilder.getActionGraphBuilder()))
+                  .concat(RichStream.from(testRules).map(TestRule::getBuildTarget))
+                  .toImmutableList();
           ExitCode exitCode =
               build.executeAndPrintFailuresToEventBus(
-                  RichStream.from(testRules)
-                      .map(TestRule::getBuildTarget)
-                      .collect(ImmutableList.toImmutableList()),
+                  targets,
                   params.getBuckEventBus(),
                   params.getConsole(),
                   getPathToBuildReport(params.getBuckConfig()));
@@ -657,8 +656,7 @@ public class TestCommand extends BuildCommand {
           BuildContext buildContext =
               BuildContext.builder()
                   .setSourcePathResolver(
-                      DefaultSourcePathResolver.from(
-                          new SourcePathRuleFinder(actionGraphAndBuilder.getActionGraphBuilder())))
+                      actionGraphAndBuilder.getActionGraphBuilder().getSourcePathResolver())
                   .setBuildCellRootPath(params.getCell().getRoot())
                   .setJavaPackageFinder(params.getJavaPackageFinder())
                   .setEventBus(params.getBuckEventBus())
@@ -783,9 +781,7 @@ public class TestCommand extends BuildCommand {
     @Override
     public int parseArguments(Parameters params) throws CmdLineException {
       Set<String> parsed =
-          Splitter.on(",")
-              .splitToList(params.getParameter(0))
-              .stream()
+          Splitter.on(",").splitToList(params.getParameter(0)).stream()
               .map(s -> s.replaceAll("-", "_").toLowerCase())
               .collect(Collectors.toSet());
       List<CoverageReportFormat> formats = new ArrayList<>();

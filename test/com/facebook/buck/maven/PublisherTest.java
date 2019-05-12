@@ -22,10 +22,7 @@ import com.facebook.buck.core.model.targetgraph.TargetGraph;
 import com.facebook.buck.core.model.targetgraph.TargetGraphFactory;
 import com.facebook.buck.core.model.targetgraph.TargetNode;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
 import com.facebook.buck.jvm.core.JavaLibrary;
@@ -94,8 +91,6 @@ public class PublisherTest {
     TargetGraph targetGraph =
         TargetGraphFactory.newInstance(depNode, publishableANode, publishableBNode);
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder(targetGraph);
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder));
 
     MavenPublishable publishableA = (MavenPublishable) graphBuilder.requireRule(publishableTargetA);
     MavenPublishable publishableB = (MavenPublishable) graphBuilder.requireRule(publishableTargetB);
@@ -110,7 +105,8 @@ public class PublisherTest {
         Matchers.containsString(
             publishableTargetB.getUnflavoredBuildTarget().getFullyQualifiedName()));
 
-    publisher.publish(pathResolver, ImmutableSet.of(publishableA, publishableB));
+    publisher.publish(
+        graphBuilder.getSourcePathResolver(), ImmutableSet.of(publishableA, publishableB));
   }
 
   @Test
@@ -153,8 +149,6 @@ public class PublisherTest {
         TargetGraphFactory.newInstance(
             transitiveDepNode, depNode, publishableANode, publishableBNode);
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder(targetGraph);
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder));
 
     MavenPublishable publishableA = (MavenPublishable) graphBuilder.requireRule(publishableTargetA);
     MavenPublishable publishableB = (MavenPublishable) graphBuilder.requireRule(publishableTargetB);
@@ -169,7 +163,8 @@ public class PublisherTest {
         Matchers.containsString(
             publishableTargetB.getUnflavoredBuildTarget().getFullyQualifiedName()));
 
-    publisher.publish(pathResolver, ImmutableSet.of(publishableA, publishableB));
+    publisher.publish(
+        graphBuilder.getSourcePathResolver(), ImmutableSet.of(publishableA, publishableB));
   }
 
   @Test
@@ -218,8 +213,6 @@ public class PublisherTest {
         TargetGraphFactory.newInstance(
             transitiveDepNode, dep1Node, dep2Node, publishableANode, publishableBNode);
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder(targetGraph);
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(graphBuilder));
 
     MavenPublishable publishableA = (MavenPublishable) graphBuilder.requireRule(publishableTargetA);
     MavenPublishable publishableB = (MavenPublishable) graphBuilder.requireRule(publishableTargetB);
@@ -234,6 +227,7 @@ public class PublisherTest {
         Matchers.containsString(
             publishableTargetB.getUnflavoredBuildTarget().getFullyQualifiedName()));
 
-    publisher.publish(pathResolver, ImmutableSet.of(publishableA, publishableB));
+    publisher.publish(
+        graphBuilder.getSourcePathResolver(), ImmutableSet.of(publishableA, publishableB));
   }
 }

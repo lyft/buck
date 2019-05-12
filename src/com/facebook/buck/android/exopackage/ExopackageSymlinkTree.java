@@ -19,6 +19,7 @@ import com.facebook.buck.android.exopackage.ExopackageInfo.NativeLibsInfo;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
 import com.facebook.buck.io.file.MorePaths;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
+import com.facebook.buck.io.pathformat.PathFormatter;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import java.io.IOException;
@@ -96,7 +97,7 @@ public class ExopackageSymlinkTree {
     // be rooted
     Path deviceRootPath = ExopackageInstaller.EXOPACKAGE_INSTALL_ROOT.resolve(packageName);
     filesystem.writeContentsToPath(
-        MorePaths.pathWithUnixSeparators(deviceRootPath), rootPath.resolve("metadata.txt"));
+        PathFormatter.pathWithUnixSeparators(deviceRootPath), rootPath.resolve("metadata.txt"));
   }
   /** Create symlinks for each of the filesToInstall in the destPath with the proper hierarchy */
   private static void linkFiles(
@@ -142,9 +143,8 @@ public class ExopackageSymlinkTree {
     // Each shared-object referenced by the metadata is contained within a folder named with the abi
     // so we extract the set of parent folder names for all the objects.
     return ExopackageInstaller.parseExopackageInfoMetadata(
-            metadataPath, MorePaths.EMPTY_PATH, filesystem)
-        .values()
-        .stream()
+            metadataPath, MorePaths.emptyOf(metadataPath), filesystem)
+        .values().stream()
         .map(path -> path.getParent().getFileName().toString())
         .collect(ImmutableSet.toImmutableSet())
         .asList();

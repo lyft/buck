@@ -120,9 +120,7 @@ public class HaskellPackageRule extends AbstractBuildRuleWithDeclaredAndExtraDep
                 ImmutableSortedSet.<BuildRule>naturalOrder()
                     .addAll(BuildableSupport.getDepsCollection(ghcPkg, ruleFinder))
                     .addAll(
-                        depPackages
-                            .values()
-                            .stream()
+                        depPackages.values().stream()
                             .flatMap(pkg -> pkg.getDeps(ruleFinder))
                             .iterator())
                     .addAll(
@@ -187,19 +185,21 @@ public class HaskellPackageRule extends AbstractBuildRuleWithDeclaredAndExtraDep
     }
     entries.put("library-dirs", Joiner.on(", ").join(libDirs));
 
-    if (Linker.LinkableDepType.STATIC == depType) {
-      entries.put("hs-libraries", Joiner.on(", ").join(libs));
-    } else {
+    if (Linker.LinkableDepType.SHARED == depType) {
+      // ghc expects the filename to be something like `libfoo-ghc8.x.y.so` but
+      // we have `libfoo.so`.
       entries.put("extra-libraries", Joiner.on(", ").join(libs));
+    } else {
+      // the filename can be either `libfoo.a` or `libfoo_p.a` depending on
+      // if profiling is enabled.
+      entries.put("hs-libraries", Joiner.on(", ").join(libs));
     }
 
     entries.put("depends", Joiner.on(", ").join(depPackages.keySet()));
 
     return new WriteFileStep(
         getProjectFilesystem(),
-        entries
-            .entrySet()
-            .stream()
+        entries.entrySet().stream()
             .map(input -> input.getKey() + ": " + input.getValue())
             .collect(Collectors.joining(System.lineSeparator())),
         registrationFile,
@@ -258,9 +258,7 @@ public class HaskellPackageRule extends AbstractBuildRuleWithDeclaredAndExtraDep
             ghcPkgCmd,
             ImmutableMap.of(
                 "GHC_PACKAGE_PATH",
-                depPackages
-                    .values()
-                    .stream()
+                depPackages.values().stream()
                     .map(
                         input ->
                             context

@@ -18,7 +18,10 @@ package com.facebook.buck.remoteexecution.grpc;
 
 import build.bazel.remote.execution.v2.Command.EnvironmentVariable;
 import build.bazel.remote.execution.v2.OutputFile.Builder;
+import build.bazel.remote.execution.v2.Platform;
+import build.bazel.remote.execution.v2.Platform.Property;
 import com.facebook.buck.remoteexecution.interfaces.Protocol;
+import com.facebook.buck.remoteexecution.proto.WorkerRequirements;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSortedMap;
@@ -86,19 +89,14 @@ public class GrpcProtocol implements Protocol {
 
     @Override
     public ImmutableList<String> getCommand() {
-      return command
-          .getArgumentsList()
-          .asByteStringList()
-          .stream()
+      return command.getArgumentsList().asByteStringList().stream()
           .map(ByteString::toStringUtf8)
           .collect(ImmutableList.toImmutableList());
     }
 
     @Override
     public ImmutableMap<String, String> getEnvironment() {
-      return command
-          .getEnvironmentVariablesList()
-          .stream()
+      return command.getEnvironmentVariablesList().stream()
           .collect(
               ImmutableMap.toImmutableMap(
                   EnvironmentVariable::getName, EnvironmentVariable::getValue));
@@ -106,20 +104,14 @@ public class GrpcProtocol implements Protocol {
 
     @Override
     public ImmutableList<String> getOutputFiles() {
-      return command
-          .getOutputFilesList()
-          .asByteStringList()
-          .stream()
+      return command.getOutputFilesList().asByteStringList().stream()
           .map(ByteString::toStringUtf8)
           .collect(ImmutableList.toImmutableList());
     }
 
     @Override
     public ImmutableList<String> getOutputDirectories() {
-      return command
-          .getOutputDirectoriesList()
-          .asByteStringList()
-          .stream()
+      return command.getOutputDirectoriesList().asByteStringList().stream()
           .map(ByteString::toStringUtf8)
           .collect(ImmutableList.toImmutableList());
     }
@@ -193,18 +185,14 @@ public class GrpcProtocol implements Protocol {
 
     @Override
     public Collection<DirectoryNode> getDirectoriesList() {
-      return directory
-          .getDirectoriesList()
-          .stream()
+      return directory.getDirectoriesList().stream()
           .map(GrpcDirectoryNode::new)
           .collect(Collectors.toList());
     }
 
     @Override
     public Collection<SymlinkNode> getSymlinksList() {
-      return directory
-          .getSymlinksList()
-          .stream()
+      return directory.getSymlinksList().stream()
           .map(GrpcSymlinkNode::new)
           .collect(Collectors.toList());
     }
@@ -349,17 +337,27 @@ public class GrpcProtocol implements Protocol {
   public Command newCommand(
       ImmutableList<String> command,
       ImmutableSortedMap<String, String> commandEnvironment,
-      Set<Path> outputs) {
+      Set<Path> outputs,
+      WorkerRequirements workerRequirements) {
     List<String> outputStrings =
         outputs.stream().map(Path::toString).sorted().collect(Collectors.toList());
 
+    Platform.Builder platformBuilder = Platform.newBuilder();
+    platformBuilder.addProperties(
+        Property.newBuilder()
+            .setName("SIZE")
+            .setValue(workerRequirements.getWorkerSize().name())
+            .build());
+    platformBuilder.addProperties(
+        Property.newBuilder()
+            .setName("PLATFORM")
+            .setValue(workerRequirements.getPlatformType().name())
+            .build());
     return new GrpcCommand(
         build.bazel.remote.execution.v2.Command.newBuilder()
             .addAllArguments(command)
             .addAllEnvironmentVariables(
-                commandEnvironment
-                    .entrySet()
-                    .stream()
+                commandEnvironment.entrySet().stream()
                     .map(
                         entry ->
                             EnvironmentVariable.newBuilder()
@@ -369,6 +367,7 @@ public class GrpcProtocol implements Protocol {
                     .collect(Collectors.toList()))
             .addAllOutputFiles(outputStrings)
             .addAllOutputDirectories(outputStrings)
+            .setPlatform(platformBuilder.build())
             .build());
   }
 

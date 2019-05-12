@@ -49,11 +49,8 @@ import com.facebook.buck.core.exceptions.HumanReadableException;
 import com.facebook.buck.core.model.targetgraph.TargetNode;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.SourceWithFlags;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.util.log.Logger;
 import com.facebook.buck.cxx.CxxSource;
 import com.facebook.buck.cxx.toolchain.HeaderVisibility;
@@ -695,8 +692,7 @@ class NewNativeTargetProjectMutator {
         shellScriptBuildPhase
             .getInputPaths()
             .addAll(
-                arg.getSrcs()
-                    .stream()
+                arg.getSrcs().stream()
                     .map(sourcePathResolver)
                     .map(pathRelativizer::outputDirToRootRelative)
                     .map(Object::toString)
@@ -750,11 +746,10 @@ class NewNativeTargetProjectMutator {
 
     SourcePath jsOutput = bundle.getSourcePathToOutput();
     SourcePath resOutput = bundle.getSourcePathToResources();
-    SourcePathResolver sourcePathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(resolver));
 
-    template.add("built_bundle_path", sourcePathResolver.getAbsolutePath(jsOutput));
-    template.add("built_resources_path", sourcePathResolver.getAbsolutePath(resOutput));
+    template.add("built_bundle_path", resolver.getSourcePathResolver().getAbsolutePath(jsOutput));
+    template.add(
+        "built_resources_path", resolver.getSourcePathResolver().getAbsolutePath(resOutput));
 
     return template.render();
   }
@@ -774,17 +769,15 @@ class NewNativeTargetProjectMutator {
 
         SourcePath jsOutput = bundle.getSourcePathToOutput();
         SourcePath resOutput = bundle.getSourcePathToResources();
-        SourcePathResolver sourcePathResolver =
-            DefaultSourcePathResolver.from(new SourcePathRuleFinder(resolver));
 
-        Path jsOutputPath = sourcePathResolver.getAbsolutePath(jsOutput);
+        Path jsOutputPath = resolver.getSourcePathResolver().getAbsolutePath(jsOutput);
         builder.add(
             CopyInXcode.of(
                 CopyInXcode.SourceType.FOLDER_CONTENTS,
                 cell.getFilesystem().relativize(jsOutputPath),
                 CopyInXcode.DestinationBase.UNLOCALIZED_RESOURCES,
                 Paths.get("")));
-        Path resOutputPath = sourcePathResolver.getAbsolutePath(resOutput);
+        Path resOutputPath = resolver.getSourcePathResolver().getAbsolutePath(resOutput);
         builder.add(
             CopyInXcode.of(
                 CopyInXcode.SourceType.FOLDER_CONTENTS,

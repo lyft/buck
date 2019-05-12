@@ -16,11 +16,9 @@
 
 package com.facebook.buck.remoteexecution.event.listener;
 
+import com.facebook.buck.remoteexecution.event.LocalFallbackStats;
 import com.facebook.buck.remoteexecution.event.RemoteExecutionActionEvent.State;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Maps;
 import java.util.List;
-import java.util.Map;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -28,11 +26,11 @@ import org.junit.Test;
 public class RemoteExecutionConsoleLineProviderTest {
   private final String SESSION_ID_INFO = "super cool info about the session";
 
-  private TestStatsProvider statsProvider;
+  private TestRemoteExecutionStatsProvider statsProvider;
 
   @Before
   public void setUp() {
-    this.statsProvider = new TestStatsProvider();
+    this.statsProvider = new TestRemoteExecutionStatsProvider();
   }
 
   @Test
@@ -52,7 +50,8 @@ public class RemoteExecutionConsoleLineProviderTest {
     Assert.assertEquals(
         "[RE] CAS: Upl=[Count:0 Size=0.00 bytes] Dwl=[Count:21 Size=42.00 bytes]", lines.get(2));
     Assert.assertEquals(
-        "[RE] LocalFallback: [fallback_rate=50.00% remote=42 local=21]", lines.get(3));
+        "[RE] Some actions failed remotely, retrying locally. LocalFallback: [fallback_rate=50.00% remote=42 local=21]",
+        lines.get(3));
   }
 
   @Test
@@ -87,12 +86,15 @@ public class RemoteExecutionConsoleLineProviderTest {
     RemoteExecutionConsoleLineProvider provider =
         new RemoteExecutionConsoleLineProvider(statsProvider, SESSION_ID_INFO, false);
     List<String> lines = provider.createConsoleLinesAtTime(0);
-    Assert.assertEquals(1, lines.size());
+    Assert.assertEquals(2, lines.size());
     Assert.assertEquals(
-        lines.get(0), "Building with Remote Execution: 1:05 minutes spent building remotely");
+        lines.get(0),
+        "Building with Remote Execution [RE]. Used 1:05 minutes of distributed CPU time.");
+    Assert.assertEquals(
+        lines.get(1), "[RE] Waiting on 0 remote actions. Completed 84 actions remotely.");
+
     for (String line : lines) {
       Assert.assertFalse(line.contains("LocalFallback"));
-      Assert.assertFalse(line.contains("[RE]"));
     }
   }
 
@@ -114,64 +116,7 @@ public class RemoteExecutionConsoleLineProviderTest {
     Assert.assertEquals(
         "[RE] CAS: Upl=[Count:0 Size=0.00 bytes] Dwl=[Count:21 Size=42.00 bytes]", lines.get(2));
     Assert.assertEquals(
-        "[RE] LocalFallback: [fallback_rate=50.00% remote=42 local=21]", lines.get(3));
-  }
-
-  private static final class TestStatsProvider implements RemoteExecutionStatsProvider {
-    public Map<State, Integer> actionsPerState = Maps.newHashMap();
-    public int casDownloads = 0;
-    public int casDownladedBytes = 0;
-    public LocalFallbackStats localFallbackStats =
-        LocalFallbackStats.builder()
-            .setTotalExecutedRules(84)
-            .setLocallyExecutedRules(42)
-            .setLocallySuccessfulRules(21)
-            .build();
-
-    public TestStatsProvider() {
-      for (State state : State.values()) {
-        actionsPerState.put(state, new Integer(0));
-      }
-    }
-
-    @Override
-    public ImmutableMap<State, Integer> getActionsPerState() {
-      return ImmutableMap.copyOf(actionsPerState);
-    }
-
-    @Override
-    public int getCasDownloads() {
-      return casDownloads;
-    }
-
-    @Override
-    public long getCasDownloadSizeBytes() {
-      return casDownladedBytes;
-    }
-
-    @Override
-    public int getCasUploads() {
-      return 0;
-    }
-
-    @Override
-    public long getCasUploadSizeBytes() {
-      return 0;
-    }
-
-    @Override
-    public int getTotalRulesBuilt() {
-      return 0;
-    }
-
-    @Override
-    public LocalFallbackStats getLocalFallbackStats() {
-      return localFallbackStats;
-    }
-
-    @Override
-    public long getRemoteCpuTime() {
-      return 65;
-    }
+        "[RE] Some actions failed remotely, retrying locally. LocalFallback: [fallback_rate=50.00% remote=42 local=21]",
+        lines.get(3));
   }
 }

@@ -22,8 +22,6 @@ import com.facebook.buck.core.model.actiongraph.ActionGraphAndBuilder;
 import com.facebook.buck.core.model.targetgraph.TargetGraphAndBuildTargets;
 import com.facebook.buck.core.model.targetgraph.impl.TargetNodeFactory;
 import com.facebook.buck.core.rules.SourcePathRuleFinder;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.util.log.Logger;
 import com.facebook.buck.distributed.ClientStatsTracker;
 import com.facebook.buck.distributed.DistBuildCellIndexer;
@@ -64,15 +62,12 @@ public class AsyncJobStateFactory {
     // Compute the file hashes.
     ActionGraphAndBuilder actionGraphAndBuilder =
         graphsAndBuildTargets.getGraphs().getActionGraphAndBuilder();
-    SourcePathRuleFinder ruleFinder =
-        new SourcePathRuleFinder(actionGraphAndBuilder.getActionGraphBuilder());
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
+    SourcePathRuleFinder ruleFinder = actionGraphAndBuilder.getActionGraphBuilder();
 
     clientStatsTracker.ifPresent(tracker -> tracker.startTimer(LOCAL_FILE_HASH_COMPUTATION));
     DistBuildFileHashes distributedBuildFileHashes =
         new DistBuildFileHashes(
             actionGraphAndBuilder.getActionGraph(),
-            pathResolver,
             ruleFinder,
             params.getFileHashCache(),
             cellIndexer,
@@ -92,8 +87,7 @@ public class AsyncJobStateFactory {
     TargetGraphAndBuildTargets targetGraphAndBuildTargets =
         graphsAndBuildTargets.getGraphs().getTargetGraphForDistributedBuild();
 
-    TypeCoercerFactory typeCoercerFactory =
-        new DefaultTypeCoercerFactory(PathTypeCoercer.PathExistenceVerificationMode.DO_NOT_VERIFY);
+    TypeCoercerFactory typeCoercerFactory = new DefaultTypeCoercerFactory();
     ParserTargetNodeFactory<Map<String, Object>> parserTargetNodeFactory =
         DefaultParserTargetNodeFactory.createForDistributedBuild(
             params.getKnownRuleTypesProvider(),
@@ -113,9 +107,7 @@ public class AsyncJobStateFactory {
                           .build(),
                       input);
             },
-            targetGraphAndBuildTargets
-                .getBuildTargets()
-                .stream()
+            targetGraphAndBuildTargets.getBuildTargets().stream()
                 .map(t -> t.getFullyQualifiedName())
                 .collect(Collectors.toSet()));
 

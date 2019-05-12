@@ -20,13 +20,11 @@ import static org.junit.Assert.assertThat;
 
 import com.facebook.buck.core.model.BuildTargetFactory;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.common.BuildableSupport;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.FakeSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.shell.Genrule;
 import com.facebook.buck.shell.GenruleBuilder;
 import org.hamcrest.Matchers;
@@ -37,8 +35,7 @@ public class SourcePathArgTest {
   @Test
   public void stringify() {
     SourcePath path = FakeSourcePath.of("something");
-    SourcePathResolver resolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(new TestActionGraphBuilder()));
+    SourcePathResolver resolver = new TestActionGraphBuilder().getSourcePathResolver();
     SourcePathArg arg = SourcePathArg.of(path);
     assertThat(
         Arg.stringifyList(arg, resolver),
@@ -48,12 +45,11 @@ public class SourcePathArgTest {
   @Test
   public void getDeps() {
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
     Genrule rule =
         GenruleBuilder.newGenruleBuilder(BuildTargetFactory.newInstance("//:rule"))
             .setOut("output")
             .build(graphBuilder);
     SourcePathArg arg = SourcePathArg.of(rule.getSourcePathToOutput());
-    assertThat(BuildableSupport.getDepsCollection(arg, ruleFinder), Matchers.contains(rule));
+    assertThat(BuildableSupport.getDepsCollection(arg, graphBuilder), Matchers.contains(rule));
   }
 }

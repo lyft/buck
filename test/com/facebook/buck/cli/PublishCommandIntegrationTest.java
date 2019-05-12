@@ -187,8 +187,7 @@ public class PublishCommandIntegrationTest {
   }
 
   private static ImmutableSortedSet<ZipEntry> getZipFilesFiltered(File zipFile) throws IOException {
-    return getZipContents(zipFile)
-        .stream()
+    return getZipContents(zipFile).stream()
         .filter(zipEntry -> !zipEntry.isDirectory())
         .filter(zipEntry -> !zipEntry.getName().startsWith("META-INF"))
         .collect(ImmutableSortedSet.toImmutableSortedSet(Comparator.comparing(ZipEntry::getName)));
@@ -207,8 +206,7 @@ public class PublishCommandIntegrationTest {
     return zipEntries.build();
   }
 
-  private ProcessResult runBuckPublish(ProjectWorkspace workspace, String... extraArgs)
-      throws IOException {
+  private ProcessResult runBuckPublish(ProjectWorkspace workspace, String... extraArgs) {
     return workspace.runBuckCommand(
         FluentIterable.from(new String[] {"publish"})
             .append(extraArgs)

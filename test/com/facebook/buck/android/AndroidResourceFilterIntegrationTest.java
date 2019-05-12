@@ -33,10 +33,7 @@ import com.facebook.buck.artifact_cache.TestArtifactCaches;
 import com.facebook.buck.core.model.BuildTargetFactory;
 import com.facebook.buck.core.model.impl.BuildTargetPaths;
 import com.facebook.buck.core.rulekey.RuleKey;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.tool.Tool;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.TestProjectFilesystems;
@@ -79,7 +76,7 @@ public class AndroidResourceFilterIntegrationTest {
   private ProjectFilesystem filesystem;
 
   @BeforeClass
-  public static void findBuildToolsVersion() throws InterruptedException {
+  public static void findBuildToolsVersion() {
     AssumeAndroidPlatform.assumeSdkIsAvailable();
     ProjectFilesystem filesystem =
         TestProjectFilesystems.createProjectFilesystem(Paths.get(".").toAbsolutePath());
@@ -269,7 +266,7 @@ public class AndroidResourceFilterIntegrationTest {
   }
 
   @Test
-  public void testPostFilterResourcesAndBanDuplicates() throws IOException {
+  public void testPostFilterResourcesAndBanDuplicates() {
     workspace.runBuckBuild("//apps/sample:app_post_filter_no_dups").assertSuccess();
   }
 
@@ -404,13 +401,14 @@ public class AndroidResourceFilterIntegrationTest {
   }
 
   private int runAaptDumpResources(Path apkFile) throws IOException, InterruptedException {
-    SourcePathResolver pathResolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(new TestActionGraphBuilder()));
     Pattern pattern = Pattern.compile(".*com.example:string/base_button: t=.*");
     ProcessExecutor.Result result =
         workspace.runCommand(
             ImmutableList.<String>builder()
-                .addAll(aaptProvider.get().getCommandPrefix(pathResolver))
+                .addAll(
+                    aaptProvider
+                        .get()
+                        .getCommandPrefix(new TestActionGraphBuilder().getSourcePathResolver()))
                 .add("dump")
                 .add("resources")
                 .add(apkFile.toAbsolutePath().toString())

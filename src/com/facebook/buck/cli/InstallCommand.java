@@ -39,6 +39,7 @@ import com.facebook.buck.core.build.execution.context.ExecutionContext;
 import com.facebook.buck.core.cell.Cell;
 import com.facebook.buck.core.config.BuckConfig;
 import com.facebook.buck.core.description.impl.DescriptionCache;
+import com.facebook.buck.core.exceptions.BuckUncheckedExecutionException;
 import com.facebook.buck.core.exceptions.HumanReadableException;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.Flavor;
@@ -46,13 +47,11 @@ import com.facebook.buck.core.model.targetgraph.TargetNode;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.attr.HasInstallHelpers;
 import com.facebook.buck.core.rules.attr.NoopInstallable;
 import com.facebook.buck.core.rules.common.InstallTrigger;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.util.log.Logger;
 import com.facebook.buck.event.ConsoleEvent;
 import com.facebook.buck.event.InstallEvent;
@@ -64,11 +63,11 @@ import com.facebook.buck.parser.exceptions.BuildFileParseException;
 import com.facebook.buck.parser.exceptions.NoSuchBuildTargetException;
 import com.facebook.buck.step.AdbOptions;
 import com.facebook.buck.util.ExitCode;
+import com.facebook.buck.util.ListeningProcessExecutor;
 import com.facebook.buck.util.MoreExceptions;
 import com.facebook.buck.util.Optionals;
 import com.facebook.buck.util.ProcessExecutor;
 import com.facebook.buck.util.UnixUserIdFetcher;
-import com.facebook.buck.util.exceptions.BuckUncheckedExecutionException;
 import com.facebook.infer.annotation.Assertions;
 import com.facebook.infer.annotation.SuppressFieldNotInitialized;
 import com.google.common.annotations.VisibleForTesting;
@@ -206,10 +205,13 @@ public class InstallCommand extends BuildCommand {
   public ExitCode runWithoutHelp(CommandRunnerParams params) throws Exception {
     assertArguments(params);
 
+    ListeningProcessExecutor processExecutor = new ListeningProcessExecutor();
     BuildRunResult buildRunResult;
     try (CommandThreadManager pool =
             new CommandThreadManager("Install", getConcurrencyLimit(params.getBuckConfig()));
-        TriggerCloseable triggerCloseable = new TriggerCloseable(params)) {
+        TriggerCloseable triggerCloseable = new TriggerCloseable(params);
+        BuildPrehook prehook = getPrehook(processExecutor, params)) {
+      prehook.startPrehookScript();
       // Get the helper targets if present
       ImmutableSet<String> installHelperTargets;
       try {
@@ -271,11 +273,10 @@ public class InstallCommand extends BuildCommand {
     Build build = getBuild();
     ExitCode exitCode = ExitCode.SUCCESS;
 
+    SourcePathResolver pathResolver = build.getGraphBuilder().getSourcePathResolver();
     for (BuildTarget buildTarget : buildRunResult.getBuildTargets()) {
 
       BuildRule buildRule = build.getGraphBuilder().requireRule(buildTarget);
-      SourcePathResolver pathResolver =
-          DefaultSourcePathResolver.from(new SourcePathRuleFinder(build.getGraphBuilder()));
 
       if (buildRule instanceof HasInstallableApk) {
         exitCode =
@@ -335,7 +336,7 @@ public class InstallCommand extends BuildCommand {
 
   private ImmutableSet<String> getInstallHelperTargets(
       CommandRunnerParams params, ListeningExecutorService executor)
-      throws IOException, InterruptedException, BuildFileParseException {
+      throws InterruptedException, BuildFileParseException {
 
     ParserConfig parserConfig = params.getBuckConfig().getView(ParserConfig.class);
     ParsingContext parsingContext =
@@ -350,8 +351,7 @@ public class InstallCommand extends BuildCommand {
     for (int index = 0; index < getArguments().size(); index++) {
       // TODO(markwang): Cache argument parsing
       TargetNodeSpec spec =
-          parseArgumentsAsTargetNodeSpecs(
-                  params.getCell().getCellPathResolver(), params.getBuckConfig(), getArguments())
+          parseArgumentsAsTargetNodeSpecs(params.getCell(), params.getBuckConfig(), getArguments())
               .get(index);
 
       BuildTarget target =
@@ -373,7 +373,8 @@ public class InstallCommand extends BuildCommand {
           if (ApplePlatform.needsInstallHelper(flavor.getName())) {
             AppleConfig appleConfig = params.getBuckConfig().getView(AppleConfig.class);
 
-            Optional<BuildTarget> deviceHelperTarget = appleConfig.getAppleDeviceHelperTarget();
+            Optional<BuildTarget> deviceHelperTarget =
+                appleConfig.getAppleDeviceHelperTarget(params.getTargetConfiguration());
             Optionals.addIfPresent(
                 Optionals.bind(
                     deviceHelperTarget,
@@ -491,7 +492,8 @@ public class InstallCommand extends BuildCommand {
     AppleConfig appleConfig = params.getBuckConfig().getView(AppleConfig.class);
 
     Path helperPath;
-    Optional<BuildTarget> helperTarget = appleConfig.getAppleDeviceHelperTarget();
+    Optional<BuildTarget> helperTarget =
+        appleConfig.getAppleDeviceHelperTarget(params.getTargetConfiguration());
     if (helperTarget.isPresent()) {
       ActionGraphBuilder graphBuilder = getBuild().getGraphBuilder();
       BuildRule buildRule = graphBuilder.requireRule(helperTarget.get());

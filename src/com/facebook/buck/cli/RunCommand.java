@@ -16,13 +16,12 @@
 
 package com.facebook.buck.cli;
 
+import com.facebook.buck.cli.BuildCommand.BuildRunResult;
 import com.facebook.buck.command.Build;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.rules.BuildRule;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.tool.BinaryBuildRule;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.tool.Tool;
 import com.facebook.buck.event.ConsoleEvent;
 import com.facebook.buck.util.CommandLineException;
@@ -33,9 +32,11 @@ import com.facebook.buck.util.MoreSuppliers;
 import com.facebook.buck.util.ProcessExecutorParams;
 import com.facebook.buck.util.json.ObjectMappers;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import java.io.Closeable;
 import java.nio.file.Files;
@@ -113,16 +114,19 @@ public final class RunCommand extends AbstractCommand {
 
     // Make sure the target is built.
     BuildCommand buildCommand = new BuildCommand(ImmutableList.of(target.toString()));
+    BuildRunResult buildResult;
     try (Closeable contextCloser = buildCommand.prepareExecutionContext(params)) {
-      ExitCode exitCode = buildCommand.runWithoutHelp(params);
-      if (exitCode != ExitCode.SUCCESS) {
-        return exitCode;
+      buildResult = buildCommand.runWithoutHelpInternal(params);
+      if (buildResult.getExitCode() != ExitCode.SUCCESS) {
+        return buildResult.getExitCode();
       }
     }
 
     Build build = buildCommand.getBuild();
-    BuildRule targetRule;
-    targetRule = build.getGraphBuilder().requireRule(target);
+    ImmutableSet<BuildTarget> buildTargets = buildResult.getBuildTargets();
+    Preconditions.checkState(buildTargets.size() == 1, "built targets: %s", buildTargets);
+    BuildTarget buildTarget = buildTargets.asList().get(0);
+    BuildRule targetRule = build.getGraphBuilder().requireRule(buildTarget);
     BinaryBuildRule binaryBuildRule = null;
     if (targetRule instanceof BinaryBuildRule) {
       binaryBuildRule = (BinaryBuildRule) targetRule;
@@ -145,8 +149,7 @@ public final class RunCommand extends AbstractCommand {
     // command.
     //
     // If we haven't received a command args file, we assume it's fine to just run in-process.
-    SourcePathResolver resolver =
-        DefaultSourcePathResolver.from(new SourcePathRuleFinder(build.getGraphBuilder()));
+    SourcePathResolver resolver = build.getGraphBuilder().getSourcePathResolver();
     Tool executable = binaryBuildRule.getExecutableCommand();
     if (commandArgsFile == null) {
       ListeningProcessExecutor processExecutor = new ListeningProcessExecutor();

@@ -26,7 +26,6 @@ import com.facebook.buck.core.model.targetgraph.BuildRuleCreationContextWithTarg
 import com.facebook.buck.core.model.targetgraph.DescriptionWithTargetGraph;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRuleParams;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.common.BuildableSupport;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
@@ -41,7 +40,7 @@ import com.facebook.buck.rules.macros.Macro;
 import com.facebook.buck.rules.macros.StringWithMacros;
 import com.facebook.buck.rules.macros.StringWithMacrosConverter;
 import com.facebook.buck.test.config.TestBuckConfig;
-import com.facebook.buck.util.Optionals;
+import com.facebook.buck.util.RichStream;
 import com.google.common.collect.FluentIterable;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -78,18 +77,17 @@ public class ShTestDescription implements DescriptionWithTargetGraph<ShTestDescr
       BuildRuleParams params,
       ShTestDescriptionArg args) {
     ActionGraphBuilder graphBuilder = context.getActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
     ProjectFilesystem projectFilesystem = context.getProjectFilesystem();
     StringWithMacrosConverter macrosConverter =
-        StringWithMacrosConverter.of(buildTarget, context.getCellPathResolver(), MACRO_EXPANDERS);
+        StringWithMacrosConverter.of(
+            buildTarget, context.getCellPathResolver(), graphBuilder, MACRO_EXPANDERS);
     ImmutableList<Arg> testArgs =
         Stream.concat(
-                Optionals.toStream(args.getTest()).map(SourcePathArg::of),
-                args.getArgs().stream().map(x -> macrosConverter.convert(x, graphBuilder)))
+                RichStream.from(args.getTest()).map(SourcePathArg::of),
+                args.getArgs().stream().map(macrosConverter::convert))
             .collect(ImmutableList.toImmutableList());
     ImmutableMap<String, Arg> testEnv =
-        ImmutableMap.copyOf(
-            Maps.transformValues(args.getEnv(), x -> macrosConverter.convert(x, graphBuilder)));
+        ImmutableMap.copyOf(Maps.transformValues(args.getEnv(), macrosConverter::convert));
     return new ShTest(
         buildTarget,
         projectFilesystem,
@@ -98,7 +96,7 @@ public class ShTestDescription implements DescriptionWithTargetGraph<ShTestDescr
                 FluentIterable.from(testArgs)
                     .append(testEnv.values())
                     .transformAndConcat(
-                        arg -> BuildableSupport.getDepsCollection(arg, ruleFinder))),
+                        arg -> BuildableSupport.getDepsCollection(arg, graphBuilder))),
         testArgs,
         testEnv,
         args.getResources(),

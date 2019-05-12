@@ -52,11 +52,12 @@ import com.facebook.buck.core.build.engine.type.DepFiles;
 import com.facebook.buck.core.build.engine.type.MetadataStorage;
 import com.facebook.buck.core.build.engine.type.UploadToCacheResultType;
 import com.facebook.buck.core.build.event.BuildRuleEvent;
+import com.facebook.buck.core.build.event.BuildRuleExecutionEvent;
 import com.facebook.buck.core.build.execution.context.ExecutionContext;
 import com.facebook.buck.core.build.stats.BuildRuleDurationTracker;
+import com.facebook.buck.core.exceptions.BuckUncheckedExecutionException;
 import com.facebook.buck.core.exceptions.HumanReadableException;
 import com.facebook.buck.core.model.BuildId;
-import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.TargetConfigurationSerializer;
 import com.facebook.buck.core.rulekey.RuleKey;
 import com.facebook.buck.core.rules.BuildRule;
@@ -96,7 +97,6 @@ import com.facebook.buck.util.cache.FileHashCache;
 import com.facebook.buck.util.concurrent.MoreFutures;
 import com.facebook.buck.util.concurrent.ResourceAmounts;
 import com.facebook.buck.util.concurrent.WeightedListeningExecutorService;
-import com.facebook.buck.util.exceptions.BuckUncheckedExecutionException;
 import com.facebook.buck.util.json.ObjectMappers;
 import com.facebook.buck.util.types.Pair;
 import com.google.common.base.Preconditions;
@@ -138,7 +138,6 @@ class CachingBuildRuleBuilder {
   private final ResourceAwareSchedulingInfo resourceAwareSchedulingInfo;
   private final RuleKeyFactories ruleKeyFactories;
   private final WeightedListeningExecutorService service;
-  private final StepRunner stepRunner;
   private final BuildRule rule;
   private final ExecutionContext executionContext;
   private final OnDiskBuildInfo onDiskBuildInfo;
@@ -210,7 +209,6 @@ class CachingBuildRuleBuilder {
       ResourceAwareSchedulingInfo resourceAwareSchedulingInfo,
       RuleKeyFactories ruleKeyFactories,
       WeightedListeningExecutorService service,
-      StepRunner stepRunner,
       RuleDepsCache ruleDeps,
       BuildRule rule,
       BuildEngineBuildContext buildContext,
@@ -231,7 +229,6 @@ class CachingBuildRuleBuilder {
     this.resourceAwareSchedulingInfo = resourceAwareSchedulingInfo;
     this.ruleKeyFactories = ruleKeyFactories;
     this.service = service;
-    this.stepRunner = stepRunner;
     this.rule = rule;
     this.executionContext = executionContext;
     this.onDiskBuildInfo = onDiskBuildInfo;
@@ -331,11 +328,17 @@ class CachingBuildRuleBuilder {
   }
 
   private BuildResult success(BuildRuleSuccessType successType, CacheResult cacheResult) {
+    return success(successType, cacheResult, Optional.empty());
+  }
+
+  private BuildResult success(
+      BuildRuleSuccessType successType, CacheResult cacheResult, Optional<String> strategyResult) {
     return buildResultBuilder()
         .setStatus(BuildRuleStatus.SUCCESS)
         .setSuccessOptional(successType)
         .setCacheResult(cacheResult)
         .setUploadCompleteFuture(uploadCompleteFuture)
+        .setStrategyResult(strategyResult)
         .build();
   }
 
@@ -689,8 +692,7 @@ class CachingBuildRuleBuilder {
       // TODO(#9117006): We don't support a way to serlialize `SourcePath`s to the cache,
       // so need to use DependencyFileEntry's instead and recover them on deserialization.
       ImmutableList<String> inputStrings =
-          inputs
-              .stream()
+          inputs.stream()
               .map(inputString -> DependencyFileEntry.fromSourcePath(inputString, pathResolver))
               .map(ObjectMappers.toJsonFunction())
               .collect(ImmutableList.toImmutableList());
@@ -752,9 +754,7 @@ class CachingBuildRuleBuilder {
     getBuildInfoRecorder()
         .addMetadata(
             BuildInfo.MetadataKey.RECORDED_PATHS,
-            getBuildInfoRecorder()
-                .getRecordedPaths()
-                .stream()
+            getBuildInfoRecorder().getRecordedPaths().stream()
                 .map(Object::toString)
                 .collect(ImmutableList.toImmutableList()));
     if (success.shouldWriteRecordedMetadataToDiskAfterBuilding()) {
@@ -875,8 +875,9 @@ class CachingBuildRuleBuilder {
           }
 
           @Override
-          public BuildResult createBuildResult(BuildRuleSuccessType successType) {
-            return success(successType, cacheResult);
+          public BuildResult createBuildResult(
+              BuildRuleSuccessType successType, Optional<String> strategyResult) {
+            return success(successType, cacheResult, strategyResult);
           }
 
           @Override
@@ -922,7 +923,7 @@ class CachingBuildRuleBuilder {
         MoreExecutors.directExecutor());
   }
 
-  private ListenableFuture<Optional<BuildResult>> checkManifestBasedCaches() throws IOException {
+  private ListenableFuture<Optional<BuildResult>> checkManifestBasedCaches() {
     Optional<RuleKeyAndInputs> manifestKeyAndInputs = manifestBasedKeySupplier.get();
     if (!manifestKeyAndInputs.isPresent()) {
       return Futures.immediateFuture(Optional.empty());
@@ -962,7 +963,7 @@ class CachingBuildRuleBuilder {
         : Optional.empty();
   }
 
-  private ListenableFuture<Optional<BuildResult>> checkInputBasedCaches() throws IOException {
+  private ListenableFuture<Optional<BuildResult>> checkInputBasedCaches() {
     long start = System.currentTimeMillis();
     return Futures.transform(
         inputBasedRuleKeyManager.checkInputBasedCaches(),
@@ -1273,9 +1274,8 @@ class CachingBuildRuleBuilder {
 
     LOG.debug("Running post-build steps for %s", rule);
 
-    Optional<BuildTarget> optionalTarget = Optional.of(rule.getBuildTarget());
     for (Step step : postBuildSteps) {
-      stepRunner.runStepForBuildTarget(
+      StepRunner.runStep(
           executionContext.withProcessExecutor(
               new ContextualProcessExecutor(
                   executionContext.getProcessExecutor(),
@@ -1284,8 +1284,7 @@ class CachingBuildRuleBuilder {
                       rule.getType(),
                       CachingBuildEngine.STEP_TYPE_CONTEXT_KEY,
                       CachingBuildEngine.StepType.POST_BUILD_STEP.toString()))),
-          step,
-          optionalTarget);
+          step);
 
       // Check for interruptions that may have been ignored by step.
       if (Thread.interrupted()) {
@@ -1429,8 +1428,7 @@ class CachingBuildRuleBuilder {
           LOG.debug("Building locally: %s", rule);
           // Attempt to get an approximation of how long it takes to actually run the command.
           long start = System.nanoTime();
-          executeCommands(
-              ruleExecutionContext, buildRuleBuildContext, buildableContext, stepRunner);
+          executeCommands(ruleExecutionContext, buildRuleBuildContext, buildableContext);
           long end = System.nanoTime();
           LOG.debug(
               "Build completed: %s %s (%dns)",
@@ -1448,31 +1446,37 @@ class CachingBuildRuleBuilder {
     private void executeCommands(
         ExecutionContext executionContext,
         BuildContext buildRuleBuildContext,
-        BuildableContext buildableContext,
-        StepRunner stepRunner)
+        BuildableContext buildableContext)
         throws StepFailedException, InterruptedException {
-      // Get and run all of the commands.
-      List<? extends Step> steps;
+      try (Scope ignored = BuildRuleExecutionEvent.scope(eventBus, rule)) {
+        // Get and run all of the commands.
+        for (Step step : getSteps(buildRuleBuildContext, buildableContext)) {
+          StepRunner.runStep(executionContext, step);
+          rethrowIgnoredInterruptedException(step);
+        }
+      }
+    }
+
+    private List<? extends Step> getSteps(
+        BuildContext buildRuleBuildContext, BuildableContext buildableContext) {
       try (Scope ignored = LeafEvents.scope(eventBus, "get_build_steps")) {
         if (pipelineState == null) {
-          steps = rule.getBuildSteps(buildRuleBuildContext, buildableContext);
+          return rule.getBuildSteps(buildRuleBuildContext, buildableContext);
         } else {
           @SuppressWarnings("unchecked")
           SupportsPipelining<T> pipelinedRule = (SupportsPipelining<T>) rule;
-          steps =
-              pipelinedRule.getPipelinedBuildSteps(
-                  buildRuleBuildContext, buildableContext, pipelineState);
+          return pipelinedRule.getPipelinedBuildSteps(
+              buildRuleBuildContext, buildableContext, pipelineState);
         }
       }
+    }
 
-      Optional<BuildTarget> optionalTarget = Optional.of(rule.getBuildTarget());
-      for (Step step : steps) {
-        stepRunner.runStepForBuildTarget(executionContext, step, optionalTarget);
-        // Check for interruptions that may have been ignored by step.
-        if (Thread.interrupted()) {
-          Thread.currentThread().interrupt();
-          throw new InterruptedException();
-        }
+    private void rethrowIgnoredInterruptedException(Step step) throws InterruptedException {
+      // Check for interruptions that may have been ignored by step.
+      if (Thread.interrupted()) {
+        Thread.currentThread().interrupt();
+        throw new InterruptedException(
+            "Thread was interrupted inside the executed step: " + step.getShortName());
       }
     }
   }

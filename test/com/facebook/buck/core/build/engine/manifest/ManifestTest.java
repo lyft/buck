@@ -19,14 +19,13 @@ package com.facebook.buck.core.build.engine.manifest;
 import static org.junit.Assert.assertThat;
 
 import com.facebook.buck.core.rulekey.RuleKey;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.ArchiveMemberSourcePath;
 import com.facebook.buck.core.sourcepath.FakeSourcePath;
 import com.facebook.buck.core.sourcepath.PathSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
+import com.facebook.buck.core.sourcepath.SourcePathFactoryForTests;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
 import com.facebook.buck.testutil.FakeFileHashCache;
@@ -49,7 +48,7 @@ import org.junit.Test;
 public class ManifestTest {
 
   private static final SourcePathResolver RESOLVER =
-      DefaultSourcePathResolver.from(new SourcePathRuleFinder(new TestActionGraphBuilder()));
+      new TestActionGraphBuilder().getSourcePathResolver();
 
   @Test
   public void toMap() {
@@ -102,7 +101,8 @@ public class ManifestTest {
     FileHashCache fileHashCache =
         new FakeFileHashCache(
             new HashMap<>(),
-            ImmutableMap.of(RESOLVER.getAbsoluteArchiveMemberPath(input), hashCode),
+            ImmutableMap.of(
+                SourcePathFactoryForTests.toAbsoluteArchiveMemberPath(RESOLVER, input), hashCode),
             new HashMap<>());
     manifest.addEntry(fileHashCache, key, RESOLVER, ImmutableSet.of(input), ImmutableSet.of(input));
     assertThat(

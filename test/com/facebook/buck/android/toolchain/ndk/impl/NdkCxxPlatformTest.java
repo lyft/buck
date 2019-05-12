@@ -40,21 +40,19 @@ import com.facebook.buck.core.config.FakeBuckConfig;
 import com.facebook.buck.core.exceptions.HumanReadableException;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.model.BuildTargetFactory;
+import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.model.InternalFlavor;
 import com.facebook.buck.core.rulekey.RuleKey;
 import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.rules.resolver.impl.TestActionGraphBuilder;
 import com.facebook.buck.core.sourcepath.FakeSourcePath;
-import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.cxx.CxxLinkOptions;
 import com.facebook.buck.cxx.CxxLinkableEnhancer;
 import com.facebook.buck.cxx.CxxPreprocessAndCompile;
 import com.facebook.buck.cxx.CxxSource;
 import com.facebook.buck.cxx.CxxSourceRuleFactory;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.CxxPlatformUtils;
 import com.facebook.buck.cxx.toolchain.DebugPathSanitizer;
@@ -111,8 +109,6 @@ public class NdkCxxPlatformTest {
   private ImmutableMap<TargetCpuType, RuleKey> constructCompileRuleKeys(
       Operation operation, ImmutableMap<TargetCpuType, UnresolvedNdkCxxPlatform> cxxPlatforms) {
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
     String source = "source.cpp";
     DefaultRuleKeyFactory ruleKeyFactory =
         new TestDefaultRuleKeyFactory(
@@ -120,8 +116,7 @@ public class NdkCxxPlatformTest {
                 ImmutableMap.<String, String>builder()
                     .put("source.cpp", Strings.repeat("a", 40))
                     .build()),
-            pathResolver,
-            ruleFinder);
+            graphBuilder);
     BuildTarget target = BuildTargetFactory.newInstance("//:target");
     ImmutableMap.Builder<TargetCpuType, RuleKey> ruleKeys = ImmutableMap.builder();
     for (Map.Entry<TargetCpuType, UnresolvedNdkCxxPlatform> entry : cxxPlatforms.entrySet()) {
@@ -130,8 +125,7 @@ public class NdkCxxPlatformTest {
               .setBaseBuildTarget(target)
               .setProjectFilesystem(new FakeProjectFilesystem())
               .setActionGraphBuilder(graphBuilder)
-              .setPathResolver(pathResolver)
-              .setRuleFinder(ruleFinder)
+              .setPathResolver(graphBuilder.getSourcePathResolver())
               .setCxxBuckConfig(CxxPlatformUtils.DEFAULT_CONFIG)
               .setCxxPlatform(entry.getValue().resolve(graphBuilder).getCxxPlatform())
               .setPicType(PicType.PIC)
@@ -166,16 +160,13 @@ public class NdkCxxPlatformTest {
       ImmutableMap<TargetCpuType, UnresolvedNdkCxxPlatform> cxxPlatforms)
       throws NoSuchBuildTargetException {
     ActionGraphBuilder graphBuilder = new TestActionGraphBuilder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
     DefaultRuleKeyFactory ruleKeyFactory =
         new TestDefaultRuleKeyFactory(
             FakeFileHashCache.createFromStrings(
                 ImmutableMap.<String, String>builder()
                     .put("input.o", Strings.repeat("a", 40))
                     .build()),
-            pathResolver,
-            ruleFinder);
+            graphBuilder);
     BuildTarget target = BuildTargetFactory.newInstance("//:target");
     ImmutableMap.Builder<TargetCpuType, RuleKey> ruleKeys = ImmutableMap.builder();
     for (Map.Entry<TargetCpuType, UnresolvedNdkCxxPlatform> entry : cxxPlatforms.entrySet()) {
@@ -186,8 +177,6 @@ public class NdkCxxPlatformTest {
               entry.getValue().resolve(graphBuilder).getCxxPlatform(),
               filesystem,
               graphBuilder,
-              pathResolver,
-              ruleFinder,
               target,
               Linker.LinkType.EXECUTABLE,
               Optional.empty(),
@@ -242,6 +231,7 @@ public class NdkCxxPlatformTest {
     assertEquals("6.0.2", NdkCxxPlatforms.getDefaultClangVersionForNdk("17.1.2977051"));
   }
 
+  @Test
   public void testDefaultCpuAbisForNdk16() {
     assertEquals(
         ImmutableSet.of("arm", "armv7", "x86"), NdkCxxPlatforms.getDefaultCpuAbis("16.1.123"));
@@ -573,6 +563,7 @@ public class NdkCxxPlatformTest {
                   new AndroidBuckConfig(FakeBuckConfig.builder().build(), platform),
                   filesystem,
                   root,
+                  EmptyTargetConfiguration.INSTANCE,
                   NdkCxxPlatformCompiler.builder()
                       .setType(config.getFirst())
                       .setVersion("gcc-version")
@@ -626,6 +617,7 @@ public class NdkCxxPlatformTest {
             new AndroidBuckConfig(FakeBuckConfig.builder().build(), Platform.detect()),
             filesystem,
             root,
+            EmptyTargetConfiguration.INSTANCE,
             NdkCxxPlatformCompiler.builder()
                 .setType(NdkCompilerType.GCC)
                 .setVersion("gcc-version")

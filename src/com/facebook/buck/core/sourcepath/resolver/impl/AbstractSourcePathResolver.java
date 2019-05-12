@@ -17,6 +17,7 @@
 package com.facebook.buck.core.sourcepath.resolver.impl;
 
 import com.facebook.buck.core.exceptions.HumanReadableException;
+import com.facebook.buck.core.io.ArchiveMemberPath;
 import com.facebook.buck.core.model.BuildTarget;
 import com.facebook.buck.core.sourcepath.ArchiveMemberSourcePath;
 import com.facebook.buck.core.sourcepath.BuildTargetSourcePath;
@@ -26,7 +27,6 @@ import com.facebook.buck.core.sourcepath.ForwardingBuildTargetSourcePath;
 import com.facebook.buck.core.sourcepath.PathSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.io.ArchiveMemberPath;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.FluentIterable;
@@ -35,11 +35,9 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.collect.Ordering;
 import java.nio.file.Path;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
@@ -104,16 +102,6 @@ public abstract class AbstractSourcePathResolver implements SourcePathResolver {
   }
 
   @Override
-  public ArchiveMemberPath getAbsoluteArchiveMemberPath(SourcePath sourcePath) {
-    Preconditions.checkState(sourcePath instanceof ArchiveMemberSourcePath);
-    ArchiveMemberSourcePath archiveMemberSourcePath = (ArchiveMemberSourcePath) sourcePath;
-
-    Path archiveAbsolutePath = getAbsolutePath(archiveMemberSourcePath.getArchiveSourcePath());
-
-    return ArchiveMemberPath.of(archiveAbsolutePath, archiveMemberSourcePath.getMemberPath());
-  }
-
-  @Override
   public ArchiveMemberPath getRelativeArchiveMemberPath(SourcePath sourcePath) {
     Preconditions.checkState(sourcePath instanceof ArchiveMemberSourcePath);
     ArchiveMemberSourcePath archiveMemberSourcePath = (ArchiveMemberSourcePath) sourcePath;
@@ -126,8 +114,7 @@ public abstract class AbstractSourcePathResolver implements SourcePathResolver {
   @Override
   public ImmutableSortedSet<Path> getAllAbsolutePaths(
       Collection<? extends SourcePath> sourcePaths) {
-    return sourcePaths
-        .stream()
+    return sourcePaths.stream()
         .map(this::getAbsolutePath)
         .collect(ImmutableSortedSet.toImmutableSortedSet(Ordering.natural()));
   }
@@ -238,22 +225,6 @@ public abstract class AbstractSourcePathResolver implements SourcePathResolver {
         .filter(PathSourcePath.class)
         .transform(PathSourcePath::getRelativePath)
         .toList();
-  }
-
-  @Override
-  public ImmutableCollection<Path> filterInputsToCompareToOutput(SourcePath... sources) {
-    return filterInputsToCompareToOutput(Arrays.asList(sources));
-  }
-
-  /** @return the {@link PathSourcePath} backing the given {@link SourcePath}, if any. */
-  @Override
-  public Optional<PathSourcePath> getPathSourcePath(SourcePath sourcePath) {
-    if (sourcePath instanceof ArchiveMemberSourcePath) {
-      sourcePath = ((ArchiveMemberSourcePath) sourcePath).getArchiveSourcePath();
-    }
-    return sourcePath instanceof PathSourcePath
-        ? Optional.of((PathSourcePath) sourcePath)
-        : Optional.empty();
   }
 
   @Override

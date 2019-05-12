@@ -29,6 +29,7 @@ import com.facebook.buck.core.model.Flavor;
 import com.facebook.buck.core.model.FlavorConvertible;
 import com.facebook.buck.core.model.FlavorDomain;
 import com.facebook.buck.core.model.InternalFlavor;
+import com.facebook.buck.core.model.TargetConfiguration;
 import com.facebook.buck.core.model.impl.BuildTargetPaths;
 import com.facebook.buck.core.model.targetgraph.BuildRuleCreationContextWithTargetGraph;
 import com.facebook.buck.core.model.targetgraph.DescriptionWithTargetGraph;
@@ -36,14 +37,12 @@ import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
 import com.facebook.buck.core.rules.BuildRuleResolver;
-import com.facebook.buck.core.rules.SourcePathRuleFinder;
 import com.facebook.buck.core.sourcepath.PathSourcePath;
 import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.core.sourcepath.resolver.SourcePathResolver;
-import com.facebook.buck.core.sourcepath.resolver.impl.DefaultSourcePathResolver;
 import com.facebook.buck.core.toolchain.ToolchainProvider;
 import com.facebook.buck.core.util.immutables.BuckStyleImmutable;
-import com.facebook.buck.cxx.toolchain.CxxBuckConfig;
+import com.facebook.buck.cxx.config.CxxBuckConfig;
 import com.facebook.buck.cxx.toolchain.CxxPlatform;
 import com.facebook.buck.cxx.toolchain.CxxPlatformsProvider;
 import com.facebook.buck.cxx.toolchain.HeaderSymlinkTree;
@@ -166,14 +165,12 @@ public class PrebuiltCxxLibraryDescription
   private static HeaderSymlinkTree createExportedHeaderSymlinkTreeBuildRule(
       BuildTarget buildTarget,
       ProjectFilesystem projectFilesystem,
-      SourcePathRuleFinder ruleFinder,
       ActionGraphBuilder graphBuilder,
       CxxPlatform cxxPlatform,
       PrebuiltCxxLibraryDescriptionArg args) {
     return CxxDescriptionEnhancer.createHeaderSymlinkTree(
         buildTarget,
         projectFilesystem,
-        ruleFinder,
         graphBuilder,
         cxxPlatform,
         parseExportedHeaders(buildTarget, graphBuilder, cxxPlatform, args),
@@ -187,17 +184,13 @@ public class PrebuiltCxxLibraryDescription
       CxxPlatform cxxPlatform,
       PrebuiltCxxLibraryDescriptionArg args) {
     ImmutableMap.Builder<String, SourcePath> headers = ImmutableMap.builder();
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
     headers.putAll(
         CxxDescriptionEnhancer.parseOnlyHeaders(
-            buildTarget, ruleFinder, pathResolver, "exported_headers", args.getExportedHeaders()));
+            buildTarget, graphBuilder, "exported_headers", args.getExportedHeaders()));
     headers.putAll(
         CxxDescriptionEnhancer.parseOnlyPlatformHeaders(
             buildTarget,
             graphBuilder,
-            ruleFinder,
-            pathResolver,
             cxxPlatform,
             "exported_headers",
             args.getExportedHeaders(),
@@ -219,8 +212,6 @@ public class PrebuiltCxxLibraryDescription
       Optional<ImmutableMap<BuildTarget, Version>> selectedVersions,
       PrebuiltCxxLibraryDescriptionArg args) {
 
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
     PrebuiltCxxLibraryPaths paths = getPaths(buildTarget, args);
 
     String soname = getSoname(buildTarget, cxxPlatform, args.getSoname());
@@ -252,8 +243,6 @@ public class PrebuiltCxxLibraryDescription
         cxxPlatform,
         projectFilesystem,
         graphBuilder,
-        pathResolver,
-        ruleFinder,
         sharedTarget,
         Linker.LinkType.SHARED,
         Optional.of(soname),
@@ -272,8 +261,8 @@ public class PrebuiltCxxLibraryDescription
             .addAllArgs(
                 cxxPlatform
                     .getLd()
-                    .resolve(graphBuilder)
-                    .linkWhole(SourcePathArg.of(library), pathResolver))
+                    .resolve(graphBuilder, buildTarget.getTargetConfiguration())
+                    .linkWhole(SourcePathArg.of(library), graphBuilder.getSourcePathResolver()))
             .addAllArgs(
                 StringArg.from(
                     CxxFlags.getFlagsWithPlatformMacroExpansion(
@@ -338,9 +327,6 @@ public class PrebuiltCxxLibraryDescription
           baseTarget, cxxPlatform.getFlavor());
     }
 
-    SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
-    SourcePathResolver pathResolver = DefaultSourcePathResolver.from(ruleFinder);
-
     SourcePath sharedLibrary =
         requireSharedLibrary(
             baseTarget,
@@ -357,8 +343,6 @@ public class PrebuiltCxxLibraryDescription
                 Type.SHARED_INTERFACE.getFlavor(), cxxPlatform.getFlavor()),
             projectFilesystem,
             graphBuilder,
-            pathResolver,
-            ruleFinder,
             cxxPlatform,
             sharedLibrary);
   }
@@ -389,15 +373,11 @@ public class PrebuiltCxxLibraryDescription
       Preconditions.checkState(platform.isPresent());
       BuildTarget baseTarget =
           buildTarget.withoutFlavors(type.get().getKey(), platform.get().getKey());
-      CxxPlatform cxxPlatform = platform.get().getValue().resolve(graphBuilder);
+      CxxPlatform cxxPlatform =
+          platform.get().getValue().resolve(graphBuilder, buildTarget.getTargetConfiguration());
       if (type.get().getValue() == Type.EXPORTED_HEADERS) {
         return createExportedHeaderSymlinkTreeBuildRule(
-            buildTarget,
-            projectFilesystem,
-            new SourcePathRuleFinder(graphBuilder),
-            graphBuilder,
-            cxxPlatform,
-            args);
+            buildTarget, projectFilesystem, graphBuilder, cxxPlatform, args);
       } else if (type.get().getValue() == Type.SHARED) {
         return createSharedLibraryBuildRule(
             buildTarget,
@@ -521,9 +501,9 @@ public class PrebuiltCxxLibraryDescription
                     exportedLangPreprocessorFlags,
                     exportedLangPlatformPreprocessorFlags,
                     cxxPlatform),
-                flag ->
-                    CxxDescriptionEnhancer.toStringWithMacrosArgs(
-                        getBuildTarget(), cellRoots, graphBuilder, cxxPlatform, flag)));
+                CxxDescriptionEnhancer.getStringWithMacrosArgsConverter(
+                        getBuildTarget(), cellRoots, graphBuilder, cxxPlatform)
+                    ::convert));
       }
 
       @Override
@@ -649,8 +629,7 @@ public class PrebuiltCxxLibraryDescription
 
       @Override
       public Iterable<NativeLinkable> getNativeLinkableDeps(BuildRuleResolver ruleResolver) {
-        return getDeclaredDeps()
-            .stream()
+        return getDeclaredDeps().stream()
             .filter(r -> r instanceof NativeLinkable)
             .map(r -> (NativeLinkable) r)
             .collect(ImmutableList.toImmutableList());
@@ -668,8 +647,7 @@ public class PrebuiltCxxLibraryDescription
       @Override
       public Iterable<? extends NativeLinkable> getNativeLinkableExportedDeps(
           BuildRuleResolver ruleResolver) {
-        return args.getExportedDeps()
-            .stream()
+        return args.getExportedDeps().stream()
             .map(ruleResolver::getRule)
             .filter(r -> r instanceof NativeLinkable)
             .map(r -> (NativeLinkable) r)
@@ -728,11 +706,11 @@ public class PrebuiltCxxLibraryDescription
                             new HumanReadableException(
                                 "Could not find static library for %s.", getBuildTarget())));
             if (args.isLinkWhole() || forceLinkWhole) {
-              Linker linker = cxxPlatform.getLd().resolve(graphBuilder);
-              DefaultSourcePathResolver pathResolver =
-                  DefaultSourcePathResolver.from(
-                      new SourcePathRuleFinder(context.getActionGraphBuilder()));
-              linkerArgsBuilder.addAll(linker.linkWhole(staticLibrary, pathResolver));
+              Linker linker =
+                  cxxPlatform.getLd().resolve(graphBuilder, buildTarget.getTargetConfiguration());
+              linkerArgsBuilder.addAll(
+                  linker.linkWhole(
+                      staticLibrary, context.getActionGraphBuilder().getSourcePathResolver()));
             } else {
               linkerArgsBuilder.add(FileListableLinkerInputArg.withSourcePathArg(staticLibrary));
             }
@@ -752,7 +730,8 @@ public class PrebuiltCxxLibraryDescription
           CxxPlatform cxxPlatform,
           Linker.LinkableDepType type,
           boolean forceLinkWhole,
-          ActionGraphBuilder graphBuilder) {
+          ActionGraphBuilder graphBuilder,
+          TargetConfiguration targetConfiguration) {
         NativeLinkableCacheKey key =
             NativeLinkableCacheKey.of(cxxPlatform.getFlavor(), type, forceLinkWhole, cxxPlatform);
         try {
@@ -848,14 +827,13 @@ public class PrebuiltCxxLibraryDescription
               public NativeLinkableInput getNativeLinkTargetInput(
                   CxxPlatform cxxPlatform,
                   ActionGraphBuilder graphBuilder,
-                  SourcePathResolver pathResolver,
-                  SourcePathRuleFinder ruleFinder) {
+                  SourcePathResolver pathResolver) {
                 return NativeLinkableInput.builder()
                     .addAllArgs(getExportedLinkerArgs(cxxPlatform, graphBuilder))
                     .addAllArgs(
                         cxxPlatform
                             .getLd()
-                            .resolve(graphBuilder)
+                            .resolve(graphBuilder, buildTarget.getTargetConfiguration())
                             .linkWhole(
                                 SourcePathArg.of(
                                     getStaticPicLibrary(cxxPlatform, graphBuilder).get()),
@@ -865,7 +843,7 @@ public class PrebuiltCxxLibraryDescription
               }
 
               @Override
-              public Optional<Path> getNativeLinkTargetOutputPath(CxxPlatform cxxPlatform) {
+              public Optional<Path> getNativeLinkTargetOutputPath() {
                 return Optional.empty();
               }
             });
@@ -891,9 +869,9 @@ public class PrebuiltCxxLibraryDescription
             args.getExportedLinkerFlags(), args.getExportedPlatformLinkerFlags(), cxxPlatform)
         .stream()
         .map(
-            s ->
-                CxxDescriptionEnhancer.toStringWithMacrosArgs(
-                    buildTarget, cellRoots, graphBuilder, cxxPlatform, s))
+            CxxDescriptionEnhancer.getStringWithMacrosArgsConverter(
+                    buildTarget, cellRoots, graphBuilder, cxxPlatform)
+                ::convert)
         .collect(ImmutableList.toImmutableList());
   }
 
@@ -908,7 +886,9 @@ public class PrebuiltCxxLibraryDescription
         .findParseTimeDeps(cellRoots, extraDepsBuilder, targetGraphOnlyDepsBuilder);
     getUnresolvedCxxPlatform(buildTarget)
         .ifPresent(
-            provider -> targetGraphOnlyDepsBuilder.addAll(provider.getValue().getParseTimeDeps()));
+            provider ->
+                targetGraphOnlyDepsBuilder.addAll(
+                    provider.getValue().getParseTimeDeps(buildTarget.getTargetConfiguration())));
   }
 
   @Override

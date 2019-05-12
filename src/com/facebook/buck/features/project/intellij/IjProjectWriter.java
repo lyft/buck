@@ -25,8 +25,8 @@ import com.facebook.buck.features.project.intellij.model.IjLibrary;
 import com.facebook.buck.features.project.intellij.model.IjModule;
 import com.facebook.buck.features.project.intellij.model.IjProjectConfig;
 import com.facebook.buck.features.project.intellij.model.ModuleIndexEntry;
-import com.facebook.buck.io.file.MorePaths;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
+import com.facebook.buck.io.pathformat.PathFormatter;
 import com.facebook.buck.util.json.ObjectMappers;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -171,6 +171,7 @@ public class IjProjectWriter {
         ObjectMappers.createGenerator(outFilesystem.newFileOutputStream(targetInfoMapPath))
             .useDefaultPrettyPrinter()) {
       generator.writeObject(targetInfoMap);
+      cleaner.doNotDelete(targetInfoMapPath);
     }
   }
 
@@ -237,7 +238,7 @@ public class IjProjectWriter {
       return languageLevelFromConfig.get();
     } else {
       String languageLevel =
-          projectConfig.getJavaBuckConfig().getDefaultJavacOptions().getSourceLevel();
+          projectConfig.getJavaBuckConfig().getJavacLanguageLevelOptions().getSourceLevel();
       return JavaLanguageLevelHelper.convertLanguageLevelToIjFormat(languageLevel);
     }
   }
@@ -252,23 +253,17 @@ public class IjProjectWriter {
     contents.add("name", library.getName());
     contents.add(
         "binaryJars",
-        library
-            .getBinaryJars()
-            .stream()
+        library.getBinaryJars().stream()
             .map(projectPaths::getProjectRelativePath)
             .collect(ImmutableSortedSet.toImmutableSortedSet(Ordering.natural())));
     contents.add(
         "classPaths",
-        library
-            .getClassPaths()
-            .stream()
+        library.getClassPaths().stream()
             .map(projectPaths::getProjectRelativePath)
             .collect(ImmutableSortedSet.toImmutableSortedSet(Ordering.natural())));
     contents.add(
         "sourceJars",
-        library
-            .getSourceJars()
-            .stream()
+        library.getSourceJars().stream()
             .map(projectPaths::getProjectRelativePath)
             .collect(ImmutableSortedSet.toImmutableSortedSet(Ordering.natural())));
     contents.add("javadocUrls", library.getJavadocUrls());
@@ -336,17 +331,15 @@ public class IjProjectWriter {
         modulesParser.getAllModules(
             projectFilesystem.newFileInputStream(getIdeaConfigDir().resolve("modules.xml")));
     final Set<Path> existingModuleFilepaths =
-        existingModules
-            .stream()
+        existingModules.stream()
             .map(ModuleIndexEntry::getFilePath)
-            .map(MorePaths::pathWithUnixSeparators)
+            .map(PathFormatter::pathWithUnixSeparators)
             .map(Paths::get)
             .collect(ImmutableSet.toImmutableSet());
     ImmutableSet<Path> remainingModuleFilepaths =
-        modulesEdited
-            .stream()
+        modulesEdited.stream()
             .map(projectPaths::getModuleImlFilePath)
-            .map(MorePaths::pathWithUnixSeparators)
+            .map(PathFormatter::pathWithUnixSeparators)
             .map(Paths::get)
             .filter(modulePath -> !existingModuleFilepaths.contains(modulePath))
             .collect(ImmutableSet.toImmutableSet());

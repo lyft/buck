@@ -30,9 +30,9 @@ import com.facebook.buck.core.sourcepath.DefaultBuildTargetSourcePath;
 import com.facebook.buck.core.sourcepath.PathSourcePath;
 import com.facebook.buck.cxx.toolchain.linker.Linker;
 import com.facebook.buck.features.go.GoListStep.ListType;
-import com.facebook.buck.io.file.MorePaths;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.TestProjectFilesystems;
+import com.facebook.buck.io.pathformat.PathFormatter;
 import com.facebook.buck.shell.GenruleBuilder;
 import com.facebook.buck.testutil.TemporaryPaths;
 import com.google.common.collect.FluentIterable;
@@ -66,8 +66,8 @@ public class GoDescriptorsTest {
             .transform(
                 input ->
                     Maps.immutableEntry(
-                        MorePaths.pathWithUnixSeparators(input.getKey()),
-                        MorePaths.pathWithUnixSeparators(input.getValue()))));
+                        PathFormatter.pathWithUnixSeparators(input.getKey()),
+                        PathFormatter.pathWithUnixSeparators(input.getValue()))));
   }
 
   @Test
@@ -165,9 +165,7 @@ public class GoDescriptorsTest {
             Collections.singletonList(ListType.GoFiles));
 
     Assert.assertTrue(
-        compile
-            .getBuildDeps()
-            .stream()
+        compile.getBuildDeps().stream()
             .map(BuildRule::getBuildTarget)
             .collect(ImmutableList.toImmutableList())
             .contains(srcTarget));
@@ -213,9 +211,7 @@ public class GoDescriptorsTest {
 
     System.out.println(binary.getBuildDeps());
     GoCompile compile =
-        binary
-            .getBuildDeps()
-            .stream()
+        binary.getBuildDeps().stream()
             .filter(
                 dep ->
                     dep.getBuildTarget()
@@ -226,9 +222,7 @@ public class GoDescriptorsTest {
             .get();
 
     Assert.assertTrue(
-        compile
-            .getBuildDeps()
-            .stream()
+        compile.getBuildDeps().stream()
             .map(BuildRule::getBuildTarget)
             .collect(ImmutableList.toImmutableList())
             .contains(srcTarget));

@@ -16,11 +16,11 @@
 
 package com.facebook.buck.remoteexecution.util;
 
+import com.facebook.buck.core.exceptions.BuckUncheckedExecutionException;
 import com.facebook.buck.io.file.MorePaths;
 import com.facebook.buck.io.windowsfs.WindowsFS;
 import com.facebook.buck.remoteexecution.AsyncBlobFetcher;
 import com.facebook.buck.remoteexecution.CasBlobUploader;
-import com.facebook.buck.remoteexecution.CasBlobUploader.UploadData;
 import com.facebook.buck.remoteexecution.CasBlobUploader.UploadResult;
 import com.facebook.buck.remoteexecution.ContentAddressedStorageClient;
 import com.facebook.buck.remoteexecution.UploadDataSupplier;
@@ -33,11 +33,9 @@ import com.facebook.buck.remoteexecution.interfaces.Protocol.OutputFile;
 import com.facebook.buck.remoteexecution.interfaces.Protocol.SymlinkNode;
 import com.facebook.buck.util.RichStream;
 import com.facebook.buck.util.concurrent.MostExecutors;
-import com.facebook.buck.util.exceptions.BuckUncheckedExecutionException;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.io.ByteStreams;
 import com.google.common.io.MoreFiles;
@@ -53,9 +51,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.channels.WritableByteChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
@@ -87,7 +88,7 @@ public class LocalContentAddressedStorage implements ContentAddressedStorageClie
             new CasBlobUploader() {
               @Override
               public ImmutableList<UploadResult> batchUpdateBlobs(
-                  ImmutableList<UploadData> blobData) {
+                  ImmutableList<UploadDataSupplier> blobData) {
                 return LocalContentAddressedStorage.this.batchUpdateBlobs(blobData);
               }
 
@@ -110,9 +111,10 @@ public class LocalContentAddressedStorage implements ContentAddressedStorageClie
           }
 
           @Override
-          public ListenableFuture<Void> fetchToStream(Digest digest, OutputStream outputStream) {
-            try (InputStream stream = getData(digest)) {
-              ByteStreams.copy(stream, outputStream);
+          public ListenableFuture<Void> fetchToStream(Digest digest, WritableByteChannel channel) {
+            try (FileInputStream stream = getFileInputStream(digest)) {
+              FileChannel input = stream.getChannel();
+              input.transferTo(0, input.size(), channel);
               return Futures.immediateFuture(null);
             } catch (IOException e) {
               return Futures.immediateFailedFuture(e);
@@ -160,10 +162,10 @@ public class LocalContentAddressedStorage implements ContentAddressedStorageClie
   }
 
   /** Upload blobs. */
-  public ImmutableList<UploadResult> batchUpdateBlobs(ImmutableList<UploadData> blobData) {
+  public ImmutableList<UploadResult> batchUpdateBlobs(ImmutableList<UploadDataSupplier> blobData) {
     ImmutableList.Builder<UploadResult> responseBuilder = ImmutableList.builder();
-    for (UploadData data : blobData) {
-      String hash = data.digest.getHash();
+    for (UploadDataSupplier data : blobData) {
+      String hash = data.getDigest().getHash();
       try {
         Path path = ensureParent(getPath(hash));
         try (AutoUnlocker ignored = fileLock.writeLock(hash)) {
@@ -173,23 +175,27 @@ public class LocalContentAddressedStorage implements ContentAddressedStorageClie
           Path tempPath = path.getParent().resolve(path.getFileName() + ".tmp");
           try (OutputStream outputStream =
                   new BufferedOutputStream(new FileOutputStream(tempPath.toFile()));
-              InputStream dataStream = data.data.get()) {
+              InputStream dataStream = data.get()) {
             ByteStreams.copy(dataStream, outputStream);
           }
           Files.move(tempPath, path);
         }
-        responseBuilder.add(new UploadResult(data.digest, 0, null));
+        responseBuilder.add(new UploadResult(data.getDigest(), 0, null));
       } catch (IOException e) {
-        responseBuilder.add(new UploadResult(data.digest, 1, e.getMessage()));
+        responseBuilder.add(new UploadResult(data.getDigest(), 1, e.getMessage()));
       }
     }
     return responseBuilder.build();
   }
 
   @Override
-  public ListenableFuture<Void> addMissing(ImmutableMap<Digest, UploadDataSupplier> data)
-      throws IOException {
-    return uploader.addMissing(data);
+  public ListenableFuture<Void> addMissing(Collection<UploadDataSupplier> data) throws IOException {
+    return uploader.addMissing(data.stream());
+  }
+
+  @Override
+  public boolean containsDigest(Digest digest) {
+    return uploader.containsDigest(digest);
   }
 
   /**
@@ -197,9 +203,11 @@ public class LocalContentAddressedStorage implements ContentAddressedStorageClie
    */
   @Override
   public ListenableFuture<Void> materializeOutputs(
-      List<OutputDirectory> outputDirectories, List<OutputFile> outputFiles, Path root)
+      List<OutputDirectory> outputDirectories,
+      List<OutputFile> outputFiles,
+      FileMaterializer materializer)
       throws IOException {
-    return outputsMaterializer.materialize(outputDirectories, outputFiles, root);
+    return outputsMaterializer.materialize(outputDirectories, outputFiles, materializer);
   }
 
   public Protocol.Action materializeAction(Protocol.Digest actionDigest) throws IOException {
@@ -302,7 +310,14 @@ public class LocalContentAddressedStorage implements ContentAddressedStorageClie
   public InputStream getData(Protocol.Digest digest) throws IOException {
     Path path = getPath(digest.getHash());
     Preconditions.checkState(Files.exists(path), "Couldn't find %s.", path);
-    return new BufferedInputStream(new FileInputStream(path.toFile()));
+    return new BufferedInputStream(getFileInputStream(digest));
+  }
+
+  /** Get a file input stream to a Digest */
+  public FileInputStream getFileInputStream(Protocol.Digest digest) throws IOException {
+    Path path = getPath(digest.getHash());
+    Preconditions.checkState(Files.exists(path), "Couldn't find %s.", path);
+    return new FileInputStream(path.toFile());
   }
 
   private static Path ensureParent(Path path) throws IOException {

@@ -18,7 +18,7 @@ package com.facebook.buck.util.cache.impl;
 
 import static org.junit.Assert.assertTrue;
 
-import com.facebook.buck.io.ArchiveMemberPath;
+import com.facebook.buck.core.io.ArchiveMemberPath;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.io.filesystem.TestProjectFilesystems;
 import com.facebook.buck.io.filesystem.impl.FakeProjectFilesystem;
@@ -58,8 +58,7 @@ public class StackedFileHashCacheTest {
 
   @Parameterized.Parameters(name = "{0}")
   public static Collection<Object[]> data() {
-    return EnumSet.allOf(FileHashCacheMode.class)
-        .stream()
+    return EnumSet.allOf(FileHashCacheMode.class).stream()
         .map(v -> new Object[] {v})
         .collect(ImmutableList.toImmutableList());
   }

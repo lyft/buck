@@ -31,6 +31,9 @@ import com.facebook.buck.core.cell.CellName;
 import com.facebook.buck.core.cell.TestCellBuilder;
 import com.facebook.buck.core.config.BuckConfig;
 import com.facebook.buck.core.config.FakeBuckConfig;
+import com.facebook.buck.core.graph.transformation.executor.DepsAwareExecutor;
+import com.facebook.buck.core.graph.transformation.executor.impl.DefaultDepsAwareExecutor;
+import com.facebook.buck.core.graph.transformation.model.ComputeResult;
 import com.facebook.buck.core.model.EmptyTargetConfiguration;
 import com.facebook.buck.core.model.TargetConfigurationSerializerForTests;
 import com.facebook.buck.core.model.actiongraph.computation.ActionGraphProviderBuilder;
@@ -52,8 +55,10 @@ import com.facebook.buck.remoteexecution.MetadataProviderFactory;
 import com.facebook.buck.rules.coercer.DefaultTypeCoercerFactory;
 import com.facebook.buck.rules.coercer.TypeCoercerFactory;
 import com.facebook.buck.rules.keys.config.TestRuleKeyConfigurationFactory;
+import com.facebook.buck.testutil.CloseableResource;
 import com.facebook.buck.testutil.FakeExecutor;
 import com.facebook.buck.testutil.TestConsole;
+import com.facebook.buck.util.CloseableMemoizedSupplier;
 import com.facebook.buck.util.ExitCode;
 import com.facebook.buck.util.FakeProcessExecutor;
 import com.facebook.buck.util.ProcessExecutor;
@@ -77,6 +82,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Optional;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.kohsuke.args4j.CmdLineException;
 import org.pf4j.PluginManager;
@@ -85,6 +91,10 @@ import org.pf4j.PluginManager;
 public class CleanCommandTest {
 
   private ProjectFilesystem projectFilesystem;
+
+  @Rule
+  public CloseableResource<DepsAwareExecutor<? super ComputeResult, ?>> executor =
+      CloseableResource.of(() -> DefaultDepsAwareExecutor.of(4));
 
   @Before
   public void setUp() {
@@ -303,6 +313,9 @@ public class CleanCommandTest {
         TestKnownRuleTypesProvider.create(pluginManager);
     ExecutableFinder executableFinder = new ExecutableFinder();
 
+    CloseableMemoizedSupplier<DepsAwareExecutor<? super ComputeResult, ?>>
+        depsAwareExecutorSupplier = MainRunner.getDepsAwareExecutorSupplier(buckConfig);
+
     return CommandRunnerParams.of(
         new TestConsole(),
         new ByteArrayInputStream("".getBytes(StandardCharsets.UTF_8)),
@@ -315,7 +328,7 @@ public class CleanCommandTest {
         new ParsingUnconfiguredBuildTargetFactory(),
         () -> EmptyTargetConfiguration.INSTANCE,
         TargetConfigurationSerializerForTests.create(cell.getCellPathResolver()),
-        TestParserFactory.create(cell, knownRuleTypesProvider),
+        TestParserFactory.create(executor.get(), cell, knownRuleTypesProvider),
         BuckEventBusForTests.newInstance(),
         Platform.detect(),
         EnvVariablesProvider.getSystemEnv(),
@@ -333,7 +346,7 @@ public class CleanCommandTest {
         new ActionGraphProviderBuilder()
             .withMaxEntries(
                 buckConfig.getView(BuildBuckConfig.class).getMaxActionGraphCacheEntries())
-            .withPoolSupplier(MainRunner.getForkJoinPoolSupplier(buckConfig))
+            .withDepsAwareExecutorSupplier(depsAwareExecutorSupplier)
             .build(),
         knownRuleTypesProvider,
         new BuildInfoStoreManager(),
@@ -345,7 +358,7 @@ public class CleanCommandTest {
         executableFinder,
         pluginManager,
         TestBuckModuleManagerFactory.create(pluginManager),
-        MainRunner.getForkJoinPoolSupplier(buckConfig),
+        depsAwareExecutorSupplier,
         MetadataProviderFactory.emptyMetadataProvider(),
         getManifestSupplier());
   }
