@@ -23,5 +23,6 @@ enum AaptMode {
   ;
 
   // Buck doesn't track Android Build Tools versions so updating them without updating Buck breaks buildcache, sigh.
+  @SuppressWarnings("unused")
   private static final String increment_me_when_build_tools_update = "29.0.1";
 }
