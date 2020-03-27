@@ -231,11 +231,14 @@ public class Genrule extends AbstractBuildRuleWithDeclaredAndExtraDeps
 
   protected void addEnvironmentVariables(
       SourcePathResolver pathResolver, Builder<String, String> environmentVariablesBuilder) {
+    Path absolutePathToSrcDirectory = pathToSrcDirectory.toAbsolutePath();
+
     environmentVariablesBuilder.put(
         "SRCS",
         srcs.getPaths()
             .stream()
             .map(pathResolver::getAbsolutePath)
+            .map(absolutePathToSrcDirectory::relativize)
             .map(Object::toString)
             .collect(Collectors.joining(this.environmentExpansionSeparator)));
     environmentVariablesBuilder.put("OUT", getAbsoluteOutputFilePath().toString());
