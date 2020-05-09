@@ -84,6 +84,7 @@ public class DummyRDotJava extends AbstractBuildRule
   @AddToRuleKey private final Optional<String> finalRName;
   @AddToRuleKey private final boolean useOldStyleableFormat;
   @AddToRuleKey private final boolean skipNonUnionRDotJava;
+  @AddToRuleKey private final boolean mergeRClasses;
 
   @AddToRuleKey
   @SuppressWarnings("PMD.UnusedPrivateField")
@@ -101,7 +102,8 @@ public class DummyRDotJava extends AbstractBuildRule
       Optional<String> unionPackage,
       Optional<String> finalRName,
       boolean useOldStyleableFormat,
-      boolean skipNonUnionRDotJava) {
+      boolean skipNonUnionRDotJava,
+      boolean mergeRClasses) {
     this(
         buildTarget,
         projectFilesystem,
@@ -113,7 +115,8 @@ public class DummyRDotJava extends AbstractBuildRule
         finalRName,
         useOldStyleableFormat,
         abiPaths(androidResourceDeps),
-        skipNonUnionRDotJava);
+        skipNonUnionRDotJava,
+        mergeRClasses);
   }
 
   private DummyRDotJava(
@@ -127,13 +130,15 @@ public class DummyRDotJava extends AbstractBuildRule
       Optional<String> finalRName,
       boolean useOldStyleableFormat,
       ImmutableList<SourcePath> abiInputs,
-      boolean skipNonUnionRDotJava) {
+      boolean skipNonUnionRDotJava,
+      boolean mergeRClasses) {
     super(buildTarget, projectFilesystem);
 
     // Sort the input so that we get a stable ABI for the same set of resources.
     this.androidResourceDeps =
         androidResourceDeps
             .stream()
+            .filter(dep -> mergeRClasses || dep.getBuildTarget().getBasePath().equals(buildTarget.getBasePath()))
             .sorted(Comparator.comparing(HasAndroidResourceDeps::getBuildTarget))
             .collect(ImmutableList.toImmutableList());
     this.useOldStyleableFormat = useOldStyleableFormat;
@@ -145,6 +150,7 @@ public class DummyRDotJava extends AbstractBuildRule
     this.finalRName = finalRName;
     this.abiInputs = abiInputs;
     this.javaAbiInfo = new DefaultJavaAbiInfo(getSourcePathToOutput());
+    this.mergeRClasses = mergeRClasses;
     buildOutputInitializer = new BuildOutputInitializer<>(getBuildTarget(), this);
 
     buildDeps =

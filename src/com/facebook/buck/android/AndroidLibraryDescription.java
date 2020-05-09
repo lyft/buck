@@ -168,6 +168,9 @@ public class AndroidLibraryDescription
     }
 
     Optional<String> getFinalRName();
+
+    @Value.Default
+    default boolean isMergeRClasses() { return true; }
   }
 
   @BuckStyleImmutable

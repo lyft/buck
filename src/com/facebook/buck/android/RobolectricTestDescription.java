@@ -153,7 +153,8 @@ public class RobolectricTestDescription
             args.getResourceUnionPackage(),
             /* rName */ Optional.empty(),
             args.isUseOldStyleableFormat(),
-            /* skipNonUnionRDotJava */ false);
+            /* skipNonUnionRDotJava */ false,
+            /* mergeRClasses */ true);
 
     StringWithMacrosConverter macrosConverter =
         StringWithMacrosConverter.builder()

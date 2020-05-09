@@ -44,6 +44,8 @@ import com.facebook.buck.util.DependencyMode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.collect.Iterables;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.SortedSet;
@@ -131,6 +133,8 @@ public class AndroidLibrary extends DefaultJavaLibrary implements AndroidPackage
     return manifestFile;
   }
 
+  private boolean hasDummyRDotJava;
+
   @Override
   public void addToCollector(AndroidPackageableCollector collector) {
     super.addToCollector(collector);
@@ -143,6 +147,7 @@ public class AndroidLibrary extends DefaultJavaLibrary implements AndroidPackage
     private final ActionGraphBuilder graphBuilder;
     private final DefaultJavaLibraryRules delegate;
     private final AndroidLibraryGraphEnhancer graphEnhancer;
+    private boolean hasDummyRDotJava = false;
 
     protected Builder(
         BuildTarget buildTarget,
@@ -234,23 +239,37 @@ public class AndroidLibrary extends DefaultJavaLibrary implements AndroidPackage
               args.getResourceUnionPackage(),
               args.getFinalRName(),
               /* useOldStyleableFormat */ false,
-              args.isSkipNonUnionRDotJava());
+              args.isSkipNonUnionRDotJava(),
+              args.isMergeRClasses());
+
+      final JavaLibraryDeps.Builder builder = new JavaLibraryDeps.Builder(graphBuilder)
+          .from(JavaLibraryDeps.newInstance(args, graphBuilder, compilerFactory));
+
+      if (!args.isMergeRClasses()) {
+        List<BuildTarget> depDummyRDotJavas = getDepDummyRDotJavas(Iterables.concat(
+            deps.getDeps(), deps.getProvidedDeps()));
+
+        for (BuildTarget depDummyRDotJava : depDummyRDotJavas) {
+          builder.addDepTargets(depDummyRDotJava);
+        }
+      }
 
       getDummyRDotJava()
           .ifPresent(
               dummyRDotJava -> {
-                delegateBuilder.setDeps(
-                    new JavaLibraryDeps.Builder(graphBuilder)
-                        .from(JavaLibraryDeps.newInstance(args, graphBuilder, compilerFactory))
-                        .addDepTargets(dummyRDotJava.getBuildTarget())
-                        .build());
+                hasDummyRDotJava = true;
+                builder.addDepTargets(dummyRDotJava.getBuildTarget());
               });
+
+      delegateBuilder.setDeps(builder.build());
 
       delegate = delegateBuilder.build();
     }
 
     public AndroidLibrary build() {
-      return (AndroidLibrary) delegate.buildLibrary();
+      AndroidLibrary library = (AndroidLibrary) delegate.buildLibrary();
+      library.hasDummyRDotJava = hasDummyRDotJava;
+      return library;
     }
 
     public BuildRule buildAbi() {
@@ -263,6 +282,25 @@ public class AndroidLibrary extends DefaultJavaLibrary implements AndroidPackage
 
     public Optional<DummyRDotJava> getDummyRDotJava() {
       return graphEnhancer.getBuildableForAndroidResources(graphBuilder, false);
+    }
+
+    private List<BuildTarget> getDepDummyRDotJavas(Iterable<BuildRule> deps) {
+      List<BuildTarget> result = new ArrayList<>();
+
+      for (BuildRule dep : deps) {
+        if (dep instanceof AndroidLibrary) {
+          AndroidLibrary androidLibraryDep = (AndroidLibrary) dep;
+
+          if (androidLibraryDep.hasDummyRDotJava) {
+            BuildTarget depDummyRDotJava = dep
+                .getBuildTarget()
+                .withAppendedFlavors(AndroidLibraryGraphEnhancer.DUMMY_R_DOT_JAVA_FLAVOR);
+            result.add(depDummyRDotJava);
+          }
+      }
+    }
+
+      return result;
     }
   }
 }
