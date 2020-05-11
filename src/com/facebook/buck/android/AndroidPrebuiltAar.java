@@ -18,6 +18,7 @@ package com.facebook.buck.android;
 
 import com.facebook.buck.android.packageable.AndroidPackageableCollector;
 import com.facebook.buck.core.model.BuildTarget;
+import com.facebook.buck.core.rules.ActionGraphBuilder;
 import com.facebook.buck.core.rules.BuildRule;
 import com.facebook.buck.core.rules.BuildRuleParams;
 import com.facebook.buck.core.rules.SourcePathRuleFinder;
@@ -27,14 +28,20 @@ import com.facebook.buck.core.sourcepath.SourcePath;
 import com.facebook.buck.io.filesystem.ProjectFilesystem;
 import com.facebook.buck.jvm.core.JavaAbis;
 import com.facebook.buck.jvm.java.CompileToJarStepFactory;
+import com.facebook.buck.jvm.java.ExtraClasspathProvider;
 import com.facebook.buck.jvm.java.JarBuildStepsFactory;
 import com.facebook.buck.jvm.java.JavaBuckConfig.UnusedDependenciesAction;
+import com.facebook.buck.jvm.java.Javac;
+import com.facebook.buck.jvm.java.JavacOptions;
+import com.facebook.buck.jvm.java.JavacToJarStepFactory;
 import com.facebook.buck.jvm.java.PrebuiltJar;
 import com.facebook.buck.jvm.java.RemoveClassesPatternsMatcher;
 import com.facebook.buck.jvm.java.ResourcesParameters;
 import com.facebook.buck.jvm.java.abi.AbiGenerationMode;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
+import java.util.Collections;
 import java.util.Optional;
 import java.util.stream.Stream;
 
@@ -58,7 +65,17 @@ public class AndroidPrebuiltAar extends AndroidLibrary
       CompileToJarStepFactory configuredCompiler,
       Iterable<PrebuiltJar> exportedDeps,
       boolean requiredForSourceAbi,
-      Optional<String> mavenCoords) {
+      Optional<String> mavenCoords,
+
+      ActionGraphBuilder graphBuilder,
+      Javac javac,
+      JavacOptions javacOptions,
+      boolean forceFinalResourceIds,
+      Optional<String> resourceUnionPackage,
+      Optional<String> finalRName,
+      boolean useOldStyleableFormat,
+      boolean skipNonUnionRDotJava,
+      boolean mergeRClasses) {
     super(
         androidLibraryBuildTarget,
         projectFilesystem,
@@ -102,6 +119,20 @@ public class AndroidPrebuiltAar extends AndroidLibrary
     this.unzipAar = unzipAar;
     this.prebuiltJar = prebuiltJar;
     this.nativeLibsDirectory = nativeLibsDirectory;
+
+    maybeAddDummyRDotJavaFlavor(
+        androidLibraryBuildTarget,
+        graphBuilder,
+        javac,
+        javacOptions,
+        forceFinalResourceIds,
+        resourceUnionPackage,
+        finalRName,
+        useOldStyleableFormat,
+        projectFilesystem,
+        skipNonUnionRDotJava,
+        mergeRClasses
+    );
   }
 
   @Override
@@ -113,6 +144,12 @@ public class AndroidPrebuiltAar extends AndroidLibrary
   public SourcePath getPathToTextSymbolsFile() {
     return ExplicitBuildTargetSourcePath.of(
         unzipAar.getBuildTarget(), unzipAar.getTextSymbolsFile());
+  }
+
+  @Override
+  public boolean hasDummyRDotJava() {
+    // Assume true, otherwise generates empty R class.
+    return true;
   }
 
   @Override
@@ -154,5 +191,47 @@ public class AndroidPrebuiltAar extends AndroidLibrary
   @Override
   public Stream<BuildTarget> getRuntimeDeps(SourcePathRuleFinder ruleFinder) {
     return Stream.of(unzipAar.getBuildTarget());
+  }
+
+  private void maybeAddDummyRDotJavaFlavor(
+      BuildTarget androidPrebuiltAarBuildTarget,
+      ActionGraphBuilder graphBuilder,
+      Javac javac,
+      JavacOptions javacOptions,
+      boolean forceFinalResourceIds,
+      Optional<String> resourceUnionPackage,
+      Optional<String> finalRName,
+      boolean useOldStyleableFormat,
+      ProjectFilesystem projectFilesystem,
+      boolean skipNonUnionRDotJava,
+      boolean mergeRClasses) {
+
+    ImmutableSet<HasAndroidResourceDeps> androidResourceDeps = ImmutableSet.of(this);
+
+    BuildTarget dummyRDotJavaBuildTarget = AndroidLibraryGraphEnhancer.getDummyRDotJavaTarget(androidPrebuiltAarBuildTarget);
+
+    graphBuilder.computeIfAbsent(
+            dummyRDotJavaBuildTarget,
+            ignored -> {
+              SourcePathRuleFinder ruleFinder = new SourcePathRuleFinder(graphBuilder);
+              JavacOptions filteredOptions =
+                  javacOptions.withExtraArguments(Collections.emptyList());
+
+              JavacToJarStepFactory compileToJarStepFactory =
+                  new JavacToJarStepFactory(javac, filteredOptions, ExtraClasspathProvider.EMPTY);
+
+              return new DummyRDotJava(
+                  dummyRDotJavaBuildTarget,
+                  projectFilesystem,
+                  ruleFinder,
+                  androidResourceDeps,
+                  compileToJarStepFactory,
+                  forceFinalResourceIds,
+                  resourceUnionPackage,
+                  finalRName,
+                  useOldStyleableFormat,
+                  skipNonUnionRDotJava,
+                  mergeRClasses);
+            });
   }
 }

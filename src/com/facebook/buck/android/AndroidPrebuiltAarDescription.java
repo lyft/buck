@@ -222,7 +222,20 @@ public class AndroidPrebuiltAarDescription
             ExtraClasspathProvider.EMPTY),
         /* exportedDeps */ javaDeps,
         args.getRequiredForSourceOnlyAbi(),
-        args.getMavenCoords());
+        args.getMavenCoords(),
+
+        graphBuilder,
+        javacFactory.create(new SourcePathRuleFinder(graphBuilder), null),
+        toolchainProvider
+            .getByName(JavacOptionsProvider.DEFAULT_NAME, JavacOptionsProvider.class)
+            .getJavacOptions(),
+        false,
+        Optional.<String>empty(),
+        Optional.<String>empty(),
+        false,
+        false,
+        /* mergeRClass */ true
+        );
   }
 
   @Override

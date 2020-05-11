@@ -135,6 +135,10 @@ public class AndroidLibrary extends DefaultJavaLibrary implements AndroidPackage
 
   private boolean hasDummyRDotJava;
 
+  public boolean hasDummyRDotJava() {
+    return hasDummyRDotJava;
+  }
+
   @Override
   public void addToCollector(AndroidPackageableCollector collector) {
     super.addToCollector(collector);
@@ -291,7 +295,7 @@ public class AndroidLibrary extends DefaultJavaLibrary implements AndroidPackage
         if (dep instanceof AndroidLibrary) {
           AndroidLibrary androidLibraryDep = (AndroidLibrary) dep;
 
-          if (androidLibraryDep.hasDummyRDotJava) {
+          if (androidLibraryDep.hasDummyRDotJava()) {
             BuildTarget depDummyRDotJava = dep
                 .getBuildTarget()
                 .withAppendedFlavors(AndroidLibraryGraphEnhancer.DUMMY_R_DOT_JAVA_FLAVOR);
