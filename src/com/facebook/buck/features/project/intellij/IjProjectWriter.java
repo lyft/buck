@@ -284,7 +284,7 @@ public class IjProjectWriter {
     ST moduleIndexContents = StringTemplateFile.MODULE_INDEX_TEMPLATE.getST();
     moduleIndexContents.add("modules", moduleEntries);
 
-    writeTemplate(moduleIndexContents, getIdeaConfigDir().resolve("modules.xml"));
+    writeTemplate(moduleIndexContents, getIdeaConfigDir().resolve("modules.fml"));
   }
 
   private Path getIdeaConfigDir() {

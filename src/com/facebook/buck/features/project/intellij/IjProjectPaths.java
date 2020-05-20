@@ -74,7 +74,7 @@ public class IjProjectPaths {
 
   /** @return path where the XML describing the IntelliJ library will be written to. */
   public Path getLibraryXmlFilePath(IjLibrary library) {
-    return getLibrariesDir().resolve(Util.normalizeIntelliJName(library.getName()) + ".xml");
+    return getLibrariesDir().resolve(Util.normalizeIntelliJName(library.getName()) + ".fml");
   }
 
   /**
