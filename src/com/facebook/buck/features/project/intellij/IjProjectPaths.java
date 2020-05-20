@@ -49,7 +49,7 @@ public class IjProjectPaths {
 
   /** @return path where the XML describing the module to IntelliJ will be written to. */
   public Path getModuleImlFilePath(IjModule module) {
-    return getModuleDir(module).resolve(module.getName() + ".iml");
+    return getModuleDir(module).resolve(module.getName() + ".fml");
   }
 
   /** @return the directory containing the modules .iml file, $MODULE_DIR$ points to this. */

@@ -332,6 +332,7 @@ public final class MainRunner {
           // Eclipse
           ExactPathMatcher.of(".idea"),
           ExactPathMatcher.of(".iml"),
+          ExactPathMatcher.of(".fml"),
           FileExtensionMatcher.of("pydevproject"),
           ExactPathMatcher.of(".project"),
           ExactPathMatcher.of(".metadata"),
