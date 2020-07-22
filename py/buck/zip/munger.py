@@ -34,8 +34,8 @@ def main():
 
 def process_jar(infile, outfile, include_paths, exclude_paths):
     with contextlib.closing(open(infile, "rb")) as inputFile:
-        with contextlib.closing(zipfile.ZipFile(open(outfile, "wb"), "w")) as output:
-            input = zipfile.ZipFile(inputFile, "r")
+        with contextlib.closing(zipfile.ZipFile(open(outfile, "wb"), "w", allowZip64=True)) as output:
+            input = zipfile.ZipFile(inputFile, "r", allowZip64=True)
             for info in input.infolist():
                 include = False
                 for path in include_paths:
