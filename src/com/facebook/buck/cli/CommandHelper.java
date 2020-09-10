@@ -35,6 +35,9 @@ public final class CommandHelper {
 
   private CommandHelper() {}
 
+  // Buck doesn't track Android SDK version as part of cache keys, thus we invalidate Buck itself on each Android SDK update.
+  private static final int invalidate_buck_version_stub = 1;
+
   /**
    * Prints target and result map's json representation into printStream.
    *
