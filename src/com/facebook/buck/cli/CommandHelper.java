@@ -36,6 +36,7 @@ public final class CommandHelper {
   private CommandHelper() {}
 
   // Buck doesn't track Android SDK version as part of cache keys, thus we invalidate Buck itself on each Android SDK update.
+  @SuppressWarnings("unused")
   private static final int invalidate_buck_version_stub = 1;
 
   /**
